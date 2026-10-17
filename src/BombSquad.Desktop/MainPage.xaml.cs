@@ -2,7 +2,9 @@ using BombSquad.Analysis;
 using BombSquad.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.Storage;
 using Windows.Storage.Pickers;
+using Windows.Storage.Streams;
 using WinRT.Interop;
 
 namespace BombSquad_Desktop;
@@ -12,6 +14,8 @@ public sealed partial class MainPage : Page
     private readonly AnalysisService _analysisService = new();
     private bool _isAnalyzing;
     private ScriptSourceDocument? _sourceDocument;
+    private AnalysisResult? _currentResult;
+    private string? _currentSourceIdentifier;
 
     private const string DemoScript = """
         if ($false) {
@@ -118,12 +122,18 @@ public sealed partial class MainPage : Page
         OpenFileButton.IsEnabled = !busy;
         DemoInspectionButton.IsEnabled = !busy;
         OpenSourceButton.IsEnabled = !busy && _sourceDocument is not null;
+        ExportReportButton.IsEnabled = !busy && _currentResult is not null;
     }
 
     private void ClearAnalysis()
     {
         ShowReviewWorkspace();
         _sourceDocument = null;
+        _currentResult = null;
+        _currentSourceIdentifier = null;
+        ExportReportButton.IsEnabled = false;
+        ExportStatusText.Text = "";
+        ExportStatusText.Visibility = Visibility.Collapsed;
         OpenSourceButton.IsEnabled = false;
         SourceLinesList.SelectedIndex = -1;
         SourceLinesList.ItemsSource = null;
@@ -148,6 +158,12 @@ public sealed partial class MainPage : Page
         string sourceLocation, string sourceText)
     {
         ShowReviewWorkspace();
+        _currentResult = result;
+        _currentSourceIdentifier = sourceLocation == "Built-in sample"
+            ? "desktop-demo.ps1" : sourceLocation;
+        ExportReportButton.IsEnabled = true;
+        ExportStatusText.Text = "";
+        ExportStatusText.Visibility = Visibility.Collapsed;
         _sourceDocument = new ScriptSourceDocument(sourceText);
         OpenSourceButton.IsEnabled = true;
         SourceLinesList.SelectedIndex = -1;
@@ -230,6 +246,57 @@ public sealed partial class MainPage : Page
         {
             SourceLinesList.SelectedIndex = -1;
             JumpToSourceButton.IsEnabled = false;
+        }
+    }
+
+    private async void ExportReport_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isAnalyzing || _currentResult is null || _currentSourceIdentifier is null)
+        {
+            return;
+        }
+
+        AnalysisResult result = _currentResult;
+        string sourceIdentifier = _currentSourceIdentifier;
+        SetBusy(true);
+
+        try
+        {
+            Window window = ((App)Application.Current).CurrentWindow
+                ?? throw new InvalidOperationException("The application window is not available.");
+
+            var picker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = Path.GetFileNameWithoutExtension(sourceIdentifier)
+                    + "-bomb-squad-report"
+            };
+            picker.FileTypeChoices.Add("JSON report", new List<string> { ".json" });
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
+
+            StorageFile? selectedFile = await picker.PickSaveFileAsync();
+            if (selectedFile is null)
+            {
+                return;
+            }
+
+            // The native Save dialog asks for confirmation before replacing a file.
+            // Nothing from the inspected PowerShell script is executed.
+            string report = JsonAnalysisReportWriter.Serialize(sourceIdentifier, result);
+            await FileIO.WriteTextAsync(
+                selectedFile, report + Environment.NewLine, UnicodeEncoding.Utf8);
+
+            ExportStatusText.Text = $"Report saved: {selectedFile.Name}. Report may contain source excerpts.";
+            ExportStatusText.Visibility = Visibility.Visible;
+        }
+        catch (Exception ex)
+        {
+            ExportStatusText.Text = $"Report not saved: {ex.Message}";
+            ExportStatusText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 

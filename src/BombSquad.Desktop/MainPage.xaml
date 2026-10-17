@@ -119,6 +119,13 @@
                                 BorderBrush="#CDD8D1" BorderThickness="1"
                                 CornerRadius="5" FontFamily="Segoe UI"
                                 FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
+                        <Button x:Name="ExportReportButton" Content="Export report"
+                                Click="ExportReport_Click" IsEnabled="False"
+                                AutomationProperties.Name="Export the current static analysis as a JSON report"
+                                Background="#FFFFFF" Foreground="#253138"
+                                BorderBrush="#CDD8D1" BorderThickness="1"
+                                CornerRadius="5" FontFamily="Segoe UI"
+                                FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
                         <Button x:Name="OpenSourceButton" Content="View source"
                                 Click="OpenSource_Click" IsEnabled="False"
                                 AutomationProperties.Name="Open a dedicated read-only source explorer"
@@ -475,6 +482,10 @@
                                Text="Ready. No inspection performed."
                                FontFamily="Consolas" FontSize="12"
                                Foreground="#35463E" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="ExportStatusText" Text=""
+                               Visibility="Collapsed"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="#45765E" TextTrimming="CharacterEllipsis"/>
                     <TextBlock Text="No findings does not mean safe. Inspected PowerShell is never executed."
                                FontFamily="Segoe UI" FontSize="12"
                                Foreground="#77827F" TextTrimming="CharacterEllipsis"/>
