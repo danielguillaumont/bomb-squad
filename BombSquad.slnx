@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/BombSquad.Core/BombSquad.Core.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BombSquad.Tests/BombSquad.Tests.csproj" />
+  </Folder>
 </Solution>

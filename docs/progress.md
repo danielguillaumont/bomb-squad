@@ -1,38 +1,52 @@
 ﻿# BOMB SQUAD Progress
 
 Current release: v0.0 - Foundation
-Current branch: Not yet initialized
-Last updated: 2026-10-16
+Current branch: feat/v00-foundation
+Last updated: 2026-10-17
 
 ## PREP - Completed
 
 - Windows 11 and .NET 10 verified
-- PowerShell parser 7.6.7 validated
-- Valid and malformed input parsing verified
-- Command source locations verified
+- PowerShell parser proof validated
+- Valid and malformed input parsing demonstrated
+- Source extents reported correctly
 - No-execution marker checks passed
-- WinUI 3 development window launched
-- Windows App SDK 2.5.1 identified
-- Self-contained Release publish succeeded
-- Published executable launched locally
-- ADR-001 and ADR-002 created
+- WinUI 3 application built and launched
+- Self-contained Windows publish launched locally
+- Architecture decisions recorded
 
-## Current milestone
+## v0.0 - Completed so far
 
-v0.0 - Foundation
+- GitHub repository established
+- main and development branches configured
+- BombSquad.slnx created
+- BombSquad.Core library created
+- Analysis contracts and enums implemented
+- xUnit project created
+- Three automated Core tests passed
+- Release solution build successful
+
+## Current limitations
+
+- No production analyzer implemented
+- No PowerShell detection rules implemented
+- No CLI functionality implemented
+- No GitHub Actions CI configured
+- Clean-machine deployment not yet tested
 
 ## Known concerns
 
 - WinUI template package is 0.0.7-alpha
 - Two IL2104 warnings during publishing
-- Clean-machine deployment remains untested
-- Full transitive dependency-license review pending
+- Full dependency-license inventory pending
 
 ## Next action
 
-Initialize Git and create the repository ignore rules.
+Create BombSquad.Analysis, BombSquad.Rules
+and BombSquad.Cli project skeletons.
 
-## Release gate
+## v0.0 Release Gate
 
-Fresh clone builds, tests pass, CI is green,
-and no unsupported analysis claims are made.
+Fresh clone builds, automated tests pass,
+Windows CI is green, and placeholder analysis
+never claims a script is safe.
