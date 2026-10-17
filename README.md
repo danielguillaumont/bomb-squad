@@ -27,8 +27,8 @@ to exact source locations.
 
 ## Current status
 
-PREP: parser and desktop feasibility proofs completed.
-The permanent application has not been implemented.
+v0.0 Foundation: core contracts, project architecture and automated tests implemented.
+The CLI and placeholder analyzer are connected. PowerShell parsing and detection rules are not yet implemented in the permanent application.
 
 See docs/progress.md for the current milestone.
 
