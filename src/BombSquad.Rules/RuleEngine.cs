@@ -11,7 +11,8 @@ public sealed class RuleEngine
         : this(new IFindingRule[]
         {
             new RemoveItemRule(),
-            new DefenderPreferenceRule()
+            new DefenderPreferenceRule(),
+            new RegistryPropertyRule()
         })
     {
     }

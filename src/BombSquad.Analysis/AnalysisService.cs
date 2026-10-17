@@ -37,14 +37,16 @@ public sealed class AnalysisService
             .ToImmutableArray();
 
         var limitations = ImmutableArray.Create(
-            "This is a partial rule set. Only BS-FS-001 " +
-            "(literal Remove-Item) and BS-SS-001 " +
-            "(Set-MpPreference and Add-MpPreference) are active.",
-            "Other filesystem and security-setting operations, " +
-            "plus all four remaining detection families, " +
-            "are not evaluated.",
+            "This is a partial rule set. Three rule IDs are active: " +
+            "BS-FS-001, BS-SS-001, and BS-RG-001.",
+            "Only selected filesystem, Defender preference, and " +
+            "registry property command patterns are detected.",
+            "Identity, tasks/services, and dynamic execution " +
+            "detection families are not yet implemented.",
+            "Registry path hints are matched from source text; " +
+            "path-like strings may produce false positives.",
             "Aliases, command shadowing, target providers, " +
-            "parameters and runtime control flow are not resolved.",
+            "parameters, and runtime control flow are not resolved.",
             "Dynamic or unresolved commands may be missed.",
             "Findings indicate potential operations, not " +
             "confirmed execution or effects.",
