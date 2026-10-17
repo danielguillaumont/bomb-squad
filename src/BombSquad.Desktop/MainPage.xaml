@@ -286,13 +286,23 @@
                                                FontSize="22" FontWeight="SemiBold"
                                                Foreground="#223036"/>
                                 </StackPanel>
-                                <Border Grid.Column="1" Background="#EEF2EF"
-                                        Padding="10,6" CornerRadius="4"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="AST / READ ONLY"
-                                               FontFamily="Consolas" FontSize="11"
-                                               Foreground="#516A5D"/>
-                                </Border>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                            Spacing="9" VerticalAlignment="Center">
+                                    <Button x:Name="JumpToSourceButton"
+                                            Content="View source line ↓"
+                                            Click="JumpToSource_Click"
+                                            IsEnabled="False"
+                                            Background="#EDF1EF" Foreground="#253138"
+                                            BorderBrush="#CBD9D2" BorderThickness="1"
+                                            CornerRadius="4" Padding="9,6"
+                                            FontFamily="Segoe UI" FontSize="12"/>
+                                    <Border Background="#EEF2EF" Padding="10,6"
+                                            CornerRadius="4">
+                                        <TextBlock Text="AST / READ ONLY"
+                                                   FontFamily="Consolas" FontSize="11"
+                                                   Foreground="#516A5D"/>
+                                    </Border>
+                                </StackPanel>
                             </Grid>
                             <Rectangle Height="1" Fill="#E8ECE9"/>
                             <ScrollViewer Height="414" VerticalScrollBarVisibility="Auto"
@@ -359,6 +369,76 @@
                         </StackPanel>
                     </Border>
                 </Grid>
+
+                <!-- Full original source: read-only, with AST-aligned line numbers. -->
+                <Border x:Name="SourceExplorerSection"
+                        Background="#FFFFFF" BorderBrush="#DCE2DD"
+                        BorderThickness="1" CornerRadius="7">
+                    <Grid RowSpacing="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid Padding="19,16,19,13" ColumnSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="SOURCE EXPLORER"
+                                           Style="{StaticResource SectionLabel}"/>
+                                <TextBlock Text="Original script · line by line"
+                                           FontFamily="Bahnschrift" FontSize="22"
+                                           FontWeight="SemiBold" Foreground="#223036"/>
+                                <TextBlock x:Name="SourceDocumentNameText"
+                                           Text="No script loaded"
+                                           FontSize="12" FontFamily="Consolas"
+                                           Foreground="#687671"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="#EEF2EF"
+                                    CornerRadius="4" Padding="10,7"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="ORIGINAL TEXT / READ ONLY"
+                                           FontFamily="Consolas" FontSize="11"
+                                           Foreground="#516A5D"/>
+                            </Border>
+                        </Grid>
+                        <ListView Grid.Row="1" x:Name="SourceLinesList"
+                                  Height="345" Margin="10,0,10,0"
+                                  Background="#222E34" BorderThickness="0"
+                                  SelectionMode="Single"
+                                  AutomationProperties.Name="Read-only original PowerShell source with numbered lines"
+                                  SelectionChanged="SourceLinesList_SelectionChanged">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnSpacing="15" Margin="4,3,6,3"
+                                          MinHeight="24">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="52"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding LineNumberDisplay}"
+                                                   TextAlignment="Right"
+                                                   FontFamily="Consolas" FontSize="12"
+                                                   Foreground="#B4C5C9"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Text}"
+                                                   FontFamily="Consolas" FontSize="12"
+                                                   TextWrapping="NoWrap"
+                                                   Foreground="#F4F7F7"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <Border Grid.Row="2" Background="#F5F7F5"
+                                Padding="19,12" CornerRadius="0,0,7,7">
+                            <TextBlock x:Name="SourceLineStatusText"
+                                       Text="Open a file or try the sample to examine original source."
+                                       FontFamily="Consolas" FontSize="12"
+                                       Foreground="#53615C" TextWrapping="Wrap"/>
+                        </Border>
+                    </Grid>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

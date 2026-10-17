@@ -11,6 +11,7 @@ public sealed partial class MainPage : Page
 {
     private readonly AnalysisService _analysisService = new();
     private bool _isAnalyzing;
+    private ScriptSourceDocument? _sourceDocument;
 
     private const string DemoScript = """
         if ($false) {
@@ -64,7 +65,8 @@ public sealed partial class MainPage : Page
                 () => _analysisService.Analyze(
                     new AnalysisRequest(input.SourceText, input.FullPath)));
 
-            ShowAnalysis(result, Path.GetFileName(input.FullPath), input.FullPath);
+            ShowAnalysis(result, Path.GetFileName(input.FullPath), input.FullPath,
+                input.SourceText);
         }
         catch (Exception ex)
         {
@@ -96,7 +98,8 @@ public sealed partial class MainPage : Page
             AnalysisResult result = _analysisService.Analyze(
                 new AnalysisRequest(DemoScript, "desktop-demo.ps1"));
 
-            ShowAnalysis(result, "desktop-demo.ps1 (built-in sample)", "Built-in sample");
+            ShowAnalysis(result, "desktop-demo.ps1 (built-in sample)",
+                "Built-in sample", DemoScript);
         }
         catch (Exception ex)
         {
@@ -118,11 +121,17 @@ public sealed partial class MainPage : Page
 
     private void ClearAnalysis()
     {
+        _sourceDocument = null;
+        SourceLinesList.SelectedIndex = -1;
+        SourceLinesList.ItemsSource = null;
+        SourceDocumentNameText.Text = "No script loaded";
+        SourceLineStatusText.Text = "Open a file or try the sample to examine original source.";
+        JumpToSourceButton.IsEnabled = false;
         FindingsList.SelectedIndex = -1;
         FindingsList.ItemsSource = null;
-        CommandCountText.Text = "—";
-        FindingCountText.Text = "—";
-        DiagnosticCountText.Text = "—";
+        CommandCountText.Text = "â€”";
+        FindingCountText.Text = "â€”";
+        DiagnosticCountText.Text = "â€”";
         SourceNameText.Text = "No source analyzed";
         DetailsTitleText.Text = "Select a finding";
         LocationText.Text = "No evidence selected";
@@ -132,8 +141,16 @@ public sealed partial class MainPage : Page
         NextStepText.Text = "Inspect the source and its context before running it.";
     }
 
-    private void ShowAnalysis(AnalysisResult result, string displayName, string sourceLocation)
+    private void ShowAnalysis(AnalysisResult result, string displayName,
+        string sourceLocation, string sourceText)
     {
+        _sourceDocument = new ScriptSourceDocument(sourceText);
+        SourceLinesList.SelectedIndex = -1;
+        SourceLinesList.ItemsSource = _sourceDocument.Lines.ToArray();
+        SourceDocumentNameText.Text = displayName;
+        SourceLineStatusText.Text =
+            $"{_sourceDocument.Lines.Length} original lines Â· static view Â· no execution";
+        JumpToSourceButton.IsEnabled = false;
         FindingsList.SelectedIndex = -1;
         FindingsList.ItemsSource = null;
 
@@ -150,7 +167,7 @@ public sealed partial class MainPage : Page
 
         if (result.RulesSkipped)
         {
-            DetailsTitleText.Text = "Analysis incomplete — syntax errors";
+            DetailsTitleText.Text = "Analysis incomplete â€” syntax errors";
             LocationText.Text = $"{result.Diagnostics.Length} parser diagnostic(s)";
             EvidenceText.Text = string.Join(
                 Environment.NewLine,
@@ -186,7 +203,7 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        DetailsTitleText.Text = $"{finding.RuleId} · {finding.Title}";
+        DetailsTitleText.Text = $"{finding.RuleId} Â· {finding.Title}";
         LocationText.Text =
             $"{finding.Family} | Line {finding.SourceSpan.StartLine}, " +
             $"Column {finding.SourceSpan.StartColumn} | {finding.Certainty}";
@@ -194,7 +211,65 @@ public sealed partial class MainPage : Page
         PotentialEffectText.Text = finding.PotentialEffect;
         LimitationsText.Text = string.Join(
             Environment.NewLine,
-            finding.Limitations.Select(limitation => $"• {limitation}"));
+            finding.Limitations.Select(limitation => $"â€¢ {limitation}"));
         NextStepText.Text = finding.NextStep;
+
+        ScriptSourceLine? selectedLine =
+            _sourceDocument?.GetLine(finding.SourceSpan.StartLine);
+        if (selectedLine is not null)
+        {
+            SourceLinesList.SelectedItem = selectedLine;
+            JumpToSourceButton.IsEnabled = true;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (ReferenceEquals(SourceLinesList.SelectedItem, selectedLine))
+                {
+                    SourceLinesList.UpdateLayout();
+                    SourceLinesList.ScrollIntoView(
+                        selectedLine, ScrollIntoViewAlignment.Leading);
+                }
+            });
+        }
+        else
+        {
+            SourceLinesList.SelectedIndex = -1;
+            JumpToSourceButton.IsEnabled = false;
+        }
+    }
+
+    private void SourceLinesList_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (SourceLinesList.SelectedItem is ScriptSourceLine line &&
+            _sourceDocument is not null)
+        {
+            SourceLineStatusText.Text =
+                $"Viewing line {line.LineNumber} of {_sourceDocument.Lines.Length} Â· " +
+                "original source Â· not executed";
+        }
+    }
+
+    private void JumpToSource_Click(object sender, RoutedEventArgs e)
+    {
+        if (SourceLinesList.SelectedItem is not ScriptSourceLine line)
+        {
+            return;
+        }
+
+        SourceExplorerSection.StartBringIntoView();
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!ReferenceEquals(SourceLinesList.SelectedItem, line))
+            {
+                return;
+            }
+
+            SourceLinesList.UpdateLayout();
+            SourceLinesList.ScrollIntoView(
+                line, ScrollIntoViewAlignment.Leading);
+            SourceLinesList.Focus(FocusState.Programmatic);
+        });
     }
 }
