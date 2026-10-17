@@ -6,11 +6,11 @@ namespace BombSquad.Tests;
 public class AnalysisServiceTests
 {
     [Theory]
-    [InlineData("Get-Process")]
-    [InlineData("Remove-Item .\\demo-cache -Recurse")]
-    [InlineData("Write-Output \"unterminated")]
-    public void Analyze_NeverClaimsUnimplementedInspectionIsSafe(
-        string source)
+    [InlineData("Get-Process", "Get-Process")]
+    [InlineData("Remove-Item .\\demo-cache -Recurse", "Remove-Item")]
+    public void Analyze_ValidSourceReportsParsingOnly(
+        string source,
+        string expectedCommand)
     {
         var service = new AnalysisService();
 
@@ -18,14 +18,16 @@ public class AnalysisServiceTests
             new AnalysisRequest(source, "sample.ps1")
         );
 
+        Assert.Equal(AnalysisStatus.Parsed, result.Status);
+        Assert.Single(result.Commands);
         Assert.Equal(
-            AnalysisStatus.NotImplemented,
-            result.Status
+            expectedCommand,
+            result.Commands[0].CommandName
         );
 
-        Assert.True(result.RulesSkipped);
-        Assert.Empty(result.Findings);
         Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.Findings);
+        Assert.True(result.RulesSkipped);
 
         Assert.Contains(
             result.Limitations,
@@ -37,7 +39,28 @@ public class AnalysisServiceTests
     }
 
     [Fact]
-    public void Analyze_EmptySourceRemainsNotImplemented()
+    public void Analyze_MalformedSourcePreservesDiagnostics()
+    {
+        const string source = "Write-Output \"unterminated";
+
+        var service = new AnalysisService();
+
+        AnalysisResult result = service.Analyze(
+            new AnalysisRequest(source)
+        );
+
+        Assert.Equal(
+            AnalysisStatus.ParsedWithErrors,
+            result.Status
+        );
+
+        Assert.NotEmpty(result.Diagnostics);
+        Assert.Empty(result.Findings);
+        Assert.True(result.RulesSkipped);
+    }
+
+    [Fact]
+    public void Analyze_EmptySourceReturnsNoCommands()
     {
         var service = new AnalysisService();
 
@@ -45,11 +68,9 @@ public class AnalysisServiceTests
             new AnalysisRequest(string.Empty)
         );
 
-        Assert.Equal(
-            AnalysisStatus.NotImplemented,
-            result.Status
-        );
-
+        Assert.Equal(AnalysisStatus.Parsed, result.Status);
+        Assert.Empty(result.Commands);
+        Assert.Empty(result.Findings);
         Assert.True(result.RulesSkipped);
     }
 
@@ -64,17 +85,17 @@ public class AnalysisServiceTests
     }
 
     [Fact]
-    public void Analyze_DoesNotExecutePowerShellSource()
+    public void Analyze_DoesNotExecuteImportedSource()
     {
         string marker = Path.Combine(
             Path.GetTempPath(),
-            $"bomb-squad-test-{Guid.NewGuid():N}.txt"
+            $"bomb-squad-service-{Guid.NewGuid():N}.txt"
         );
 
         string escapedPath = marker.Replace("'", "''");
 
         string source =
-            $"Set-Content -LiteralPath '{escapedPath}' -Value 'unexpected'";
+            $"Set-Content -LiteralPath '{escapedPath}' -Value 'executed'";
 
         var service = new AnalysisService();
 
@@ -82,11 +103,15 @@ public class AnalysisServiceTests
             new AnalysisRequest(source)
         );
 
+        Assert.Equal(AnalysisStatus.Parsed, result.Status);
+        Assert.Single(result.Commands);
         Assert.Equal(
-            AnalysisStatus.NotImplemented,
-            result.Status
+            "Set-Content",
+            result.Commands[0].CommandName
         );
 
         Assert.False(File.Exists(marker));
+        Assert.Empty(result.Findings);
+        Assert.True(result.RulesSkipped);
     }
 }

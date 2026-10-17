@@ -11,4 +11,8 @@ public sealed record AnalysisResult(
     string EngineVersion,
     string RuleSetVersion,
     bool RulesSkipped
-);
+)
+{
+    public ImmutableArray<ParsedCommand> Commands { get; init; }
+        = ImmutableArray<ParsedCommand>.Empty;
+}

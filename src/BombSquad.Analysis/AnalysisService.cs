@@ -5,24 +5,38 @@ namespace BombSquad.Analysis;
 
 public sealed class AnalysisService
 {
+    private readonly PowerShellParser _parser = new();
+
     public AnalysisResult Analyze(AnalysisRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.SourceText);
 
+        PowerShellParseResult parsed = _parser.Parse(
+            request.SourceText
+        );
+
+        AnalysisStatus status = parsed.Diagnostics.IsEmpty
+            ? AnalysisStatus.Parsed
+            : AnalysisStatus.ParsedWithErrors;
+
         return new AnalysisResult(
-            Status: AnalysisStatus.NotImplemented,
+            Status: status,
             Findings: ImmutableArray<Finding>.Empty,
-            Diagnostics: ImmutableArray<ParseDiagnostic>.Empty,
+            Diagnostics: parsed.Diagnostics,
             UnsupportedConstructs: ImmutableArray<string>.Empty,
             Limitations: ImmutableArray.Create(
-                "PowerShell source was not parsed.",
+                "Only PowerShell syntax was parsed; behavior was not evaluated.",
                 "Detection rules have not been implemented.",
+                "Unsupported and dynamic behavior has not yet been assessed.",
                 "No safety verdict is available."
             ),
-            EngineVersion: "0.0.0",
+            EngineVersion: "0.1.0-dev",
             RuleSetVersion: "none",
             RulesSkipped: true
-        );
+        )
+        {
+            Commands = parsed.Commands
+        };
     }
 }
