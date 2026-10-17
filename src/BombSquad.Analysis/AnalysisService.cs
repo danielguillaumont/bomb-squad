@@ -37,12 +37,12 @@ public sealed class AnalysisService
             .ToImmutableArray();
 
         var limitations = ImmutableArray.Create(
-            "This is a partial rule set. Three rule IDs are active: " +
-            "BS-FS-001, BS-SS-001, and BS-RG-001.",
-            "Only selected filesystem, Defender preference, and " +
-            "registry property command patterns are detected.",
-            "Identity, tasks/services, and dynamic execution " +
-            "detection families are not yet implemented.",
+            "This is a partial rule set. Four rule IDs are active: " +
+            "BS-FS-001, BS-SS-001, BS-RG-001, and BS-ID-001.",
+            "Only selected filesystem, Defender, registry property, " +
+            "and local identity command patterns are detected.",
+            "Tasks/services and dynamic execution detection families " +
+            "are not yet implemented.",
             "Registry paths are identified from AST-backed named literal " +
             "-Path or -LiteralPath arguments.",
             "Positional and dynamic registry paths, aliases, " +

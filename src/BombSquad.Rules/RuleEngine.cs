@@ -12,7 +12,8 @@ public sealed class RuleEngine
         {
             new RemoveItemRule(),
             new DefenderPreferenceRule(),
-            new RegistryPropertyRule()
+            new RegistryPropertyRule(),
+            new LocalIdentityChangeRule()
         })
     {
     }
