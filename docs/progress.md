@@ -1,62 +1,77 @@
 ﻿# BOMB SQUAD Progress
 
-Current release: v0.0 - Foundation
-Current branch: feat/v00-foundation
+Current milestone: v0.1 - PowerShell Parsing Foundation
+Last completed milestone: v0.0 - Foundation
+Development branch: feat/v01-parser
 Last updated: 2026-10-17
 
 ## PREP - Completed
 
-- Windows and .NET development environment verified
+- Windows 11 and .NET 10 environment verified
 - PowerShell AST parser feasibility demonstrated
-- Malformed PowerShell parsing tested
-- Native WinUI 3 window built and launched
+- Valid and malformed PowerShell parsing tested
+- Native WinUI 3 feasibility prototype launched
 - Self-contained desktop publishing tested locally
-- Technical architecture decisions documented
+- Architecture decisions documented
 
 ## v0.0 - Completed
 
-- GitHub repository established
-- .NET solution created
-- BombSquad.Core contracts implemented
-- BombSquad.Analysis project established
-- BombSquad.Rules project established
-- BombSquad.Cli project established
-- xUnit test project established
-- Placeholder AnalysisService implemented
-- CLI integrated with AnalysisService
-- Nine automated tests passing
-- Release solution build passing
+- Five-project .NET solution established
+- Core analysis contracts implemented
+- Analysis, Rules, CLI and Tests projects created
+- Placeholder analyzer and CLI connected
+- Automated tests established
+- Windows GitHub Actions CI configured
+- Pull request #1 merged into main
 
-## Current Work
+## v0.1 - Implemented Locally
 
-- GitHub Actions Windows CI
-- Verify remote builds and tests
-- Open v0.0 pull request
-- Merge completed foundation into main
+- System.Management.Automation 7.6.7 integrated
+- System.Security.Cryptography.Pkcs 10.0.13 pinned
+- Parser.ParseInput integrated into Analysis project
+- Command names and source spans extracted from AST
+- Syntax diagnostics preserved
+- AnalysisService returns Parsed or ParsedWithErrors
+- CLI displays parsed commands and diagnostics
+- Valid and malformed CLI demonstrations working
+- Dynamic command names remain unresolved
+- Nested commands, comments and CRLF offsets tested
+- 17 automated tests passing locally
+
+## Remaining v0.1 Work
+
+- Commit and push final test and documentation changes
+- Verify Windows CI on feature branch
+- Open and review v0.1 pull request
+- Merge v0.1 into main
 
 ## Current Limitations
 
-- Production PowerShell parser not connected
 - No detection rules implemented
-- CLI cannot inspect script files yet
-- No safety verdict is available
-- Desktop project remains a feasibility prototype
+- Findings remain empty because rules are skipped
+- Parsed does not mean safe
+- Dynamic behavior is not resolved
+- Malformed input may still yield partial AST commands
+- CLI supports built-in demonstrations only
+- External script files cannot yet be inspected through CLI
+- WinUI desktop application is not integrated
 
 ## Outstanding Release Concerns
 
-- Windows SDK trim warnings
-- Clean-machine distribution testing
-- Full dependency-license inventory
-- Production WinUI template support review
+- Clean-machine desktop deployment not yet tested
+- Prior desktop publishing trim warnings require review
+- Dependency-license inventory pending
+- Production WinUI support requires review
 
 ## Next Milestone
 
-v0.1 - PowerShell Parsing Foundation
+v0.2 - Detection Rules
 
-## v0.0 Completion Gate
+## v0.1 Completion Gate
 
-- All projects build
+- All five projects build
 - Automated tests pass
-- GitHub Actions CI passes
-- Placeholder analyzer never claims scripts are safe
+- Windows CI passes
+- Source parsing does not execute imported scripts
+- No safety verdict is implied
 - Pull request reviewed and merged

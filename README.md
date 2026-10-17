@@ -27,8 +27,8 @@ to exact source locations.
 
 ## Current status
 
-v0.0 Foundation: core contracts, project architecture and automated tests implemented.
-The CLI and placeholder analyzer are connected. PowerShell parsing and detection rules are not yet implemented in the permanent application.
+v0.1 Parsing Foundation (in development): PowerShell AST parsing, command extraction, source locations, syntax diagnostics, and CLI demonstrations.
+The CLI currently parses built-in demonstration scripts without executing them. Detection rules, external script-file input, behavioral analysis, and the production desktop application are not yet implemented.
 
 See docs/progress.md for the current milestone.
 
