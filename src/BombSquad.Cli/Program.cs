@@ -6,19 +6,30 @@ bool malformedDemo =
     args.Length == 1 && args[0] == "--demo-malformed";
 
 bool jsonMode =
-    args.Length == 4 &&
+    args.Length >= 4 &&
     args[0] == "--file" &&
-    args[2] == "--json";
+    args[2] == "--json" &&
+    (args.Length == 4 ||
+        (args.Length == 5 && args[4] == "--fail-on-findings"));
+
+bool failOnFindings =
+    args.Length >= 3 &&
+    args[0] == "--file" &&
+    args[^1] == "--fail-on-findings";
 
 bool fileMode =
     args.Length >= 2 &&
     args[0] == "--file" &&
-    (args.Length == 2 || jsonMode);
+    (
+        args.Length == 2 ||
+        (args.Length == 3 && failOnFindings) ||
+        jsonMode
+    );
 
 if (!(args.Length == 0 || malformedDemo || fileMode))
 {
     Console.Error.WriteLine(
-        "Usage: BombSquad.Cli [--demo-malformed | --file <path.ps1> [--json <report.json>]]"
+        "Usage: BombSquad.Cli [--demo-malformed | --file <path.ps1> [--json <report.json>] [--fail-on-findings]]"
     );
 
     return 2;
@@ -244,5 +255,26 @@ Console.WriteLine();
 Console.WriteLine(
     "PowerShell source was analyzed as text, not executed."
 );
+
+if (failOnFindings)
+{
+    if (result.RulesSkipped)
+    {
+        Console.Error.WriteLine(
+            "Analysis incomplete: parser errors caused detection rules to be skipped."
+        );
+
+        return 3;
+    }
+
+    if (!result.Findings.IsEmpty)
+    {
+        Console.Error.WriteLine(
+            $"Review required: {result.Findings.Length} potential operation(s) detected."
+        );
+
+        return 1;
+    }
+}
 
 return 0;

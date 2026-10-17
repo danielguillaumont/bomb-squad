@@ -522,6 +522,143 @@ public sealed class CliFileModeTests
         Assert.Contains("file not found", result.Error);
         Assert.False(File.Exists(report));
     }
+    [Fact]
+    public void FailOnFindings_DetectedOperationReturnsOne()
+    {
+        using var folder = new ScratchDirectory();
+
+        string file = folder.Write(
+            "review.ps1",
+            "Invoke-Expression $source"
+        );
+
+        CliResult result = RunCli(
+            "--file", file, "--fail-on-findings"
+        );
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Findings: 1", result.Output);
+        Assert.Contains("[BS-DE-001]", result.Output);
+        Assert.Contains("Review required:", result.Error);
+    }
+
+    [Fact]
+    public void FailOnFindings_NoFindingsReturnsZero()
+    {
+        using var folder = new ScratchDirectory();
+
+        string file = folder.Write("read-only.ps1", "Get-Date");
+
+        CliResult result = RunCli(
+            "--file", file, "--fail-on-findings"
+        );
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Status: Parsed", result.Output);
+        Assert.Contains("Findings: 0", result.Output);
+        Assert.Contains(
+            "does not establish safety",
+            result.Output
+        );
+    }
+
+    [Fact]
+    public void FailOnFindings_MalformedScriptReturnsThree()
+    {
+        using var folder = new ScratchDirectory();
+
+        string file = folder.Write(
+            "malformed.ps1",
+            "Invoke-Expression $source\nWrite-Output 'unterminated"
+        );
+
+        CliResult result = RunCli(
+            "--file", file, "--fail-on-findings"
+        );
+
+        Assert.Equal(3, result.ExitCode);
+        Assert.Contains("Status: ParsedWithErrors", result.Output);
+        Assert.Contains("Rules skipped: True", result.Output);
+        Assert.Contains("Analysis incomplete:", result.Error);
+    }
+
+    [Fact]
+    public void FailOnFindings_JsonReportIsWrittenBeforeExit()
+    {
+        using var folder = new ScratchDirectory();
+
+        string file = folder.Write(
+            "review.ps1",
+            "Remove-Item -LiteralPath 'demo-cache'"
+        );
+
+        string report = Path.Combine(folder.Root, "review.json");
+
+        CliResult result = RunCli(
+            "--file", file,
+            "--json", report,
+            "--fail-on-findings"
+        );
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.True(File.Exists(report));
+
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(report)
+        );
+
+        Assert.Equal(
+            1,
+            document.RootElement
+                .GetProperty("findingCount")
+                .GetInt32()
+        );
+
+        Assert.False(
+            document.RootElement
+                .GetProperty("sourceExecuted")
+                .GetBoolean()
+        );
+    }
+
+    [Fact]
+    public void FailOnFindings_DoesNotExecuteInspectedSource()
+    {
+        using var folder = new ScratchDirectory();
+
+        string marker = Path.Combine(folder.Root, "executed.txt");
+        string escapedMarker = marker.Replace("'", "''");
+
+        string file = folder.Write(
+            "untrusted.ps1",
+            $"Set-Content -LiteralPath '{escapedMarker}' -Value 'executed'\n" +
+            "Invoke-Expression $source"
+        );
+
+        CliResult result = RunCli(
+            "--file", file, "--fail-on-findings"
+        );
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.False(File.Exists(marker));
+    }
+
+    [Fact]
+    public void FailOnFindings_RejectsDuplicateFlag()
+    {
+        using var folder = new ScratchDirectory();
+
+        string file = folder.Write("script.ps1", "Get-Date");
+
+        CliResult result = RunCli(
+            "--file", file,
+            "--fail-on-findings",
+            "--fail-on-findings"
+        );
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("Usage:", result.Error);
+    }
     private static CliResult RunCli(params string[] arguments)
     {
         string root = FindRepositoryRoot();
