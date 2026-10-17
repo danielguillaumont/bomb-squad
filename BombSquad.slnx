@@ -1,6 +1,9 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/BombSquad.Analysis/BombSquad.Analysis.csproj" />
+    <Project Path="src/BombSquad.Cli/BombSquad.Cli.csproj" />
     <Project Path="src/BombSquad.Core/BombSquad.Core.csproj" />
+    <Project Path="src/BombSquad.Rules/BombSquad.Rules.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BombSquad.Tests/BombSquad.Tests.csproj" />

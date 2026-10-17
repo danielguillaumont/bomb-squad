@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\BombSquad.Core\BombSquad.Core.csproj" />
+    <ProjectReference Include="..\..\src\BombSquad.Analysis\BombSquad.Analysis.csproj" />
   </ItemGroup>
 
 </Project>
