@@ -103,14 +103,23 @@
                                    FontFamily="Segoe UI" FontSize="14"
                                    Foreground="#5D6966" TextWrapping="Wrap"/>
                     </StackPanel>
-                    <Button Grid.Column="1" Content="Run sample inspection  →"
-                            Click="RunDemo_Click"
-                            AutomationProperties.Name="Run the built-in sample inspection"
-                            Background="#C5533F" Foreground="#FFFFFF"
-                            BorderThickness="0" CornerRadius="5"
-                            FontFamily="Segoe UI" FontSize="14"
-                            FontWeight="SemiBold" Padding="21,13"
-                            VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                Spacing="10" VerticalAlignment="Center">
+                        <Button x:Name="OpenFileButton" Content="Open .ps1 file"
+                                Click="OpenFile_Click"
+                                AutomationProperties.Name="Choose a PowerShell file for read-only analysis"
+                                Background="#C5533F" Foreground="#FFFFFF"
+                                BorderThickness="0" CornerRadius="5"
+                                FontFamily="Segoe UI" FontSize="14"
+                                FontWeight="SemiBold" Padding="19,13"/>
+                        <Button x:Name="DemoInspectionButton" Content="Try sample"
+                                Click="RunDemo_Click"
+                                AutomationProperties.Name="Inspect the built-in demonstration source"
+                                Background="#FFFFFF" Foreground="#253138"
+                                BorderBrush="#CDD8D1" BorderThickness="1"
+                                CornerRadius="5" FontFamily="Segoe UI"
+                                FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
+                    </StackPanel>
                 </Grid>
 
                 <!-- Real source state; no simulated uploaded file or fake picker. -->

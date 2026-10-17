@@ -22,6 +22,8 @@ namespace BombSquad_Desktop;
 public partial class App : Application
 {
     private Window? _window;
+
+    internal Window? CurrentWindow => _window;
     
     /// <summary>
     /// Initializes the singleton application object.  This is the first line of authored code
