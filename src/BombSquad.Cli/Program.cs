@@ -5,13 +5,20 @@ using BombSquad.Core;
 bool malformedDemo =
     args.Length == 1 && args[0] == "--demo-malformed";
 
+bool jsonMode =
+    args.Length == 4 &&
+    args[0] == "--file" &&
+    args[2] == "--json";
+
 bool fileMode =
-    args.Length == 2 && args[0] == "--file";
+    args.Length >= 2 &&
+    args[0] == "--file" &&
+    (args.Length == 2 || jsonMode);
 
 if (!(args.Length == 0 || malformedDemo || fileMode))
 {
     Console.Error.WriteLine(
-        "Usage: BombSquad.Cli [--demo-malformed | --file <path.ps1>]"
+        "Usage: BombSquad.Cli [--demo-malformed | --file <path.ps1> [--json <report.json>]]"
     );
 
     return 2;
@@ -111,6 +118,30 @@ var service = new AnalysisService();
 AnalysisResult result = service.Analyze(
     new AnalysisRequest(source, sourceName)
 );
+
+if (jsonMode)
+{
+    try
+    {
+        string outputPath = JsonReportWriter.Write(
+            args[3],
+            sourceName,
+            result
+        );
+
+        Console.WriteLine($"JSON report: {outputPath}");
+        Console.WriteLine();
+    }
+    catch (Exception ex) when (
+        ex is IOException or
+        UnauthorizedAccessException or
+        ArgumentException or
+        NotSupportedException)
+    {
+        Console.Error.WriteLine($"Report error: {ex.Message}");
+        return 2;
+    }
+}
 
 Console.WriteLine($"Engine: {result.EngineVersion}");
 Console.WriteLine($"Rule set: {result.RuleSetVersion}");
