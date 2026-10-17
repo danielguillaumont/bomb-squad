@@ -21,7 +21,7 @@ Latest verified checkpoint:
 - Optional CI/CD exit codes working
 
 The v0.2 branch has not yet been verified as merged into main.
-GitHub Actions results still require explicit verification.
+Windows CI run #18 passed on the v0.2 feature branch (commit 95ae9e6).
 
 ## PREP - Completed
 
@@ -123,8 +123,8 @@ Coverage includes:
 - Root README updated for the v0.2 development implementation
 - Architecture decision records preserved
 - Windows GitHub Actions workflow already exists
-- CI workflow enhancement in progress
-- Remote CI execution and final status not yet verified
+- Enhanced Windows CI verified successfully
+- Windows CI #18 passed, including build, tests, and CLI checks
 
 ## Known Limitations
 
