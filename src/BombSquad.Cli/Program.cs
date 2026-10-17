@@ -24,7 +24,7 @@ Console.WriteLine();
 Console.WriteLine(
     malformedDemo
         ? "Demo: Malformed PowerShell"
-        : "Demo: Valid PowerShell"
+        : "Demo: Potential filesystem change"
 );
 
 Console.WriteLine("Input: Built-in source text");
@@ -37,6 +37,7 @@ AnalysisResult result = service.Analyze(
 );
 
 Console.WriteLine($"Engine: {result.EngineVersion}");
+Console.WriteLine($"Rule set: {result.RuleSetVersion}");
 Console.WriteLine($"Status: {result.Status}");
 Console.WriteLine($"Rules skipped: {result.RulesSkipped}");
 Console.WriteLine();
@@ -71,6 +72,60 @@ foreach (ParseDiagnostic diagnostic in result.Diagnostics)
 }
 
 Console.WriteLine();
+Console.WriteLine($"Findings: {result.Findings.Length}");
+
+foreach (Finding finding in result.Findings)
+{
+    Console.WriteLine();
+    Console.WriteLine($"[{finding.RuleId}] {finding.Title}");
+    Console.WriteLine($"Family: {finding.Family}");
+    Console.WriteLine($"Review level: {finding.ReviewLevel}");
+    Console.WriteLine($"Certainty: {finding.Certainty}");
+
+    Console.WriteLine(
+        $"Location: Line {finding.SourceSpan.StartLine}, " +
+        $"Column {finding.SourceSpan.StartColumn}"
+    );
+
+    Console.WriteLine($"Evidence: {finding.Evidence}");
+    Console.WriteLine($"Potential effect: {finding.PotentialEffect}");
+
+    Console.WriteLine("Finding limitations:");
+
+    foreach (string limitation in finding.Limitations)
+    {
+        Console.WriteLine($"- {limitation}");
+    }
+
+    Console.WriteLine($"Next step: {finding.NextStep}");
+}
+
+if (result.RulesSkipped)
+{
+    Console.WriteLine(
+        "Detection rules were skipped; no rule findings were produced."
+    );
+}
+else if (result.Findings.IsEmpty)
+{
+    Console.WriteLine(
+        "No findings from the implemented rules. " +
+        "This does not establish safety."
+    );
+}
+
+if (!result.UnsupportedConstructs.IsEmpty)
+{
+    Console.WriteLine();
+    Console.WriteLine("Unresolved constructs:");
+
+    foreach (string item in result.UnsupportedConstructs)
+    {
+        Console.WriteLine($"- {item}");
+    }
+}
+
+Console.WriteLine();
 Console.WriteLine("Analysis limitations:");
 
 foreach (string limitation in result.Limitations)
@@ -79,6 +134,8 @@ foreach (string limitation in result.Limitations)
 }
 
 Console.WriteLine();
-Console.WriteLine("PowerShell source was not executed.");
+Console.WriteLine(
+    "PowerShell source was analyzed as text, not executed."
+);
 
 return 0;
