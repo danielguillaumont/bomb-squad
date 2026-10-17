@@ -1,8 +1,8 @@
 ﻿# BOMB SQUAD - Development Progress
 
 Last updated: 2026-10-17
-Current milestone: v0.2 - Detection and CLI Foundation
-Development branch: feat/v02-rules
+Current milestone: v0.3 - Desktop Foundation
+Development branch: feat/v03-desktop
 Engine version: 0.2.0-dev
 Rule set version: 0.2.0-dev
 
@@ -20,7 +20,7 @@ Latest verified checkpoint:
 - JSON reporting working
 - Optional CI/CD exit codes working
 
-The v0.2 branch has not yet been verified as merged into main.
+Pull request #3 merged v0.2 into main at commit 4a59f87.
 Windows CI run #18 passed on the v0.2 feature branch (commit 95ae9e6).
 
 ## PREP - Completed
@@ -154,7 +154,7 @@ The inspected PowerShell source is never executed.
 
 ## Next Milestone
 
-Finish v0.2 documentation and CI verification.
+Build the first native Windows interface using the existing analysis engine.
 
 Afterward:
 1. Review remaining parser and rule coverage gaps

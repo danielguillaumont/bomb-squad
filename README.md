@@ -33,12 +33,11 @@ Requirements:
 - .NET 10 SDK
 - Windows with a PowerShell-compatible development environment
 
-Until v0.2 is merged into `main`, switch to the development branch before building:
+Clone the repository and build the solution:
 
 ```powershell
 git clone https://github.com/danielguillaumont/bomb-squad.git
 cd bomb-squad
-git switch feat/v02-rules
 
 dotnet build .\BombSquad.slnx -c Release
 ```
@@ -204,7 +203,7 @@ BOMB SQUAD is not an antivirus engine, malware sandbox, universal safety checker
 - [x] Real `.ps1` file inspection
 - [x] Structured JSON reporting
 - [x] CI-friendly exit codes
-- [ ] Documentation and CI verification
+- [x] Documentation and CI verification
 - [ ] Additional rule coverage and analysis hardening
 - [ ] Windows desktop interface using WinUI 3
 - [ ] Release packaging and distribution
