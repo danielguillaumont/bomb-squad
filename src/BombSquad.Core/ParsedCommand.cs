@@ -10,4 +10,6 @@ public sealed record ParsedCommand(
 {
     public ImmutableArray<ParsedLiteralParameter> LiteralParameters
         { get; init; } = ImmutableArray<ParsedLiteralParameter>.Empty;
+
+    public bool IsDynamicInvocation { get; init; }
 }

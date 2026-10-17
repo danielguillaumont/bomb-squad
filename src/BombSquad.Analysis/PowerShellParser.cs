@@ -28,7 +28,8 @@ public sealed class PowerShellParser
                 Span: ToSourceSpan(command.Extent)
             )
             {
-                LiteralParameters = ExtractLiteralParameters(command)
+                LiteralParameters = ExtractLiteralParameters(command),
+                IsDynamicInvocation = IsDynamicInvocation(command)
             })
             .ToImmutableArray();
 
@@ -46,6 +47,20 @@ public sealed class PowerShellParser
         );
     }
 
+    private static bool IsDynamicInvocation(CommandAst command)
+    {
+        bool usesInvocationOperator =
+            command.InvocationOperator is TokenKind.Ampersand or TokenKind.Dot;
+
+        if (!usesInvocationOperator ||
+            command.CommandElements.Count == 0)
+        {
+            return false;
+        }
+
+        return command.CommandElements[0]
+            is not StringConstantExpressionAst;
+    }
     private static ImmutableArray<ParsedLiteralParameter>
         ExtractLiteralParameters(CommandAst command)
     {
