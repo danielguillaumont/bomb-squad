@@ -117,11 +117,14 @@ public sealed partial class MainPage : Page
         _isAnalyzing = busy;
         OpenFileButton.IsEnabled = !busy;
         DemoInspectionButton.IsEnabled = !busy;
+        OpenSourceButton.IsEnabled = !busy && _sourceDocument is not null;
     }
 
     private void ClearAnalysis()
     {
+        ShowReviewWorkspace();
         _sourceDocument = null;
+        OpenSourceButton.IsEnabled = false;
         SourceLinesList.SelectedIndex = -1;
         SourceLinesList.ItemsSource = null;
         SourceDocumentNameText.Text = "No script loaded";
@@ -129,9 +132,9 @@ public sealed partial class MainPage : Page
         JumpToSourceButton.IsEnabled = false;
         FindingsList.SelectedIndex = -1;
         FindingsList.ItemsSource = null;
-        CommandCountText.Text = "â€”";
-        FindingCountText.Text = "â€”";
-        DiagnosticCountText.Text = "â€”";
+        CommandCountText.Text = "\u2014";
+        FindingCountText.Text = "\u2014";
+        DiagnosticCountText.Text = "\u2014";
         SourceNameText.Text = "No source analyzed";
         DetailsTitleText.Text = "Select a finding";
         LocationText.Text = "No evidence selected";
@@ -144,12 +147,14 @@ public sealed partial class MainPage : Page
     private void ShowAnalysis(AnalysisResult result, string displayName,
         string sourceLocation, string sourceText)
     {
+        ShowReviewWorkspace();
         _sourceDocument = new ScriptSourceDocument(sourceText);
+        OpenSourceButton.IsEnabled = true;
         SourceLinesList.SelectedIndex = -1;
         SourceLinesList.ItemsSource = _sourceDocument.Lines.ToArray();
         SourceDocumentNameText.Text = displayName;
         SourceLineStatusText.Text =
-            $"{_sourceDocument.Lines.Length} original lines Â· static view Â· no execution";
+            $"{_sourceDocument.Lines.Length} original lines \u00B7 static view \u00B7 no execution";
         JumpToSourceButton.IsEnabled = false;
         FindingsList.SelectedIndex = -1;
         FindingsList.ItemsSource = null;
@@ -167,7 +172,7 @@ public sealed partial class MainPage : Page
 
         if (result.RulesSkipped)
         {
-            DetailsTitleText.Text = "Analysis incomplete â€” syntax errors";
+            DetailsTitleText.Text = "Analysis incomplete \u2014 syntax errors";
             LocationText.Text = $"{result.Diagnostics.Length} parser diagnostic(s)";
             EvidenceText.Text = string.Join(
                 Environment.NewLine,
@@ -203,7 +208,7 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        DetailsTitleText.Text = $"{finding.RuleId} Â· {finding.Title}";
+        DetailsTitleText.Text = $"{finding.RuleId} \u00B7 {finding.Title}";
         LocationText.Text =
             $"{finding.Family} | Line {finding.SourceSpan.StartLine}, " +
             $"Column {finding.SourceSpan.StartColumn} | {finding.Certainty}";
@@ -211,7 +216,7 @@ public sealed partial class MainPage : Page
         PotentialEffectText.Text = finding.PotentialEffect;
         LimitationsText.Text = string.Join(
             Environment.NewLine,
-            finding.Limitations.Select(limitation => $"â€¢ {limitation}"));
+            finding.Limitations.Select(limitation => $"\u2022 {limitation}"));
         NextStepText.Text = finding.NextStep;
 
         ScriptSourceLine? selectedLine =
@@ -220,15 +225,6 @@ public sealed partial class MainPage : Page
         {
             SourceLinesList.SelectedItem = selectedLine;
             JumpToSourceButton.IsEnabled = true;
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (ReferenceEquals(SourceLinesList.SelectedItem, selectedLine))
-                {
-                    SourceLinesList.UpdateLayout();
-                    SourceLinesList.ScrollIntoView(
-                        selectedLine, ScrollIntoViewAlignment.Leading);
-                }
-            });
         }
         else
         {
@@ -245,30 +241,69 @@ public sealed partial class MainPage : Page
             _sourceDocument is not null)
         {
             SourceLineStatusText.Text =
-                $"Viewing line {line.LineNumber} of {_sourceDocument.Lines.Length} Â· " +
-                "original source Â· not executed";
+                $"Viewing line {line.LineNumber} of {_sourceDocument.Lines.Length} \u00B7 " +
+                "original source \u00B7 not executed";
         }
     }
 
     private void JumpToSource_Click(object sender, RoutedEventArgs e)
     {
-        if (SourceLinesList.SelectedItem is not ScriptSourceLine line)
+        if (SourceLinesList.SelectedItem is ScriptSourceLine)
+        {
+            ShowSourceWorkspace();
+        }
+    }
+
+    private void OpenSource_Click(object sender, RoutedEventArgs e)
+    {
+        if (_sourceDocument is null)
         {
             return;
         }
 
-        SourceExplorerSection.StartBringIntoView();
+        if (SourceLinesList.SelectedItem is null && _sourceDocument.Lines.Length > 0)
+        {
+            SourceLinesList.SelectedItem = _sourceDocument.Lines[0];
+        }
+
+        ShowSourceWorkspace();
+    }
+
+    private void BackToReview_Click(object sender, RoutedEventArgs e)
+    {
+        ShowReviewWorkspace();
+    }
+
+    private void ShowReviewWorkspace()
+    {
+        SourceExplorerSection.Visibility = Visibility.Collapsed;
+        ReviewWorkspaceScrollViewer.Visibility = Visibility.Visible;
+    }
+
+    private void ShowSourceWorkspace()
+    {
+        if (_sourceDocument is null)
+        {
+            return;
+        }
+
+        ReviewWorkspaceScrollViewer.Visibility = Visibility.Collapsed;
+        SourceExplorerSection.Visibility = Visibility.Visible;
 
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (!ReferenceEquals(SourceLinesList.SelectedItem, line))
+            if (SourceExplorerSection.Visibility != Visibility.Visible)
             {
                 return;
             }
 
             SourceLinesList.UpdateLayout();
-            SourceLinesList.ScrollIntoView(
-                line, ScrollIntoViewAlignment.Leading);
+            if (SourceLinesList.SelectedItem is ScriptSourceLine selectedLine)
+            {
+                SourceLinesList.ScrollIntoView(
+                    selectedLine, ScrollIntoViewAlignment.Leading);
+            }
+
             SourceLinesList.Focus(FocusState.Programmatic);
         });
     }

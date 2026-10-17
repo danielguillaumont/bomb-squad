@@ -82,7 +82,7 @@
         </Border>
 
         <!-- The inspection work surface owns the vertical scroll region. -->
-        <ScrollViewer Grid.Row="1"
+        <ScrollViewer x:Name="ReviewWorkspaceScrollViewer" Grid.Row="1"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
             <StackPanel Padding="30,24,30,28" Spacing="17">
@@ -117,6 +117,13 @@
                                 AutomationProperties.Name="Inspect the built-in demonstration source"
                                 Background="#FFFFFF" Foreground="#253138"
                                 BorderBrush="#CDD8D1" BorderThickness="1"
+                                CornerRadius="5" FontFamily="Segoe UI"
+                                FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
+                        <Button x:Name="OpenSourceButton" Content="View source"
+                                Click="OpenSource_Click" IsEnabled="False"
+                                AutomationProperties.Name="Open a dedicated read-only source explorer"
+                                Background="#EDF1EF" Foreground="#253138"
+                                BorderBrush="#CBD9D2" BorderThickness="1"
                                 CornerRadius="5" FontFamily="Segoe UI"
                                 FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
                     </StackPanel>
@@ -289,7 +296,7 @@
                                 <StackPanel Grid.Column="1" Orientation="Horizontal"
                                             Spacing="9" VerticalAlignment="Center">
                                     <Button x:Name="JumpToSourceButton"
-                                            Content="View source line ↓"
+                                            Content="Inspect source"
                                             Click="JumpToSource_Click"
                                             IsEnabled="False"
                                             Background="#EDF1EF" Foreground="#253138"
@@ -370,14 +377,19 @@
                     </Border>
                 </Grid>
 
-                <!-- Full original source: read-only, with AST-aligned line numbers. -->
-                <Border x:Name="SourceExplorerSection"
-                        Background="#FFFFFF" BorderBrush="#DCE2DD"
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Separate source workspace keeps only one scrollable code surface. -->
+        <Border x:Name="SourceExplorerSection" Grid.Row="1"
+                Visibility="Collapsed" Margin="30,20,30,18"
+                Background="#FFFFFF" BorderBrush="#DCE2DD"
                         BorderThickness="1" CornerRadius="7">
                     <Grid RowSpacing="0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid Padding="19,16,19,13" ColumnSpacing="14">
@@ -396,16 +408,26 @@
                                            FontSize="12" FontFamily="Consolas"
                                            Foreground="#687671"/>
                             </StackPanel>
-                            <Border Grid.Column="1" Background="#EEF2EF"
-                                    CornerRadius="4" Padding="10,7"
-                                    VerticalAlignment="Center">
-                                <TextBlock Text="ORIGINAL TEXT / READ ONLY"
-                                           FontFamily="Consolas" FontSize="11"
-                                           Foreground="#516A5D"/>
-                            </Border>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                        Spacing="10" VerticalAlignment="Center">
+                                <Button Content="Back to findings"
+                                        Click="BackToReview_Click"
+                                        AutomationProperties.Name="Return to findings and inspection overview"
+                                        Background="#FFFFFF" Foreground="#253138"
+                                        BorderBrush="#CDD8D1" BorderThickness="1"
+                                        CornerRadius="5" Padding="14,9"
+                                        FontSize="13" FontWeight="SemiBold"/>
+                                <Border Background="#EEF2EF"
+                                        CornerRadius="4" Padding="10,7"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="ORIGINAL TEXT / READ ONLY"
+                                               FontFamily="Consolas" FontSize="11"
+                                               Foreground="#516A5D"/>
+                                </Border>
+                            </StackPanel>
                         </Grid>
                         <ListView Grid.Row="1" x:Name="SourceLinesList"
-                                  Height="345" Margin="10,0,10,0"
+                                  Margin="10,0,10,0"
                                   Background="#222E34" BorderThickness="0"
                                   SelectionMode="Single"
                                   AutomationProperties.Name="Read-only original PowerShell source with numbered lines"
@@ -439,8 +461,6 @@
                         </Border>
                     </Grid>
                 </Border>
-            </StackPanel>
-        </ScrollViewer>
 
         <!-- Persistent status line communicates limits, never a safety verdict. -->
         <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#DCE2DD"
