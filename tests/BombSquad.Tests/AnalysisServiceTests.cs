@@ -189,7 +189,28 @@ public class AnalysisServiceTests
 
         Assert.Equal(AnalysisStatus.Parsed, result.Status);
         Assert.Null(Assert.Single(result.Commands).CommandName);
-        Assert.Empty(result.Findings);
+        var finding = Assert.Single(result.Findings);
+
+        Assert.Equal("BS-DE-001", finding.RuleId);
+
+        Assert.Equal(
+            BombSquad.Core.FindingFamily.DynamicExecution,
+            finding.Family
+        );
+
+        Assert.Equal(
+            BombSquad.Core.Certainty.Conditional,
+            finding.Certainty
+        );
+
+        Assert.Equal(
+            "& $command -Argument 'value'",
+            finding.Evidence
+        );
+
+        Assert.Contains(finding.Limitations, limitation =>
+            limitation.Contains("not resolved")
+        );
         Assert.NotEmpty(result.UnsupportedConstructs);
         Assert.False(result.RulesSkipped);
     }

@@ -14,7 +14,8 @@ public sealed class RuleEngine
             new DefenderPreferenceRule(),
             new RegistryPropertyRule(),
             new LocalIdentityChangeRule(),
-            new TasksAndServicesRule()
+            new TasksAndServicesRule(),
+            new DynamicExecutionRule()
         })
     {
     }

@@ -15,7 +15,7 @@ bool malformedDemo = args.Length == 1;
 
 string source = malformedDemo
     ? "Write-Output 'unterminated"
-    : "Get-Process\nRemove-Item -LiteralPath 'demo-cache'\nSet-MpPreference -DisableRealtimeMonitoring $true\nSet-ItemProperty -Path 'HKCU:\\Software\\BombSquadDemo' -Name Enabled -Value 1\nAdd-LocalGroupMember -Group 'Administrators' -Member 'demo-user'\nRegister-ScheduledTask -TaskName 'DemoTask' -Action $action";
+    : "Get-Process\nRemove-Item -LiteralPath 'demo-cache'\nSet-MpPreference -DisableRealtimeMonitoring $true\nSet-ItemProperty -Path 'HKCU:\\Software\\BombSquadDemo' -Name Enabled -Value 1\nAdd-LocalGroupMember -Group 'Administrators' -Member 'demo-user'\nRegister-ScheduledTask -TaskName 'DemoTask' -Action $action\nInvoke-Expression $dynamicSource";
 
 Console.WriteLine("BOMB SQUAD");
 Console.WriteLine("PowerShell Change & Risk Inspector");
@@ -24,7 +24,7 @@ Console.WriteLine();
 Console.WriteLine(
     malformedDemo
         ? "Demo: Malformed PowerShell"
-        : "Demo: Five detection families"
+        : "Demo: Six detection families"
 );
 
 Console.WriteLine("Input: Built-in source text");

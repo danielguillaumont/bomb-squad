@@ -37,13 +37,15 @@ public sealed class AnalysisService
             .ToImmutableArray();
 
         var limitations = ImmutableArray.Create(
-            "This is a partial rule set. Five rule IDs are active: " +
-            "BS-FS-001, BS-SS-001, BS-RG-001, BS-ID-001, and BS-TS-001.",
+            "This is a partial rule set. Six rule IDs are active: " +
+            "BS-FS-001, BS-SS-001, BS-RG-001, BS-ID-001, BS-TS-001, and BS-DE-001.",
             "Only selected filesystem, Defender, registry, identity, " +
-            "scheduled task, and service command patterns are detected.",
+            "tasks/services, and dynamic execution patterns are detected.",
             "Tasks/services coverage currently includes only " +
             "Register-ScheduledTask, New-Service, and Set-Service.",
-            "Dynamic execution detection is not yet implemented.",
+            "Dynamic execution coverage includes Invoke-Expression, iex, " +
+            "and expression-based call or dot-source invocations.",
+            "Evaluated text and dynamic invocation targets are not resolved.",
             "Registry paths are identified from AST-backed named literal " +
             "-Path or -LiteralPath arguments.",
             "Positional and dynamic registry paths, aliases, " +
