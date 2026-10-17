@@ -1,39 +1,115 @@
-﻿using BombSquad.Analysis;
+﻿using System.Text;
+using BombSquad.Analysis;
 using BombSquad.Core;
 
-if (args.Length > 1 ||
-    (args.Length == 1 && args[0] != "--demo-malformed"))
+bool malformedDemo =
+    args.Length == 1 && args[0] == "--demo-malformed";
+
+bool fileMode =
+    args.Length == 2 && args[0] == "--file";
+
+if (!(args.Length == 0 || malformedDemo || fileMode))
 {
     Console.Error.WriteLine(
-        "Usage: BombSquad.Cli [--demo-malformed]"
+        "Usage: BombSquad.Cli [--demo-malformed | --file <path.ps1>]"
     );
 
     return 2;
 }
 
-bool malformedDemo = args.Length == 1;
+string source;
+string sourceName;
+string inputDescription;
 
-string source = malformedDemo
-    ? "Write-Output 'unterminated"
-    : "Get-Process\nRemove-Item -LiteralPath 'demo-cache'\nSet-MpPreference -DisableRealtimeMonitoring $true\nSet-ItemProperty -Path 'HKCU:\\Software\\BombSquadDemo' -Name Enabled -Value 1\nAdd-LocalGroupMember -Group 'Administrators' -Member 'demo-user'\nRegister-ScheduledTask -TaskName 'DemoTask' -Action $action\nInvoke-Expression $dynamicSource";
+if (fileMode)
+{
+    try
+    {
+        string fullPath = Path.GetFullPath(args[1]);
 
+        if (!string.Equals(
+            Path.GetExtension(fullPath),
+            ".ps1",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine(
+                "Input error: only .ps1 files are supported."
+            );
+
+            return 2;
+        }
+
+        var file = new FileInfo(fullPath);
+
+        if (!file.Exists)
+        {
+            Console.Error.WriteLine(
+                $"Input error: file not found: {fullPath}"
+            );
+
+            return 2;
+        }
+
+        const long maxFileSize = 1024 * 1024;
+
+        if (file.Length > maxFileSize)
+        {
+            Console.Error.WriteLine(
+                "Input error: file exceeds the 1 MiB limit."
+            );
+
+            return 2;
+        }
+
+        using var reader = new StreamReader(
+            fullPath,
+            new UTF8Encoding(false, true),
+            detectEncodingFromByteOrderMarks: true
+        );
+
+        source = reader.ReadToEnd();
+        sourceName = fullPath;
+        inputDescription = $"File: {fullPath}";
+    }
+    catch (Exception ex) when (
+        ex is IOException or
+        UnauthorizedAccessException or
+        ArgumentException or
+        NotSupportedException)
+    {
+        Console.Error.WriteLine($"Input error: {ex.Message}");
+
+        return 2;
+    }
+}
+else
+{
+    sourceName = "demo.ps1";
+    inputDescription = "Built-in source text";
+
+    source = malformedDemo
+        ? "Write-Output 'unterminated"
+        : "Get-Process\nRemove-Item -LiteralPath 'demo-cache'\nSet-MpPreference -DisableRealtimeMonitoring $true\nSet-ItemProperty -Path 'HKCU:\\Software\\BombSquadDemo' -Name Enabled -Value 1\nAdd-LocalGroupMember -Group 'Administrators' -Member 'demo-user'\nRegister-ScheduledTask -TaskName 'DemoTask' -Action $action\nInvoke-Expression $dynamicSource";
+}
 Console.WriteLine("BOMB SQUAD");
 Console.WriteLine("PowerShell Change & Risk Inspector");
 Console.WriteLine();
 
 Console.WriteLine(
-    malformedDemo
-        ? "Demo: Malformed PowerShell"
-        : "Demo: Six detection families"
+    fileMode
+        ? "Analysis: PowerShell file"
+        : malformedDemo
+            ? "Demo: Malformed PowerShell"
+            : "Demo: Six detection families"
 );
 
-Console.WriteLine("Input: Built-in source text");
+Console.WriteLine(inputDescription);
 Console.WriteLine();
 
 var service = new AnalysisService();
 
 AnalysisResult result = service.Analyze(
-    new AnalysisRequest(source, "demo.ps1")
+    new AnalysisRequest(source, sourceName)
 );
 
 Console.WriteLine($"Engine: {result.EngineVersion}");
