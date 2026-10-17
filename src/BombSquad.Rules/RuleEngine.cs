@@ -8,7 +8,11 @@ public sealed class RuleEngine
     private readonly ImmutableArray<IFindingRule> _rules;
 
     public RuleEngine()
-        : this(new IFindingRule[] { new RemoveItemRule() })
+        : this(new IFindingRule[]
+        {
+            new RemoveItemRule(),
+            new DefenderPreferenceRule()
+        })
     {
     }
 

@@ -37,10 +37,12 @@ public sealed class AnalysisService
             .ToImmutableArray();
 
         var limitations = ImmutableArray.Create(
-            "This is a partial rule set: only BS-FS-001 " +
-            "(literal Remove-Item) is active.",
-            "Other filesystem operations and the other five " +
-            "detection families are not evaluated.",
+            "This is a partial rule set. Only BS-FS-001 " +
+            "(literal Remove-Item) and BS-SS-001 " +
+            "(Set-MpPreference and Add-MpPreference) are active.",
+            "Other filesystem and security-setting operations, " +
+            "plus all four remaining detection families, " +
+            "are not evaluated.",
             "Aliases, command shadowing, target providers, " +
             "parameters and runtime control flow are not resolved.",
             "Dynamic or unresolved commands may be missed.",
