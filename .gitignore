@@ -1,0 +1,25 @@
+﻿# .NET build files
+**/bin/
+**/obj/
+**/TestResults/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Local development files
+.vscode/
+.idea/
+*.log
+
+# Temporary feasibility prototypes
+/scratch/
+
+# Generated release output
+/artifacts/
+/publish/
+
+# Operating system
+Thumbs.db
+.DS_Store
