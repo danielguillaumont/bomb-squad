@@ -198,7 +198,7 @@ dotnet test .\BombSquad.slnx -c Release --no-build
 
 The **176 passing automated tests** cover positive detections, nonmatching commands, parser errors, file decoding and limits, source line mapping, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
 
-Build the desktop separately with the Debug command in the Windows desktop section. `.github/workflows/windows-ci.yml` has separate jobs for the CLI/test solution and WinUI desktop compilation. GitHub Actions run #29 passed both jobs on `feat/v03-desktop`; this verifies compilation, not interactive GUI functionality.
+Build the desktop separately with the Debug command in the Windows desktop section. `.github/workflows/windows-ci.yml` has separate jobs for the CLI/test solution and WinUI desktop compilation. GitHub Actions run #32 passed on `main` after PR #4 was merged (merge commit `65b6673`); both the .NET 10 build/test and WinUI desktop jobs succeeded. These checks do not verify interactive GUI functionality.
 
 ## Safety and limitations
 
@@ -224,7 +224,7 @@ BOMB SQUAD is not an antivirus engine, malware sandbox, universal safety checker
 - [x] v0.2 - Six detection families, real file inspection, JSON reporting, and CI-friendly exit codes (merged to `main`)
 - [x] v0.3 implementation - Native WinUI 3 preview, Precision Desk, Source Focus, file picker, and JSON export
 - [x] v0.3 verification - 176 local tests and both hosted Windows CI jobs passed
-- [ ] v0.3 - Final documentation, PR review, and merge into `main`
+- [x] v0.3 closeout - Final documentation and PR #4 merged into `main` at `65b6673`
 - [ ] Future - Parser diagnostic navigation, app icon, accessibility/resizing review, and additional detection hardening
 - [ ] Future - Signed installer, clean-machine testing, and release distribution
 
