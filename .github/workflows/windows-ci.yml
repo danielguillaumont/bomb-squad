@@ -38,3 +38,22 @@ jobs:
 
       - name: CLI smoke test
         run: dotnet run --project src/BombSquad.Cli/BombSquad.Cli.csproj --configuration Release --no-build
+
+      - name: Inspect real PowerShell sample
+        run: dotnet run --project src/BombSquad.Cli/BombSquad.Cli.csproj --configuration Release --no-build -- --file samples/example.ps1
+
+      - name: Verify findings exit code
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          & dotnet run --project src/BombSquad.Cli/BombSquad.Cli.csproj --configuration Release --no-build -- --file samples/example.ps1 --fail-on-findings
+
+          $exitCode = $LASTEXITCODE
+
+          if ($exitCode -ne 1) {
+            throw "Expected exit code 1 for review-required findings. Got $exitCode."
+          }
+
+          Write-Host "Review-required exit code verified."
+          exit 0

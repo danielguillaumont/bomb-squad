@@ -1,11 +1,13 @@
 ﻿using System.Collections.Immutable;
 using BombSquad.Core;
+using BombSquad.Rules;
 
 namespace BombSquad.Analysis;
 
 public sealed class AnalysisService
 {
     private readonly PowerShellParser _parser = new();
+    private readonly RuleEngine _ruleEngine = new();
 
     public AnalysisResult Analyze(AnalysisRequest request)
     {
@@ -16,24 +18,64 @@ public sealed class AnalysisService
             request.SourceText
         );
 
-        AnalysisStatus status = parsed.Diagnostics.IsEmpty
-            ? AnalysisStatus.Parsed
-            : AnalysisStatus.ParsedWithErrors;
+        bool hasSyntaxErrors = !parsed.Diagnostics.IsEmpty;
+
+        AnalysisStatus status = hasSyntaxErrors
+            ? AnalysisStatus.ParsedWithErrors
+            : AnalysisStatus.Parsed;
+
+        ImmutableArray<Finding> findings = hasSyntaxErrors
+            ? ImmutableArray<Finding>.Empty
+            : _ruleEngine.Evaluate(parsed.Commands);
+
+        var unsupportedConstructs = parsed.Commands
+            .Where(command => command.CommandName is null)
+            .Select(command =>
+                $"Unresolved command name at line " +
+                $"{command.Span.StartLine}, " +
+                $"column {command.Span.StartColumn}.")
+            .ToImmutableArray();
+
+        var limitations = ImmutableArray.Create(
+            "This is a partial rule set. Six rule IDs are active: " +
+            "BS-FS-001, BS-SS-001, BS-RG-001, BS-ID-001, BS-TS-001, and BS-DE-001.",
+            "Only selected filesystem, Defender, registry, identity, " +
+            "tasks/services, and dynamic execution patterns are detected.",
+            "Tasks/services coverage currently includes only " +
+            "Register-ScheduledTask, New-Service, and Set-Service.",
+            "Dynamic execution coverage includes Invoke-Expression, iex, " +
+            "and expression-based call or dot-source invocations.",
+            "Evaluated text and dynamic invocation targets are not resolved.",
+            "Registry paths are identified from AST-backed named literal " +
+            "-Path or -LiteralPath arguments.",
+            "Positional and dynamic registry paths, aliases, " +
+            "parameter binding, and runtime behavior remain unresolved.",
+            "Aliases, command shadowing, target providers, " +
+            "parameters, and runtime control flow are not resolved.",
+            "Dynamic or unresolved commands may be missed.",
+            "Findings indicate potential operations, not " +
+            "confirmed execution or effects.",
+            "The absence of findings does not establish safety."
+        );
+
+        if (hasSyntaxErrors)
+        {
+            limitations = limitations.Add(
+                "Detection rules were skipped because parser " +
+                "errors were reported. Partial AST commands " +
+                "may still be displayed."
+            );
+        }
 
         return new AnalysisResult(
             Status: status,
-            Findings: ImmutableArray<Finding>.Empty,
+            Findings: findings,
             Diagnostics: parsed.Diagnostics,
-            UnsupportedConstructs: ImmutableArray<string>.Empty,
-            Limitations: ImmutableArray.Create(
-                "Only PowerShell syntax was parsed; behavior was not evaluated.",
-                "Detection rules have not been implemented.",
-                "Unsupported and dynamic behavior has not yet been assessed.",
-                "No safety verdict is available."
-            ),
-            EngineVersion: "0.1.0-dev",
-            RuleSetVersion: "none",
-            RulesSkipped: true
+            UnsupportedConstructs: unsupportedConstructs,
+            Limitations: limitations,
+            EngineVersion: "0.2.0-dev",
+            RuleSetVersion: "0.2.0-dev",
+            RulesSkipped: hasSyntaxErrors
         )
         {
             Commands = parsed.Commands
