@@ -1,27 +1,27 @@
-﻿# BOMB SQUAD - Development Progress
+# BOMB SQUAD - Development Progress
 
 Last updated: 2026-10-17
-Current milestone: v0.2 - Detection and CLI Foundation
-Development branch: feat/v02-rules
+Current milestone: v0.3 - Desktop Foundation
+Development branch: feat/v03-desktop
 Engine version: 0.2.0-dev
 Rule set version: 0.2.0-dev
 
 ## Current Status
 
-The v0.2 detection and CLI features are implemented and verified
-locally. The feature branch is pushed to GitHub.
+v0.2 is merged into `main` (PR #3, merge commit `4a59f87`). The v0.3 desktop implementation is complete on `feat/v03-desktop`, pushed to GitHub, and undergoing final documentation and PR review. The WinUI frontend reuses the static-only .NET analysis engine; imported PowerShell source is never executed.
 
-Latest verified checkpoint:
-- Release build successful
-- 148 automated tests passed
-- 0 failed, 0 skipped
-- All six detection families integrated
-- Real .ps1 file inspection working
-- JSON reporting working
-- Optional CI/CD exit codes working
+Latest verified checkpoint (2026-10-17):
 
-The v0.2 branch has not yet been verified as merged into main.
-Windows CI run #18 passed on the v0.2 feature branch (commit 95ae9e6).
+- Release solution build and Debug desktop build passed locally
+- **176 automated tests passed, 0 failed, 0 skipped**
+- Real `.ps1` inspection, six detection families, and no-match/malformed states verified in the UI
+- Dedicated Source Focus viewer navigates to the selected finding's original line
+- Native JSON report export verified for valid and malformed samples; Save dialog cancellation is safe
+- Desktop and CLI use the shared JSON serializer
+- GitHub Actions Windows CI **run #29**, commit `d15ad95`: both build-and-test and WinUI desktop build jobs passed
+- Working tree clean after CI commit `d15ad95`
+
+The v0.3 feature branch is **not yet merged into `main`**. The installed/signed distribution, extensive keyboard/accessibility checks, and clean-machine installation remain future work.
 
 ## PREP - Completed
 
@@ -100,12 +100,30 @@ Exit-code behavior with --fail-on-findings:
 Without the flag, completed analysis may exit 0 even when
 findings or parser errors are present.
 
+## v0.3 - Desktop Preview Implemented
+
+- Created and built `BombSquad.Desktop` as a WinUI 3 / Windows App SDK project
+- Refined the native application into the distinct Precision Desk visual identity
+- Integrated a native `.ps1` file picker with shared safe-reading restrictions
+- Reused the six detection families and conditional findings from the analysis engine
+- Added selectable findings, evidence, potential effects, limitations, and recommended review steps
+- Built a read-only Source Explorer with original line numbers and source locations
+- Moved the source reader into a dedicated Source Focus workspace, with Back to findings navigation
+- Preserved valid-no-match and malformed-input messaging without claiming a safety verdict
+- Added a native JSON Save dialog using a shared serializer with the CLI
+- Added tests for file reading, source line mapping, and JSON serialization
+- Added a separate hosted Windows CI job that compiles the WinUI desktop project
+
+Local manual verification covered `samples/example.ps1`, a clean one-command test, a malformed string-literal test, finding-to-source navigation on lines 10 and 11, and valid/malformed JSON export. GUI launch and interaction were validated locally, not in headless CI.
+
 ## Verified Test Checkpoint
+
+The historical v0.2 baseline was 148 passing tests before the desktop additions. The current v0.3 baseline is 176.
 
 Date: 2026-10-17
 Configuration: Release
 Framework: .NET 10
-Result: 148 passed, 0 failed, 0 skipped
+Result: 176 passed, 0 failed, 0 skipped
 
 Coverage includes:
 - Parser extraction and diagnostics
@@ -117,14 +135,17 @@ Coverage includes:
 - JSON structure and report protection
 - CI-compatible exit codes
 - Non-execution checks using marker files
+- Safe `.ps1` reader and Unicode/size validation
+- Read-only source-document and line-number mapping
+- Shared JSON serializer regressions for CLI and desktop
 
 ## Documentation and Automation
 
-- Root README updated for the v0.2 development implementation
-- Architecture decision records preserved
-- Windows GitHub Actions workflow already exists
-- Enhanced Windows CI verified successfully
-- Windows CI #18 passed, including build, tests, and CLI checks
+- Root README and design-system documentation updated for the implemented v0.3 desktop preview
+- Architecture decision records and v0.2 milestones preserved
+- Windows CI includes an existing .NET 10 build/test/CLI job plus a dedicated WinUI desktop compile job
+- Hosted Windows CI run #29 passed both jobs on `feat/v03-desktop` (`d15ad95`)
+- Desktop runtime interactions remain a local manual verification responsibility
 
 ## Known Limitations
 
@@ -136,39 +157,36 @@ Coverage includes:
 - System state and runtime effects are not inspected
 - Parser errors cause all detection rules to be skipped
 - No findings does not mean a script is safe
-- Only individual .ps1 files are supported by the CLI
-- The native Windows desktop application is not integrated
+- Individual `.ps1` files are supported; batch scanning and folder analysis are not implemented
+- No signed installer, verified clean-machine installation, or reproducible release package exists yet
+- Headless CI compiles WinUI but does not exercise native dialogs and interactions
+- JSON reports can contain source excerpts and sensitive local file paths
 
 The inspected PowerShell source is never executed.
 
-## Outstanding Release Concerns
+## v0.3 Pull Request and Merge Gate
 
-- Verify GitHub Actions on the feature branch
-- Review pull request and merge strategy
-- Perform additional security and parser hardening
-- Review dependency licenses and advisories
-- Validate clean-machine installation and distribution
-- Review previous desktop publishing trim warnings
-- Validate production WinUI 3 dependency support
-- Prepare reproducible release artifacts
+- [x] v0.3 desktop compiles in local Debug configuration
+- [x] Original five-project solution builds in Release
+- [x] 176 automated tests pass
+- [x] All six detection families remain static-only and conditional
+- [x] File picker handles valid, clean, and malformed scripts
+- [x] Source Focus navigates to the correct source line
+- [x] JSON export and cancellation validated locally
+- [x] Hosted Windows CI validates solution and WinUI build (#29)
+- [ ] Final docs reviewed and committed on `feat/v03-desktop`
+- [ ] PR opened against `main`, changes and checks reviewed
+- [ ] PR merged and local `main` synchronized
+
+## Deferred (post-v0.3)
+
+- Parser-diagnostic navigation and further analysis hardening
+- App icon and desktop presentation polish
+- Keyboard accessibility and window-size / high-DPI test matrix
+- Dependency license and advisory review for distributed builds
+- Installer signing, clean-machine validation, and reproducible packaging
+- Review production trimming and publishing warnings
 
 ## Next Milestone
 
-Finish v0.2 documentation and CI verification.
-
-Afterward:
-1. Review remaining parser and rule coverage gaps
-2. Strengthen security and release validation
-3. Prepare the next product milestone and desktop UI work
-
-## v0.2 Completion Gate
-
-- All projects build in Release
-- Automated tests pass
-- All six families are integrated
-- Real file inspection remains static-only
-- JSON and CLI exit-code behavior is verified
-- Windows GitHub Actions passes
-- Documentation reflects actual implementation
-- No universal safety verdict is implied
-- Feature branch is reviewed and merged appropriately
+Finish v0.3 documentation, verify hosted checks on the PR, merge into `main`, and confirm the repository is clean. Develop additional enhancements in a new post-merge feature branch rather than expanding the v0.3 scope.

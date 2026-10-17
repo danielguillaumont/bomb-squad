@@ -1,4 +1,4 @@
-﻿name: Windows CI
+name: Windows CI
 
 on:
   push:
@@ -57,3 +57,20 @@ jobs:
 
           Write-Host "Review-required exit code verified."
           exit 0
+
+  desktop-build:
+    name: Build WinUI Desktop (.NET 10)
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build WinUI desktop
+        run: dotnet build src/BombSquad.Desktop/BombSquad.Desktop.csproj --configuration Debug

@@ -1,4 +1,4 @@
-﻿# BOMB SQUAD
+# BOMB SQUAD
 
 **Know what a script could change before I run it.**
 
@@ -12,7 +12,7 @@ BOMB SQUAD statically analyzes PowerShell source code, identifies supported pote
 
 ## What works today
 
-The current v0.2 development implementation includes:
+The current v0.3 development implementation includes:
 
 - PowerShell parsing using the PowerShell Abstract Syntax Tree (AST).
 - Six rule families for selected potentially consequential operations.
@@ -22,23 +22,26 @@ The current v0.2 development implementation includes:
 - Evidence-backed findings with uncertainty and limitations.
 - Structured JSON report export.
 - Optional CI/CD exit codes for automated review gates.
-- Automated tests covering detection, integration, CLI behavior, and non-execution.
+- Automated tests covering detection, integration, CLI behavior, desktop support code, and non-execution.
+- A native Windows desktop application built with WinUI 3 and Windows App SDK.
+- A file picker, findings review, source-line navigation, and a dedicated read-only source workspace.
+- A native JSON Save dialog using the same report serializer as the CLI.
+- Windows GitHub Actions jobs for CLI/tests and desktop compilation.
 
-The application currently runs through a command-line interface. A Windows desktop UI is planned but is not implemented yet.
+The CLI and desktop application both use the same static analysis engine. The desktop is a **v0.3 development preview**, not a signed or packaged release. Local verification currently includes **176 passing automated tests** and a successful Windows CI run with both jobs green.
 
 ## Quick start
 
 Requirements:
 
 - .NET 10 SDK
-- Windows with a PowerShell-compatible development environment
+- Windows with the Windows App SDK development/build prerequisites for the desktop application (Windows 11 is the verified development environment).
 
-Until v0.2 is merged into `main`, switch to the development branch before building:
+Clone the repository and build the solution:
 
 ```powershell
 git clone https://github.com/danielguillaumont/bomb-squad.git
 cd bomb-squad
-git switch feat/v02-rules
 
 dotnet build .\BombSquad.slnx -c Release
 ```
@@ -58,6 +61,23 @@ dotnet run --project .\src\BombSquad.Cli\BombSquad.Cli.csproj -c Release -- --fi
 The sample demonstrates all six implemented detection families. Its example commands are inside a non-executing conditional block.
 
 To inspect your own script, replace the sample path with a `.ps1` file path.
+
+## Windows desktop preview (v0.3)
+
+The native WinUI 3 desktop application is built separately from `BombSquad.slnx`. On Windows, build and launch it with:
+
+```powershell
+dotnet build .\src\BombSquad.Desktop\BombSquad.Desktop.csproj -c Debug
+dotnet run --project .\src\BombSquad.Desktop\BombSquad.Desktop.csproj -c Debug
+```
+
+Use **Open .ps1 file** to choose a local PowerShell script for read-only AST inspection. **Try sample** loads the included six-family demonstration. The review workspace displays findings, supporting evidence, potential effects, limitations, and source locations. **Inspect source** opens a dedicated, line-numbered source viewer focused on the selected finding; **Back to findings** returns to the review workspace.
+
+Use **Export report** to save the current analysis as JSON through the native Windows Save dialog. The desktop uses the shared JSON schema; Windows asks for confirmation before an existing file is replaced. Cancelling an Open or Save dialog leaves the current analysis intact.
+
+Valid scripts with zero supported matches explicitly say **no matching findings**, not *safe*. For malformed scripts, the interface shows parser diagnostics and identifies that the detection rules were skipped. The inspected `.ps1` source is **never executed**.
+
+At this stage the repository does not provide a signed installer or a verified clean-machine distribution package. Desktop compilation is checked in Windows CI; GUI interactions were verified locally.
 
 ## Detection coverage
 
@@ -102,9 +122,9 @@ Reports include:
 - Unresolved constructs and analysis limitations
 - An explicit statement that the source was not executed
 
-Existing report files are not silently overwritten.
+The CLI refuses to overwrite existing report files. In the desktop app, the native Save dialog requests confirmation before replacing an existing file.
 
-Reports may contain excerpts from the inspected script. Treat them as potentially sensitive.
+Reports may contain excerpts and absolute paths from the inspected script. Treat them as potentially sensitive and share them deliberately.
 
 ## CI/CD integration
 
@@ -129,31 +149,29 @@ Exit code 0 does not certify that a script is safe.
 
 ## Architecture
 
-The solution separates parsing, analysis, detection rules, and presentation:
+Parsing, detection, and reporting are shared between both frontends. Neither frontend executes imported PowerShell source.
 
 ```text
-PowerShell .ps1 file
-       |
-       v
-BombSquad.Cli
-       |
-       v
-BombSquad.Analysis
-       |
-       v
-PowerShell AST parser
-       |
-       v
-BombSquad.Rules
-       |
-       v
-Structured findings
-       |
-       +--> CLI explanations
-       |
-       +--> JSON reports
-       |
-       +--> CI/CD exit status
+PowerShell source (.ps1 or built-in sample)
+                  |
+                  v
+        BombSquad.Analysis
+          PowerShell AST
+          + diagnostics
+                  |
+                  v
+          BombSquad.Rules
+                  |
+                  v
+       Evidence-backed findings
+              /       \
+             v         v
+     BombSquad.Cli   BombSquad.Desktop (WinUI 3)
+       CLI output    Findings + Source Focus
+       exit codes    Native Open/Save dialogs
+             \         /
+              v       v
+     Shared JSON report serializer
 ```
 
 ### Projects
@@ -161,12 +179,13 @@ Structured findings
 | Project | Responsibility |
 |---|---|
 | BombSquad.Core | Shared models, findings, source spans, and contracts |
-| BombSquad.Analysis | AST parsing and analysis orchestration |
-| BombSquad.Rules | Detection rules and rule evaluation |
-| BombSquad.Cli | File inspection, output, JSON reports, and exit codes |
-| BombSquad.Tests | Unit, integration, safety, and CLI regression tests |
+| BombSquad.Analysis | AST parser, analysis orchestration, safe source loading, line mapping, and shared JSON serialization |
+| BombSquad.Rules | Six supported detection rule families and rule evaluation |
+| BombSquad.Cli | Console inspection, exit codes, and CLI JSON export |
+| BombSquad.Desktop | Native WinUI 3 interface, file selection, Source Focus, and Save dialog |
+| BombSquad.Tests | Unit, integration, static-only safety, file handling, CLI, and report regression tests |
 
-The analysis engine is independent of the planned desktop interface.
+`BombSquad.slnx` contains the original five non-desktop projects; the WinUI desktop project is built separately and has its own GitHub Actions job.
 
 ## Testing
 
@@ -177,7 +196,9 @@ dotnet build .\BombSquad.slnx -c Release
 dotnet test .\BombSquad.slnx -c Release --no-build
 ```
 
-The tests cover positive detections, nonmatching commands, parser errors, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
+The **176 passing automated tests** cover positive detections, nonmatching commands, parser errors, file decoding and limits, source line mapping, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
+
+Build the desktop separately with the Debug command in the Windows desktop section. `.github/workflows/windows-ci.yml` has separate jobs for the CLI/test solution and WinUI desktop compilation. GitHub Actions run #29 passed both jobs on `feat/v03-desktop`; this verifies compilation, not interactive GUI functionality.
 
 ## Safety and limitations
 
@@ -199,20 +220,16 @@ BOMB SQUAD is not an antivirus engine, malware sandbox, universal safety checker
 
 ## Roadmap
 
-- [x] v0.1 - PowerShell parsing foundation
-- [x] v0.2 development - Six detection families
-- [x] Real `.ps1` file inspection
-- [x] Structured JSON reporting
-- [x] CI-friendly exit codes
-- [ ] Documentation and CI verification
-- [ ] Additional rule coverage and analysis hardening
-- [ ] Windows desktop interface using WinUI 3
-- [ ] Release packaging and distribution
+- [x] v0.1 - PowerShell AST parsing foundation
+- [x] v0.2 - Six detection families, real file inspection, JSON reporting, and CI-friendly exit codes (merged to `main`)
+- [x] v0.3 implementation - Native WinUI 3 preview, Precision Desk, Source Focus, file picker, and JSON export
+- [x] v0.3 verification - 176 local tests and both hosted Windows CI jobs passed
+- [ ] v0.3 - Final documentation, PR review, and merge into `main`
+- [ ] Future - Parser diagnostic navigation, app icon, accessibility/resizing review, and additional detection hardening
+- [ ] Future - Signed installer, clean-machine testing, and release distribution
 
 See [development progress](docs/progress.md) and the architecture decision records in [docs/adr](docs/adr).
 
 ## Technology
 
-C# | .NET 10 | PowerShell AST | xUnit | Git | GitHub Actions
-
-Planned desktop technology: WinUI 3 and Windows App SDK.
+C# | .NET 10 | PowerShell AST | WinUI 3 | Windows App SDK | xUnit | Git | GitHub Actions

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "BombSquad.Desktop (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "BombSquad.Desktop (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
