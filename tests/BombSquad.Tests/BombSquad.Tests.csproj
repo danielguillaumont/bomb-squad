@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\BombSquad.Core\BombSquad.Core.csproj" />
     <ProjectReference Include="..\..\src\BombSquad.Analysis\BombSquad.Analysis.csproj" />
+    <ProjectReference Include="..\..\src\BombSquad.Rules\BombSquad.Rules.csproj" />
   </ItemGroup>
 
 </Project>
