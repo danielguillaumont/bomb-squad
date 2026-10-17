@@ -26,7 +26,10 @@ public sealed class PowerShellParser
                 CommandName: command.GetCommandName(),
                 Text: command.Extent.Text,
                 Span: ToSourceSpan(command.Extent)
-            ))
+            )
+            {
+                LiteralParameters = ExtractLiteralParameters(command)
+            })
             .ToImmutableArray();
 
         var diagnostics = errors
@@ -43,8 +46,43 @@ public sealed class PowerShellParser
         );
     }
 
-    private static SourceSpan ToSourceSpan(
-        IScriptExtent extent)
+    private static ImmutableArray<ParsedLiteralParameter>
+        ExtractLiteralParameters(CommandAst command)
+    {
+        var parameters =
+            ImmutableArray.CreateBuilder<ParsedLiteralParameter>();
+
+        for (int i = 0; i < command.CommandElements.Count; i++)
+        {
+            if (command.CommandElements[i] is not CommandParameterAst parameter)
+            {
+                continue;
+            }
+
+            ExpressionAst? argument = parameter.Argument;
+
+            if (argument is null &&
+                i + 1 < command.CommandElements.Count)
+            {
+                argument =
+                    command.CommandElements[i + 1] as ExpressionAst;
+            }
+
+            if (argument is not StringConstantExpressionAst literal)
+            {
+                continue;
+            }
+
+            parameters.Add(new ParsedLiteralParameter(
+                Name: parameter.ParameterName,
+                Value: literal.Value
+            ));
+        }
+
+        return parameters.ToImmutable();
+    }
+
+    private static SourceSpan ToSourceSpan(IScriptExtent extent)
     {
         return new SourceSpan(
             StartOffset: extent.StartOffset,

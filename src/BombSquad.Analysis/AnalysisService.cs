@@ -43,8 +43,10 @@ public sealed class AnalysisService
             "registry property command patterns are detected.",
             "Identity, tasks/services, and dynamic execution " +
             "detection families are not yet implemented.",
-            "Registry path hints are matched from source text; " +
-            "path-like strings may produce false positives.",
+            "Registry paths are identified from AST-backed named literal " +
+            "-Path or -LiteralPath arguments.",
+            "Positional and dynamic registry paths, aliases, " +
+            "parameter binding, and runtime behavior remain unresolved.",
             "Aliases, command shadowing, target providers, " +
             "parameters, and runtime control flow are not resolved.",
             "Dynamic or unresolved commands may be missed.",

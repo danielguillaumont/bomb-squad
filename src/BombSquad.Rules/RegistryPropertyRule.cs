@@ -1,15 +1,28 @@
 ﻿using System.Collections.Immutable;
-using System.Text.RegularExpressions;
 using BombSquad.Core;
 
 namespace BombSquad.Rules;
 
 public sealed class RegistryPropertyRule : IFindingRule
 {
-    private static readonly Regex RegistryPathPattern = new(
-        """(?<![\w-])-(?:LiteralPath|Path)\s+['"]?(?:(?:HKLM|HKCU|HKCR|HKU|HKCC):[\\/]|Registry::HKEY_(?:LOCAL_MACHINE|CURRENT_USER|CLASSES_ROOT|USERS|CURRENT_CONFIG)[\\/])""",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
-    );
+    private static readonly string[] RegistryPrefixes =
+    {
+        @"HKLM:\", "HKLM:/",
+        @"HKCU:\", "HKCU:/",
+        @"HKCR:\", "HKCR:/",
+        @"HKU:\", "HKU:/",
+        @"HKCC:\", "HKCC:/",
+        @"Registry::HKEY_LOCAL_MACHINE\",
+        "Registry::HKEY_LOCAL_MACHINE/",
+        @"Registry::HKEY_CURRENT_USER\",
+        "Registry::HKEY_CURRENT_USER/",
+        @"Registry::HKEY_CLASSES_ROOT\",
+        "Registry::HKEY_CLASSES_ROOT/",
+        @"Registry::HKEY_USERS\",
+        "Registry::HKEY_USERS/",
+        @"Registry::HKEY_CURRENT_CONFIG\",
+        "Registry::HKEY_CURRENT_CONFIG/"
+    };
 
     public string RuleId => "BS-RG-001";
 
@@ -39,8 +52,7 @@ public sealed class RegistryPropertyRule : IFindingRule
                     StringComparison.OrdinalIgnoreCase
                 );
 
-            if (!isMutation ||
-                !RegistryPathPattern.IsMatch(command.Text))
+            if (!isMutation || !HasExplicitRegistryPath(command))
             {
                 continue;
             }
@@ -60,9 +72,9 @@ public sealed class RegistryPropertyRule : IFindingRule
                     "a registry property.",
                 Limitations: ImmutableArray.Create(
                     "Command presence does not prove execution.",
-                    "Registry paths are recognized from literal source text.",
-                    "PowerShell parameter binding and runtime values are not resolved.",
-                    "Path-like text inside other arguments may cause false positives.",
+                    "Only explicitly named literal registry paths are detected.",
+                    "Positional and dynamically computed paths are not resolved.",
+                    "PowerShell parameter binding and runtime effects are not verified.",
                     "Aliases, command shadowing, and control flow are not resolved.",
                     "The registry was not accessed or modified."
                 ),
@@ -73,5 +85,29 @@ public sealed class RegistryPropertyRule : IFindingRule
         }
 
         return findings.ToImmutable();
+    }
+
+    private static bool HasExplicitRegistryPath(ParsedCommand command)
+    {
+        return command.LiteralParameters.Any(parameter =>
+            (
+                string.Equals(
+                    parameter.Name,
+                    "Path",
+                    StringComparison.OrdinalIgnoreCase
+                ) ||
+                string.Equals(
+                    parameter.Name,
+                    "LiteralPath",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            ) &&
+            RegistryPrefixes.Any(prefix =>
+                parameter.Value.StartsWith(
+                    prefix,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+        );
     }
 }
