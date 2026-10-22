@@ -174,9 +174,9 @@ The inspected PowerShell source is never executed.
 - [x] Source Focus navigates to the correct source line
 - [x] JSON export and cancellation validated locally
 - [x] Hosted Windows CI validates solution and WinUI build (#29)
-- [ ] Final docs reviewed and committed on `feat/v03-desktop`
-- [ ] PR opened against `main`, changes and checks reviewed
-- [ ] PR merged and local `main` synchronized
+- [x] Final docs reviewed and committed on `feat/v03-desktop`
+- [x] PR opened against `main`, changes and checks reviewed
+- [x] PR #4 merged into `main` and local `main` synchronized
 
 ## Deferred (post-v0.3)
 
@@ -187,6 +187,44 @@ The inspected PowerShell source is never executed.
 - Installer signing, clean-machine validation, and reproducible packaging
 - Review production trimming and publishing warnings
 
+## v0.4 - Parser Diagnostics and Desktop Polish
+
+Implemented on `feat/v04-diagnostics`:
+
+- Interactive parser diagnostic explorer with separate entries for multiple syntax errors.
+- Source line and column navigation for parser diagnostics and inspection findings.
+- Updated Windows application branding, including a unified BOMB SQUAD icon.
+- Windows keyboard shortcuts for opening files, loading the sample, exporting reports, viewing source, and navigating back.
+- Responsive desktop layouts for wide and narrow windows.
+- Improved inspection metric layout and narrow-window footer readability.
+
+Verification:
+
+- 180 automated tests passed in Release configuration, with 0 failures and 0 skipped.
+- WinUI desktop project built successfully.
+- Manually inspected example, clean, malformed, and multiple-error PowerShell fixtures.
+- Confirmed that parser errors prevent rule evaluation.
+- Verified source navigation, report export, and responsive presentation.
+- Hosted Windows CI passed for the preceding v0.4 feature changes; final pull-request checks remain to be verified.
+
+Safety requirements remain unchanged:
+
+- Supplied PowerShell source is never executed.
+- Inspection is local, static, and read-only.
+- Findings are conditional review leads, not proof of execution.
+- No findings does not establish that a script is safe.
+
+## v0.4 Pull Request and Merge Gate
+
+- [x] Core and desktop functionality implemented
+- [x] 180 automated tests pass
+- [x] Local desktop build succeeds
+- [x] Manual interface and navigation checks completed
+- [x] Responsive-layout and branding changes committed
+- [ ] Final documentation committed and pushed
+- [ ] Pull request opened and Windows CI checks reviewed
+- [ ] v0.4 merged into `main` and local repository synchronized
+
 ## Next Milestone
 
-Finish v0.3 documentation, verify hosted checks on the PR, merge into `main`, and confirm the repository is clean. Develop additional enhancements in a new post-merge feature branch rather than expanding the v0.3 scope.
+Complete the v0.4 documentation, verify the final Windows CI checks, merge the v0.4 pull request into `main`, and synchronize the local repository. Plan future enhancements on a new feature branch after the merge.

@@ -12,7 +12,7 @@ BOMB SQUAD statically analyzes PowerShell source code, identifies supported pote
 
 ## What works today
 
-The current v0.3 development implementation includes:
+The current v0.4 development implementation includes:
 
 - PowerShell parsing using the PowerShell Abstract Syntax Tree (AST).
 - Six rule families for selected potentially consequential operations.
@@ -28,7 +28,20 @@ The current v0.3 development implementation includes:
 - A native JSON Save dialog using the same report serializer as the CLI.
 - Windows GitHub Actions jobs for CLI/tests and desktop compilation.
 
-The CLI and desktop application both use the same static analysis engine. The desktop is a **v0.3 development preview**, not a signed or packaged release. Local verification currently includes **176 passing automated tests** and a successful Windows CI run with both jobs green.
+The CLI and desktop application both use the same static analysis engine. The desktop is a **v0.4 development preview**, not a signed or packaged release. Local verification currently includes **180 passing automated tests** and a successful Windows CI run with both jobs green.
+
+## What's new in v0.4
+
+The v0.4 development work improves the Windows desktop inspection experience:
+
+- Interactive parser diagnostics with multiple syntax errors listed separately.
+- Source navigation to the relevant line and column for findings and parser diagnostics.
+- Unified BOMB SQUAD branding across the desktop application and Windows icons.
+- Keyboard shortcuts for common inspection and navigation actions.
+- Responsive layouts for wide and narrow application windows.
+- Improved footer readability and reporting feedback.
+
+The desktop remains a development preview, not a signed or packaged release. All PowerShell inspection remains static and read-only. Supplied scripts are never executed.
 
 ## Quick start
 
@@ -62,7 +75,7 @@ The sample demonstrates all six implemented detection families. Its example comm
 
 To inspect your own script, replace the sample path with a `.ps1` file path.
 
-## Windows desktop preview (v0.3)
+## Windows desktop preview (v0.4)
 
 The native WinUI 3 desktop application is built separately from `BombSquad.slnx`. On Windows, build and launch it with:
 
@@ -196,7 +209,7 @@ dotnet build .\BombSquad.slnx -c Release
 dotnet test .\BombSquad.slnx -c Release --no-build
 ```
 
-The **176 passing automated tests** cover positive detections, nonmatching commands, parser errors, file decoding and limits, source line mapping, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
+The **180 passing automated tests** cover positive detections, nonmatching commands, parser errors, file decoding and limits, source line mapping, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
 
 Build the desktop separately with the Debug command in the Windows desktop section. `.github/workflows/windows-ci.yml` has separate jobs for the CLI/test solution and WinUI desktop compilation. GitHub Actions run #32 passed on `main` after PR #4 was merged (merge commit `65b6673`); both the .NET 10 build/test and WinUI desktop jobs succeeded. These checks do not verify interactive GUI functionality.
 
@@ -225,7 +238,9 @@ BOMB SQUAD is not an antivirus engine, malware sandbox, universal safety checker
 - [x] v0.3 implementation - Native WinUI 3 preview, Precision Desk, Source Focus, file picker, and JSON export
 - [x] v0.3 verification - 176 local tests and both hosted Windows CI jobs passed
 - [x] v0.3 closeout - Final documentation and PR #4 merged into `main` at `65b6673`
-- [ ] Future - Parser diagnostic navigation, app icon, accessibility/resizing review, and additional detection hardening
+- [x] v0.4 development - Interactive parser diagnostics, source navigation, Windows branding, keyboard shortcuts, and responsive desktop layout
+- [x] v0.4 local verification - 180 automated tests passing; desktop scenarios manually tested
+- [ ] Future - Accessibility audit, additional detection hardening, and expanded testing
 - [ ] Future - Signed installer, clean-machine testing, and release distribution
 
 See [development progress](docs/progress.md) and the architecture decision records in [docs/adr](docs/adr).
