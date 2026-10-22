@@ -1,4 +1,4 @@
-﻿using Windows.ApplicationModel;
+using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
@@ -41,6 +41,20 @@ public partial class App : Application
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         _window = new MainWindow();
+
+        var iconPath = System.IO.Path.Combine(
+            AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+
+        if (System.IO.File.Exists(iconPath))
+        {
+            _window.AppWindow.SetIcon(iconPath);
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"BOMB SQUAD icon not found: {iconPath}");
+        }
+
         _window.Activate();
     }
 }
