@@ -232,9 +232,9 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Spacing="5">
-                                    <TextBlock Text="FINDING REGISTER"
+                                    <TextBlock x:Name="RegisterKickerText" Text="FINDING REGISTER"
                                                Style="{StaticResource SectionLabel}"/>
-                                    <TextBlock Text="Items for review" FontFamily="Bahnschrift"
+                                    <TextBlock x:Name="RegisterTitleText" Text="Items for review" FontFamily="Bahnschrift"
                                                FontSize="22" FontWeight="SemiBold"
                                                Foreground="#223036"/>
                                 </StackPanel>
@@ -243,7 +243,7 @@
                                            Foreground="#8A9691" VerticalAlignment="Bottom"/>
                             </Grid>
                             <Rectangle Height="1" Fill="#E8ECE9"/>
-                            <TextBlock Text="Detection rules report potential operations, not confirmed effects."
+                            <TextBlock x:Name="RegisterHintText" Text="Detection rules report potential operations, not confirmed effects."
                                        FontSize="13" Foreground="#697671"
                                        TextWrapping="Wrap" Margin="19,12,19,5"/>
                             <ListView x:Name="FindingsList"
@@ -274,6 +274,48 @@
                                                            TextWrapping="Wrap"/>
                                                 <TextBlock Text="{Binding Family}"
                                                            FontSize="12" Foreground="#737F7A"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="›"
+                                                       FontSize="24" Foreground="#84918D"
+                                                       VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <!-- Parser errors replace findings only when parsing is incomplete. -->
+                            <ListView x:Name="DiagnosticsList"
+                                      Margin="10,0,10,12" Height="388"
+                                      Visibility="Collapsed"
+                                      Background="Transparent" BorderThickness="0"
+                                      SelectionMode="Single"
+                                      AutomationProperties.Name="PowerShell parser diagnostics"
+                                      SelectionChanged="DiagnosticsList_SelectionChanged">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="7,10,8,10" ColumnSpacing="13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="3" Height="46"
+                                                    Background="#C5533F" CornerRadius="2"
+                                                    VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Spacing="4">
+                                                <TextBlock Text="{Binding Code}"
+                                                           FontFamily="Consolas" FontSize="12"
+                                                           Foreground="#B34C38"/>
+                                                <TextBlock Text="{Binding Message}"
+                                                           FontFamily="Segoe UI" FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#233137" TextWrapping="Wrap"/>
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <TextBlock Text="Source line"
+                                                               FontSize="12" Foreground="#737F7A"/>
+                                                    <TextBlock Text="{Binding SourceSpan.StartLine}"
+                                                               FontFamily="Consolas" FontSize="12"
+                                                               Foreground="#737F7A"/>
+                                                </StackPanel>
                                             </StackPanel>
                                             <TextBlock Grid.Column="2" Text="›"
                                                        FontSize="24" Foreground="#84918D"
@@ -331,7 +373,7 @@
                                                Text="No evidence selected"
                                                FontFamily="Consolas" FontSize="12"
                                                Foreground="#64716F" TextWrapping="Wrap"/>
-                                    <TextBlock Text="Original source" Style="{StaticResource DetailLabel}"
+                                    <TextBlock x:Name="EvidenceLabelText" Text="Original source" Style="{StaticResource DetailLabel}"
                                                Margin="0,7,0,0"/>
                                     <Border Background="#222E34" CornerRadius="5"
                                             BorderBrush="#222E34" BorderThickness="1"
