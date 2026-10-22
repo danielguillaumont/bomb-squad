@@ -29,15 +29,86 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <!-- Responsive layout follows WinUI AdaptiveTrigger breakpoints. -->
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="WorkspaceWidthStates">
+                <VisualState x:Name="StackedWorkspace">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="IntroActionsPanel.(Grid.Row)" Value="1"/>
+                        <Setter Target="IntroActionsPanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="RegisterPanel.(Grid.ColumnSpan)" Value="2"/>
+                        <Setter Target="EvidencePanel.(Grid.Row)" Value="1"/>
+                        <Setter Target="EvidencePanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="EvidencePanel.(Grid.ColumnSpan)" Value="2"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="SideBySideWorkspace">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1120"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="ActionDensityStates">
+                <VisualState x:Name="TwoRowActions">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="ExportReportButton.(Grid.Row)" Value="1"/>
+                        <Setter Target="ExportReportButton.(Grid.Column)" Value="0"/>
+                        <Setter Target="OpenSourceButton.(Grid.Row)" Value="1"/>
+                        <Setter Target="OpenSourceButton.(Grid.Column)" Value="1"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="SingleRowActions">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="700"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="ChromeWidthStates">
+                <VisualState x:Name="CompactChrome">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="HeaderMetadataPanel.(Grid.Row)" Value="1"/>
+                        <Setter Target="HeaderMetadataPanel.(Grid.Column)" Value="1"/>
+                        <Setter Target="VersionLabel.Visibility" Value="Collapsed"/>
+                        <Setter Target="FooterSignature.Visibility" Value="Collapsed"/>
+                        <Setter Target="BrandHeaderGrid.Padding" Value="16,12,16,12"/>
+                        <Setter Target="WorkspaceStack.Padding" Value="16,18,16,22"/>
+                        <Setter Target="FooterBar.Padding" Value="16,10,16,10"/>
+                        <Setter Target="SourceExplorerSection.Margin" Value="16,16,16,16"/>
+                        <Setter Target="SourceActionsPanel.(Grid.Row)" Value="1"/>
+                        <Setter Target="SourceActionsPanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="SourceActionsPanel.Margin" Value="0,10,0,0"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="FullChrome">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="760"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
         <!-- A compact, persistent product header instead of a marketing masthead. -->
         <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
                 BorderThickness="0,0,0,1">
-            <Grid Padding="30,14,30,14" ColumnSpacing="16">
+            <Grid x:Name="BrandHeaderGrid" Padding="30,14,30,14" ColumnSpacing="16" RowSpacing="5">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
                 <Image Width="45" Height="45"
                        Stretch="Uniform"
@@ -54,7 +125,7 @@
                                Foreground="#77827F"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12"
+                <StackPanel x:Name="HeaderMetadataPanel" Grid.Column="2" Orientation="Horizontal" Spacing="12"
                             VerticalAlignment="Center">
                     <Border BorderBrush="#CBDCD3" Background="#EFF6F1"
                             BorderThickness="1" CornerRadius="5"
@@ -67,7 +138,7 @@
                                        Foreground="#315B45"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock Text="v0.4 development" FontFamily="Consolas"
+                    <TextBlock x:Name="VersionLabel" Text="v0.4 development" FontFamily="Consolas"
                                FontSize="12" Foreground="#798680"
                                VerticalAlignment="Center"/>
                 </StackPanel>
@@ -78,13 +149,17 @@
         <ScrollViewer x:Name="ReviewWorkspaceScrollViewer" Grid.Row="1"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
-            <StackPanel Padding="30,24,30,28" Spacing="17">
+            <StackPanel x:Name="WorkspaceStack" Padding="30,24,30,28" Spacing="17">
 
-                <Grid ColumnSpacing="24">
+                <Grid x:Name="IntroGrid" ColumnSpacing="24" RowSpacing="13">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
                     <StackPanel Spacing="5" VerticalAlignment="Center">
                         <TextBlock Text="INSPECTION WORKSPACE"
                                    Style="{StaticResource SectionLabel}"/>
@@ -100,8 +175,19 @@
                                    Foreground="#73837D" TextWrapping="Wrap"
                                    Margin="0,5,0,0"/>
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal"
-                                Spacing="10" VerticalAlignment="Center">
+                    <Grid x:Name="IntroActionsPanel" Grid.Column="1"
+                          ColumnSpacing="10" RowSpacing="10" VerticalAlignment="Center"
+                          HorizontalAlignment="Left">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
                         <Button x:Name="OpenFileButton" Content="Open .ps1 file"
                                 Click="OpenFile_Click"
                                 AutomationProperties.Name="Choose a PowerShell file for read-only analysis"
@@ -113,7 +199,7 @@
                                 <KeyboardAccelerator Key="O" Modifiers="Control"/>
                             </Button.KeyboardAccelerators>
                         </Button>
-                        <Button x:Name="DemoInspectionButton" Content="Try sample"
+                        <Button x:Name="DemoInspectionButton" Grid.Column="1" Content="Try sample"
                                 Click="RunDemo_Click"
                                 AutomationProperties.Name="Inspect the built-in demonstration source"
                                 Background="#FFFFFF" Foreground="#253138"
@@ -124,7 +210,7 @@
                                 <KeyboardAccelerator Key="D" Modifiers="Control"/>
                             </Button.KeyboardAccelerators>
                         </Button>
-                        <Button x:Name="ExportReportButton" Content="Export report"
+                        <Button x:Name="ExportReportButton" Grid.Column="2" Content="Export report"
                                 Click="ExportReport_Click" IsEnabled="False"
                                 AutomationProperties.Name="Export the current static analysis as a JSON report"
                                 Background="#FFFFFF" Foreground="#253138"
@@ -135,7 +221,7 @@
                                 <KeyboardAccelerator Key="S" Modifiers="Control"/>
                             </Button.KeyboardAccelerators>
                         </Button>
-                        <Button x:Name="OpenSourceButton" Content="View source"
+                        <Button x:Name="OpenSourceButton" Grid.Column="3" Content="View source"
                                 Click="OpenSource_Click" IsEnabled="False"
                                 AutomationProperties.Name="Open a dedicated read-only source explorer"
                                 Background="#EDF1EF" Foreground="#253138"
@@ -146,7 +232,7 @@
                                 <KeyboardAccelerator Key="E" Modifiers="Control"/>
                             </Button.KeyboardAccelerators>
                         </Button>
-                    </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <!-- Real source state; no simulated uploaded file or fake picker. -->
@@ -229,14 +315,18 @@
                     </Grid>
                 </Border>
 
-                <!-- Primary workflow: register on the left, selected evidence on the right. -->
-                <Grid ColumnSpacing="17">
+                <!-- Register and evidence become stacked at narrower window sizes. -->
+                <Grid x:Name="InspectionPanelsGrid" ColumnSpacing="17" RowSpacing="17">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="0.92*"/>
                         <ColumnDefinition Width="1.08*"/>
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-                    <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
+                    <Border x:Name="RegisterPanel" Background="#FFFFFF" BorderBrush="#DCE2DD"
                             BorderThickness="1" CornerRadius="7">
                         <StackPanel>
                             <Grid Padding="19,18,19,14" ColumnSpacing="12">
@@ -345,7 +435,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Column="1" Background="#FFFFFF"
+                    <Border x:Name="EvidencePanel" Grid.Column="1" Background="#FFFFFF"
                             BorderBrush="#DCE2DD" BorderThickness="1" CornerRadius="7">
                         <StackPanel>
                             <Grid Padding="19,18,19,14" ColumnSpacing="10">
@@ -459,11 +549,15 @@
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <Grid Padding="19,16,19,13" ColumnSpacing="14">
+                        <Grid x:Name="SourceHeaderGrid" Padding="19,16,19,13" ColumnSpacing="14" RowSpacing="3">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
                             <StackPanel Spacing="4">
                                 <TextBlock Text="SOURCE EXPLORER"
                                            Style="{StaticResource SectionLabel}"/>
@@ -479,7 +573,7 @@
                                            FontSize="12" FontFamily="Consolas"
                                            Foreground="#B34C38" TextWrapping="Wrap"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                            <StackPanel x:Name="SourceActionsPanel" Grid.Column="1" Orientation="Horizontal"
                                         Spacing="10" VerticalAlignment="Center">
                                 <Button Content="Back to inspection"
                                         Click="BackToReview_Click"
@@ -538,7 +632,7 @@
                 </Border>
 
         <!-- Persistent status line communicates limits, never a safety verdict. -->
-        <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#DCE2DD"
+        <Border x:Name="FooterBar" Grid.Row="2" Background="#FFFFFF" BorderBrush="#DCE2DD"
                 BorderThickness="0,1,0,0" Padding="30,10,30,10">
             <Grid ColumnSpacing="20">
                 <Grid.ColumnDefinitions>
@@ -558,7 +652,7 @@
                                FontFamily="Segoe UI" FontSize="12"
                                Foreground="#77827F" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
-                <TextBlock Grid.Column="1" Text="BOMB SQUAD · DESKTOP PREVIEW"
+                <TextBlock x:Name="FooterSignature" Grid.Column="1" Text="BOMB SQUAD · DESKTOP PREVIEW"
                            FontFamily="Consolas" FontSize="11"
                            Foreground="#96A19D" VerticalAlignment="Center"/>
             </Grid>
