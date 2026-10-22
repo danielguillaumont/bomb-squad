@@ -138,6 +138,7 @@ public sealed partial class MainPage : Page
         SourceLinesList.SelectedIndex = -1;
         SourceLinesList.ItemsSource = null;
         SourceDocumentNameText.Text = "No script loaded";
+        SourceLocationHintText.Text = "Select an inspection record to see its source location.";
         SourceLineStatusText.Text = "Open a file or try the sample to examine original source.";
         JumpToSourceButton.IsEnabled = false;
         FindingsList.SelectedIndex = -1;
@@ -178,6 +179,7 @@ public sealed partial class MainPage : Page
         SourceLinesList.SelectedIndex = -1;
         SourceLinesList.ItemsSource = _sourceDocument.Lines.ToArray();
         SourceDocumentNameText.Text = displayName;
+        SourceLocationHintText.Text = "Select a finding or diagnostic to locate its source.";
         SourceLineStatusText.Text =
             $"{_sourceDocument.Lines.Length} original lines \u00B7 static view \u00B7 no execution";
         JumpToSourceButton.IsEnabled = false;
@@ -276,6 +278,8 @@ public sealed partial class MainPage : Page
             SourceLinesList.SelectedIndex = -1;
             JumpToSourceButton.IsEnabled = false;
         }
+
+        UpdateSourceLocationHint();
     }
 
     private void DiagnosticsList_SelectionChanged(
@@ -313,6 +317,8 @@ public sealed partial class MainPage : Page
             SourceLinesList.SelectedIndex = -1;
             JumpToSourceButton.IsEnabled = false;
         }
+
+        UpdateSourceLocationHint();
     }
 
     private async void ExportReport_Click(object sender, RoutedEventArgs e)
@@ -376,6 +382,38 @@ public sealed partial class MainPage : Page
             SourceLineStatusText.Text =
                 $"Viewing line {line.LineNumber} of {_sourceDocument.Lines.Length} \u00B7 " +
                 "original source \u00B7 not executed";
+        }
+
+        UpdateSourceLocationHint();
+    }
+
+    private void UpdateSourceLocationHint()
+    {
+        if (SourceLinesList.SelectedItem is not ScriptSourceLine line)
+        {
+            SourceLocationHintText.Text =
+                "Select a finding or diagnostic to locate its source.";
+            return;
+        }
+
+        if (DiagnosticsList.SelectedItem is ParseDiagnostic diagnostic &&
+            diagnostic.SourceSpan.StartLine == line.LineNumber)
+        {
+            SourceLocationHintText.Text =
+                $"Parser diagnostic \u00B7 line {line.LineNumber}, " +
+                $"column {diagnostic.SourceSpan.StartColumn}";
+        }
+        else if (FindingsList.SelectedItem is Finding finding &&
+                 finding.SourceSpan.StartLine == line.LineNumber)
+        {
+            SourceLocationHintText.Text =
+                $"Inspection finding \u00B7 line {line.LineNumber}, " +
+                $"column {finding.SourceSpan.StartColumn}";
+        }
+        else
+        {
+            SourceLocationHintText.Text =
+                $"Browsing original source \u00B7 line {line.LineNumber}";
         }
     }
 

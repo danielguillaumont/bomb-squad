@@ -74,7 +74,7 @@
                                        Foreground="#315B45"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock Text="v0.3 preview" FontFamily="Consolas"
+                    <TextBlock Text="v0.4 development" FontFamily="Consolas"
                                FontSize="12" Foreground="#798680"
                                VerticalAlignment="Center"/>
                 </StackPanel>
@@ -310,9 +310,14 @@
                                                            FontWeight="SemiBold"
                                                            Foreground="#233137" TextWrapping="Wrap"/>
                                                 <StackPanel Orientation="Horizontal" Spacing="5">
-                                                    <TextBlock Text="Source line"
+                                                    <TextBlock Text="Line"
                                                                FontSize="12" Foreground="#737F7A"/>
                                                     <TextBlock Text="{Binding SourceSpan.StartLine}"
+                                                               FontFamily="Consolas" FontSize="12"
+                                                               Foreground="#737F7A"/>
+                                                    <TextBlock Text="· Column"
+                                                               FontSize="12" Foreground="#737F7A"/>
+                                                    <TextBlock Text="{Binding SourceSpan.StartColumn}"
                                                                FontFamily="Consolas" FontSize="12"
                                                                Foreground="#737F7A"/>
                                                 </StackPanel>
@@ -456,12 +461,16 @@
                                            Text="No script loaded"
                                            FontSize="12" FontFamily="Consolas"
                                            Foreground="#687671"/>
+                                <TextBlock x:Name="SourceLocationHintText"
+                                           Text="Select an inspection record to see its source location."
+                                           FontSize="12" FontFamily="Consolas"
+                                           Foreground="#B34C38" TextWrapping="Wrap"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal"
                                         Spacing="10" VerticalAlignment="Center">
-                                <Button Content="Back to findings"
+                                <Button Content="Back to inspection"
                                         Click="BackToReview_Click"
-                                        AutomationProperties.Name="Return to findings and inspection overview"
+                                        AutomationProperties.Name="Return to the inspection workspace"
                                         Background="#FFFFFF" Foreground="#253138"
                                         BorderBrush="#CDD8D1" BorderThickness="1"
                                         CornerRadius="5" Padding="14,9"
