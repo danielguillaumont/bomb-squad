@@ -102,6 +102,10 @@
                         <TextBlock Text="Read-only PowerShell analysis. Findings are leads for review, not proof of execution."
                                    FontFamily="Segoe UI" FontSize="14"
                                    Foreground="#5D6966" TextWrapping="Wrap"/>
+                        <TextBlock Text="SHORTCUTS  /  Ctrl+O open   Ctrl+D sample   Ctrl+S export   Ctrl+E source   Alt+Left back"
+                                   FontFamily="Consolas" FontSize="11"
+                                   Foreground="#73837D" TextWrapping="Wrap"
+                                   Margin="0,5,0,0"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal"
                                 Spacing="10" VerticalAlignment="Center">
@@ -111,28 +115,44 @@
                                 Background="#C5533F" Foreground="#FFFFFF"
                                 BorderThickness="0" CornerRadius="5"
                                 FontFamily="Segoe UI" FontSize="14"
-                                FontWeight="SemiBold" Padding="19,13"/>
+                                FontWeight="SemiBold" Padding="19,13" ToolTipService.ToolTip="Open a PowerShell .ps1 file (Ctrl+O)">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="O" Modifiers="Control"/>
+                            </Button.KeyboardAccelerators>
+                        </Button>
                         <Button x:Name="DemoInspectionButton" Content="Try sample"
                                 Click="RunDemo_Click"
                                 AutomationProperties.Name="Inspect the built-in demonstration source"
                                 Background="#FFFFFF" Foreground="#253138"
                                 BorderBrush="#CDD8D1" BorderThickness="1"
                                 CornerRadius="5" FontFamily="Segoe UI"
-                                FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
+                                FontSize="14" FontWeight="SemiBold" Padding="18,13" ToolTipService.ToolTip="Inspect the built-in example (Ctrl+D)">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="D" Modifiers="Control"/>
+                            </Button.KeyboardAccelerators>
+                        </Button>
                         <Button x:Name="ExportReportButton" Content="Export report"
                                 Click="ExportReport_Click" IsEnabled="False"
                                 AutomationProperties.Name="Export the current static analysis as a JSON report"
                                 Background="#FFFFFF" Foreground="#253138"
                                 BorderBrush="#CDD8D1" BorderThickness="1"
                                 CornerRadius="5" FontFamily="Segoe UI"
-                                FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
+                                FontSize="14" FontWeight="SemiBold" Padding="18,13" ToolTipService.ToolTip="Save the current JSON analysis report (Ctrl+S)">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="S" Modifiers="Control"/>
+                            </Button.KeyboardAccelerators>
+                        </Button>
                         <Button x:Name="OpenSourceButton" Content="View source"
                                 Click="OpenSource_Click" IsEnabled="False"
                                 AutomationProperties.Name="Open a dedicated read-only source explorer"
                                 Background="#EDF1EF" Foreground="#253138"
                                 BorderBrush="#CBD9D2" BorderThickness="1"
                                 CornerRadius="5" FontFamily="Segoe UI"
-                                FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
+                                FontSize="14" FontWeight="SemiBold" Padding="18,13" ToolTipService.ToolTip="Open read-only Source Explorer (Ctrl+E)">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="E" Modifiers="Control"/>
+                            </Button.KeyboardAccelerators>
+                        </Button>
                     </StackPanel>
                 </Grid>
 
@@ -474,7 +494,11 @@
                                         Background="#FFFFFF" Foreground="#253138"
                                         BorderBrush="#CDD8D1" BorderThickness="1"
                                         CornerRadius="5" Padding="14,9"
-                                        FontSize="13" FontWeight="SemiBold"/>
+                                        FontSize="13" FontWeight="SemiBold" ToolTipService.ToolTip="Return to inspection (Alt+Left)">
+                                    <Button.KeyboardAccelerators>
+                                        <KeyboardAccelerator Key="Left" Modifiers="Menu"/>
+                                    </Button.KeyboardAccelerators>
+                                </Button>
                                 <Border Background="#EEF2EF"
                                         CornerRadius="4" Padding="10,7"
                                         VerticalAlignment="Center">
