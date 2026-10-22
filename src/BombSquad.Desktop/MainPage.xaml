@@ -29,28 +29,124 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <!-- Responsive layout follows WinUI AdaptiveTrigger breakpoints. -->
+        <VisualStateManager.VisualStateGroups>
+            <!-- Keep the metric values readable instead of clipping labels on narrow windows. -->
+            <VisualStateGroup x:Name="MetricsWidthStates">
+                <VisualState x:Name="StackedMetrics">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="MetricsGrid.RowSpacing" Value="12"/>
+                        <Setter Target="CommandMetricPanel.(Grid.ColumnSpan)" Value="5"/>
+                        <Setter Target="MetricDividerOne.(Grid.Row)" Value="1"/>
+                        <Setter Target="MetricDividerOne.(Grid.Column)" Value="0"/>
+                        <Setter Target="MetricDividerOne.(Grid.ColumnSpan)" Value="5"/>
+                        <Setter Target="MetricDividerOne.Height" Value="1"/>
+                        <Setter Target="FindingMetricPanel.(Grid.Row)" Value="2"/>
+                        <Setter Target="FindingMetricPanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="FindingMetricPanel.(Grid.ColumnSpan)" Value="5"/>
+                        <Setter Target="MetricDividerTwo.(Grid.Row)" Value="3"/>
+                        <Setter Target="MetricDividerTwo.(Grid.Column)" Value="0"/>
+                        <Setter Target="MetricDividerTwo.(Grid.ColumnSpan)" Value="5"/>
+                        <Setter Target="MetricDividerTwo.Height" Value="1"/>
+                        <Setter Target="DiagnosticMetricPanel.(Grid.Row)" Value="4"/>
+                        <Setter Target="DiagnosticMetricPanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="DiagnosticMetricPanel.(Grid.ColumnSpan)" Value="5"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="InlineMetrics">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="960"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="WorkspaceWidthStates">
+                <VisualState x:Name="StackedWorkspace">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="IntroActionsPanel.(Grid.Row)" Value="1"/>
+                        <Setter Target="IntroActionsPanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="RegisterPanel.(Grid.ColumnSpan)" Value="2"/>
+                        <Setter Target="EvidencePanel.(Grid.Row)" Value="1"/>
+                        <Setter Target="EvidencePanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="EvidencePanel.(Grid.ColumnSpan)" Value="2"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="SideBySideWorkspace">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1120"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="ActionDensityStates">
+                <VisualState x:Name="TwoRowActions">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="ExportReportButton.(Grid.Row)" Value="1"/>
+                        <Setter Target="ExportReportButton.(Grid.Column)" Value="0"/>
+                        <Setter Target="OpenSourceButton.(Grid.Row)" Value="1"/>
+                        <Setter Target="OpenSourceButton.(Grid.Column)" Value="1"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="SingleRowActions">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="700"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="ChromeWidthStates">
+                <VisualState x:Name="CompactChrome">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="HeaderMetadataPanel.(Grid.Row)" Value="1"/>
+                        <Setter Target="HeaderMetadataPanel.(Grid.Column)" Value="1"/>
+                        <Setter Target="VersionLabel.Visibility" Value="Collapsed"/>
+                        <Setter Target="FooterSignature.Visibility" Value="Collapsed"/>
+                        <Setter Target="FooterLimitationsText.Text" Value="No findings does not mean safe. Scripts are never executed."/>
+                        <Setter Target="BrandHeaderGrid.Padding" Value="16,12,16,12"/>
+                        <Setter Target="WorkspaceStack.Padding" Value="16,18,16,22"/>
+                        <Setter Target="FooterBar.Padding" Value="16,10,16,10"/>
+                        <Setter Target="SourceExplorerSection.Margin" Value="16,16,16,16"/>
+                        <Setter Target="SourceActionsPanel.(Grid.Row)" Value="1"/>
+                        <Setter Target="SourceActionsPanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="SourceActionsPanel.Margin" Value="0,10,0,0"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="FullChrome">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="760"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
         <!-- A compact, persistent product header instead of a marketing masthead. -->
         <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
                 BorderThickness="0,0,0,1">
-            <Grid Padding="30,14,30,14" ColumnSpacing="16">
+            <Grid x:Name="BrandHeaderGrid" Padding="30,14,30,14" ColumnSpacing="16" RowSpacing="5">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                <Border Width="45" Height="45" Background="#253138"
-                        CornerRadius="7" VerticalAlignment="Center">
-                    <Grid>
-                        <TextBlock Text="BS" FontFamily="Bahnschrift"
-                                   FontSize="20" FontWeight="Bold"
-                                   Foreground="#FFFFFF" HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                        <Rectangle Width="18" Height="3" Fill="#CE5944"
-                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                   Margin="0,0,0,0"/>
-                    </Grid>
-                </Border>
+                <Image Width="45" Height="45"
+                       Stretch="Uniform"
+                       VerticalAlignment="Center"
+                       Source="ms-appx:///Assets/Square44x44Logo.png"
+                       AutomationProperties.Name="BOMB SQUAD security inspection emblem"/>
 
                 <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                     <TextBlock Text="BOMB SQUAD" FontFamily="Bahnschrift"
@@ -61,7 +157,7 @@
                                Foreground="#77827F"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12"
+                <StackPanel x:Name="HeaderMetadataPanel" Grid.Column="2" Orientation="Horizontal" Spacing="12"
                             VerticalAlignment="Center">
                     <Border BorderBrush="#CBDCD3" Background="#EFF6F1"
                             BorderThickness="1" CornerRadius="5"
@@ -74,7 +170,7 @@
                                        Foreground="#315B45"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock Text="v0.3 preview" FontFamily="Consolas"
+                    <TextBlock x:Name="VersionLabel" Text="v0.4 development" FontFamily="Consolas"
                                FontSize="12" Foreground="#798680"
                                VerticalAlignment="Center"/>
                 </StackPanel>
@@ -85,13 +181,17 @@
         <ScrollViewer x:Name="ReviewWorkspaceScrollViewer" Grid.Row="1"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
-            <StackPanel Padding="30,24,30,28" Spacing="17">
+            <StackPanel x:Name="WorkspaceStack" Padding="30,24,30,28" Spacing="17">
 
-                <Grid ColumnSpacing="24">
+                <Grid x:Name="IntroGrid" ColumnSpacing="24" RowSpacing="13">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
                     <StackPanel Spacing="5" VerticalAlignment="Center">
                         <TextBlock Text="INSPECTION WORKSPACE"
                                    Style="{StaticResource SectionLabel}"/>
@@ -102,38 +202,69 @@
                         <TextBlock Text="Read-only PowerShell analysis. Findings are leads for review, not proof of execution."
                                    FontFamily="Segoe UI" FontSize="14"
                                    Foreground="#5D6966" TextWrapping="Wrap"/>
+                        <TextBlock Text="SHORTCUTS  /  Ctrl+O open   Ctrl+D sample   Ctrl+S export   Ctrl+E source   Alt+Left back"
+                                   FontFamily="Consolas" FontSize="11"
+                                   Foreground="#73837D" TextWrapping="Wrap"
+                                   Margin="0,5,0,0"/>
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal"
-                                Spacing="10" VerticalAlignment="Center">
+                    <Grid x:Name="IntroActionsPanel" Grid.Column="1"
+                          ColumnSpacing="10" RowSpacing="10" VerticalAlignment="Center"
+                          HorizontalAlignment="Left">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
                         <Button x:Name="OpenFileButton" Content="Open .ps1 file"
                                 Click="OpenFile_Click"
                                 AutomationProperties.Name="Choose a PowerShell file for read-only analysis"
                                 Background="#C5533F" Foreground="#FFFFFF"
                                 BorderThickness="0" CornerRadius="5"
                                 FontFamily="Segoe UI" FontSize="14"
-                                FontWeight="SemiBold" Padding="19,13"/>
-                        <Button x:Name="DemoInspectionButton" Content="Try sample"
+                                FontWeight="SemiBold" Padding="19,13" ToolTipService.ToolTip="Open a PowerShell .ps1 file (Ctrl+O)">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="O" Modifiers="Control"/>
+                            </Button.KeyboardAccelerators>
+                        </Button>
+                        <Button x:Name="DemoInspectionButton" Grid.Column="1" Content="Try sample"
                                 Click="RunDemo_Click"
                                 AutomationProperties.Name="Inspect the built-in demonstration source"
                                 Background="#FFFFFF" Foreground="#253138"
                                 BorderBrush="#CDD8D1" BorderThickness="1"
                                 CornerRadius="5" FontFamily="Segoe UI"
-                                FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
-                        <Button x:Name="ExportReportButton" Content="Export report"
+                                FontSize="14" FontWeight="SemiBold" Padding="18,13" ToolTipService.ToolTip="Inspect the built-in example (Ctrl+D)">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="D" Modifiers="Control"/>
+                            </Button.KeyboardAccelerators>
+                        </Button>
+                        <Button x:Name="ExportReportButton" Grid.Column="2" Content="Export report"
                                 Click="ExportReport_Click" IsEnabled="False"
                                 AutomationProperties.Name="Export the current static analysis as a JSON report"
                                 Background="#FFFFFF" Foreground="#253138"
                                 BorderBrush="#CDD8D1" BorderThickness="1"
                                 CornerRadius="5" FontFamily="Segoe UI"
-                                FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
-                        <Button x:Name="OpenSourceButton" Content="View source"
+                                FontSize="14" FontWeight="SemiBold" Padding="18,13" ToolTipService.ToolTip="Save the current JSON analysis report (Ctrl+S)">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="S" Modifiers="Control"/>
+                            </Button.KeyboardAccelerators>
+                        </Button>
+                        <Button x:Name="OpenSourceButton" Grid.Column="3" Content="View source"
                                 Click="OpenSource_Click" IsEnabled="False"
                                 AutomationProperties.Name="Open a dedicated read-only source explorer"
                                 Background="#EDF1EF" Foreground="#253138"
                                 BorderBrush="#CBD9D2" BorderThickness="1"
                                 CornerRadius="5" FontFamily="Segoe UI"
-                                FontSize="14" FontWeight="SemiBold" Padding="18,13"/>
-                    </StackPanel>
+                                FontSize="14" FontWeight="SemiBold" Padding="18,13" ToolTipService.ToolTip="Open read-only Source Explorer (Ctrl+E)">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="E" Modifiers="Control"/>
+                            </Button.KeyboardAccelerators>
+                        </Button>
+                    </Grid>
                 </Grid>
 
                 <!-- Real source state; no simulated uploaded file or fake picker. -->
@@ -167,7 +298,14 @@
 
                 <!-- One consolidated instrument strip; no dashboard metric cards. -->
                 <Border Background="#253138" CornerRadius="7" Padding="21,17">
-                    <Grid ColumnSpacing="17">
+                    <Grid x:Name="MetricsGrid" ColumnSpacing="17">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="1"/>
@@ -175,7 +313,7 @@
                             <ColumnDefinition Width="1"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal" Spacing="15">
+                        <StackPanel x:Name="CommandMetricPanel" Orientation="Horizontal" Spacing="15">
                             <TextBlock x:Name="CommandCountText" Text="—"
                                        FontFamily="Bahnschrift" FontSize="42"
                                        FontWeight="Bold" Foreground="#FFFFFF"
@@ -187,8 +325,8 @@
                                            Foreground="#ABBDB9"/>
                             </StackPanel>
                         </StackPanel>
-                        <Rectangle Grid.Column="1" Fill="#506168"/>
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="15">
+                        <Rectangle x:Name="MetricDividerOne" Grid.Column="1" Fill="#506168"/>
+                        <StackPanel x:Name="FindingMetricPanel" Grid.Column="2" Orientation="Horizontal" Spacing="15">
                             <TextBlock x:Name="FindingCountText" Text="—"
                                        FontFamily="Bahnschrift" FontSize="42"
                                        FontWeight="Bold" Foreground="#F2B59E"
@@ -200,8 +338,8 @@
                                            Foreground="#ABBDB9"/>
                             </StackPanel>
                         </StackPanel>
-                        <Rectangle Grid.Column="3" Fill="#506168"/>
-                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="15">
+                        <Rectangle x:Name="MetricDividerTwo" Grid.Column="3" Fill="#506168"/>
+                        <StackPanel x:Name="DiagnosticMetricPanel" Grid.Column="4" Orientation="Horizontal" Spacing="15">
                             <TextBlock x:Name="DiagnosticCountText" Text="—"
                                        FontFamily="Bahnschrift" FontSize="42"
                                        FontWeight="Bold" Foreground="#FFFFFF"
@@ -216,14 +354,18 @@
                     </Grid>
                 </Border>
 
-                <!-- Primary workflow: register on the left, selected evidence on the right. -->
-                <Grid ColumnSpacing="17">
+                <!-- Register and evidence become stacked at narrower window sizes. -->
+                <Grid x:Name="InspectionPanelsGrid" ColumnSpacing="17" RowSpacing="17">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="0.92*"/>
                         <ColumnDefinition Width="1.08*"/>
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-                    <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
+                    <Border x:Name="RegisterPanel" Background="#FFFFFF" BorderBrush="#DCE2DD"
                             BorderThickness="1" CornerRadius="7">
                         <StackPanel>
                             <Grid Padding="19,18,19,14" ColumnSpacing="12">
@@ -232,9 +374,9 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Spacing="5">
-                                    <TextBlock Text="FINDING REGISTER"
+                                    <TextBlock x:Name="RegisterKickerText" Text="FINDING REGISTER"
                                                Style="{StaticResource SectionLabel}"/>
-                                    <TextBlock Text="Items for review" FontFamily="Bahnschrift"
+                                    <TextBlock x:Name="RegisterTitleText" Text="Items for review" FontFamily="Bahnschrift"
                                                FontSize="22" FontWeight="SemiBold"
                                                Foreground="#223036"/>
                                 </StackPanel>
@@ -243,7 +385,7 @@
                                            Foreground="#8A9691" VerticalAlignment="Bottom"/>
                             </Grid>
                             <Rectangle Height="1" Fill="#E8ECE9"/>
-                            <TextBlock Text="Detection rules report potential operations, not confirmed effects."
+                            <TextBlock x:Name="RegisterHintText" Text="Detection rules report potential operations, not confirmed effects."
                                        FontSize="13" Foreground="#697671"
                                        TextWrapping="Wrap" Margin="19,12,19,5"/>
                             <ListView x:Name="FindingsList"
@@ -282,10 +424,57 @@
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
+                            <!-- Parser errors replace findings only when parsing is incomplete. -->
+                            <ListView x:Name="DiagnosticsList"
+                                      Margin="10,0,10,12" Height="388"
+                                      Visibility="Collapsed"
+                                      Background="Transparent" BorderThickness="0"
+                                      SelectionMode="Single"
+                                      AutomationProperties.Name="PowerShell parser diagnostics"
+                                      SelectionChanged="DiagnosticsList_SelectionChanged">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="7,10,8,10" ColumnSpacing="13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="3" Height="46"
+                                                    Background="#C5533F" CornerRadius="2"
+                                                    VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Spacing="4">
+                                                <TextBlock Text="{Binding Code}"
+                                                           FontFamily="Consolas" FontSize="12"
+                                                           Foreground="#B34C38"/>
+                                                <TextBlock Text="{Binding Message}"
+                                                           FontFamily="Segoe UI" FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#233137" TextWrapping="Wrap"/>
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <TextBlock Text="Line"
+                                                               FontSize="12" Foreground="#737F7A"/>
+                                                    <TextBlock Text="{Binding SourceSpan.StartLine}"
+                                                               FontFamily="Consolas" FontSize="12"
+                                                               Foreground="#737F7A"/>
+                                                    <TextBlock Text="· Column"
+                                                               FontSize="12" Foreground="#737F7A"/>
+                                                    <TextBlock Text="{Binding SourceSpan.StartColumn}"
+                                                               FontFamily="Consolas" FontSize="12"
+                                                               Foreground="#737F7A"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="›"
+                                                       FontSize="24" Foreground="#84918D"
+                                                       VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Column="1" Background="#FFFFFF"
+                    <Border x:Name="EvidencePanel" Grid.Column="1" Background="#FFFFFF"
                             BorderBrush="#DCE2DD" BorderThickness="1" CornerRadius="7">
                         <StackPanel>
                             <Grid Padding="19,18,19,14" ColumnSpacing="10">
@@ -331,7 +520,7 @@
                                                Text="No evidence selected"
                                                FontFamily="Consolas" FontSize="12"
                                                Foreground="#64716F" TextWrapping="Wrap"/>
-                                    <TextBlock Text="Original source" Style="{StaticResource DetailLabel}"
+                                    <TextBlock x:Name="EvidenceLabelText" Text="Original source" Style="{StaticResource DetailLabel}"
                                                Margin="0,7,0,0"/>
                                     <Border Background="#222E34" CornerRadius="5"
                                             BorderBrush="#222E34" BorderThickness="1"
@@ -399,11 +588,15 @@
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <Grid Padding="19,16,19,13" ColumnSpacing="14">
+                        <Grid x:Name="SourceHeaderGrid" Padding="19,16,19,13" ColumnSpacing="14" RowSpacing="3">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
                             <StackPanel Spacing="4">
                                 <TextBlock Text="SOURCE EXPLORER"
                                            Style="{StaticResource SectionLabel}"/>
@@ -414,16 +607,24 @@
                                            Text="No script loaded"
                                            FontSize="12" FontFamily="Consolas"
                                            Foreground="#687671"/>
+                                <TextBlock x:Name="SourceLocationHintText"
+                                           Text="Select an inspection record to see its source location."
+                                           FontSize="12" FontFamily="Consolas"
+                                           Foreground="#B34C38" TextWrapping="Wrap"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                            <StackPanel x:Name="SourceActionsPanel" Grid.Column="1" Orientation="Horizontal"
                                         Spacing="10" VerticalAlignment="Center">
-                                <Button Content="Back to findings"
+                                <Button Content="Back to inspection"
                                         Click="BackToReview_Click"
-                                        AutomationProperties.Name="Return to findings and inspection overview"
+                                        AutomationProperties.Name="Return to the inspection workspace"
                                         Background="#FFFFFF" Foreground="#253138"
                                         BorderBrush="#CDD8D1" BorderThickness="1"
                                         CornerRadius="5" Padding="14,9"
-                                        FontSize="13" FontWeight="SemiBold"/>
+                                        FontSize="13" FontWeight="SemiBold" ToolTipService.ToolTip="Return to inspection (Alt+Left)">
+                                    <Button.KeyboardAccelerators>
+                                        <KeyboardAccelerator Key="Left" Modifiers="Menu"/>
+                                    </Button.KeyboardAccelerators>
+                                </Button>
                                 <Border Background="#EEF2EF"
                                         CornerRadius="4" Padding="10,7"
                                         VerticalAlignment="Center">
@@ -470,7 +671,7 @@
                 </Border>
 
         <!-- Persistent status line communicates limits, never a safety verdict. -->
-        <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#DCE2DD"
+        <Border x:Name="FooterBar" Grid.Row="2" Background="#FFFFFF" BorderBrush="#DCE2DD"
                 BorderThickness="0,1,0,0" Padding="30,10,30,10">
             <Grid ColumnSpacing="20">
                 <Grid.ColumnDefinitions>
@@ -481,16 +682,17 @@
                     <TextBlock x:Name="ParseStatusText"
                                Text="Ready. No inspection performed."
                                FontFamily="Consolas" FontSize="12"
-                               Foreground="#35463E" TextTrimming="CharacterEllipsis"/>
+                               Foreground="#35463E" TextWrapping="Wrap"/>
                     <TextBlock x:Name="ExportStatusText" Text=""
                                Visibility="Collapsed"
                                FontFamily="Segoe UI" FontSize="12"
-                               Foreground="#45765E" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="No findings does not mean safe. Inspected PowerShell is never executed."
+                               Foreground="#45765E" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="FooterLimitationsText"
+                               Text="No findings does not mean safe. Inspected PowerShell is never executed."
                                FontFamily="Segoe UI" FontSize="12"
-                               Foreground="#77827F" TextTrimming="CharacterEllipsis"/>
+                               Foreground="#77827F" TextWrapping="Wrap"/>
                 </StackPanel>
-                <TextBlock Grid.Column="1" Text="BOMB SQUAD · DESKTOP PREVIEW"
+                <TextBlock x:Name="FooterSignature" Grid.Column="1" Text="BOMB SQUAD · DESKTOP PREVIEW"
                            FontFamily="Consolas" FontSize="11"
                            Foreground="#96A19D" VerticalAlignment="Center"/>
             </Grid>

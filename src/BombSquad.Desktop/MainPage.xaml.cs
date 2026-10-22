@@ -138,10 +138,20 @@ public sealed partial class MainPage : Page
         SourceLinesList.SelectedIndex = -1;
         SourceLinesList.ItemsSource = null;
         SourceDocumentNameText.Text = "No script loaded";
+        SourceLocationHintText.Text = "Select an inspection record to see its source location.";
         SourceLineStatusText.Text = "Open a file or try the sample to examine original source.";
         JumpToSourceButton.IsEnabled = false;
         FindingsList.SelectedIndex = -1;
         FindingsList.ItemsSource = null;
+        FindingsList.Visibility = Visibility.Visible;
+        DiagnosticsList.SelectedIndex = -1;
+        DiagnosticsList.ItemsSource = null;
+        DiagnosticsList.Visibility = Visibility.Collapsed;
+        RegisterKickerText.Text = "FINDING REGISTER";
+        RegisterTitleText.Text = "Items for review";
+        RegisterHintText.Text =
+            "Detection rules report potential operations, not confirmed effects.";
+        EvidenceLabelText.Text = "Original source";
         CommandCountText.Text = "\u2014";
         FindingCountText.Text = "\u2014";
         DiagnosticCountText.Text = "\u2014";
@@ -169,11 +179,21 @@ public sealed partial class MainPage : Page
         SourceLinesList.SelectedIndex = -1;
         SourceLinesList.ItemsSource = _sourceDocument.Lines.ToArray();
         SourceDocumentNameText.Text = displayName;
+        SourceLocationHintText.Text = "Select a finding or diagnostic to locate its source.";
         SourceLineStatusText.Text =
             $"{_sourceDocument.Lines.Length} original lines \u00B7 static view \u00B7 no execution";
         JumpToSourceButton.IsEnabled = false;
         FindingsList.SelectedIndex = -1;
         FindingsList.ItemsSource = null;
+        FindingsList.Visibility = Visibility.Visible;
+        DiagnosticsList.SelectedIndex = -1;
+        DiagnosticsList.ItemsSource = null;
+        DiagnosticsList.Visibility = Visibility.Collapsed;
+        RegisterKickerText.Text = "FINDING REGISTER";
+        RegisterTitleText.Text = "Items for review";
+        RegisterHintText.Text =
+            "Detection rules report potential operations, not confirmed effects.";
+        EvidenceLabelText.Text = "Original source";
 
         SourceNameText.Text = displayName;
         ToolTipService.SetToolTip(SourceNameText, sourceLocation);
@@ -198,6 +218,17 @@ public sealed partial class MainPage : Page
             LimitationsText.Text =
                 "No findings is not a safety verdict. Correct the syntax and inspect again.";
             NextStepText.Text = "Review the parser diagnostics and repair the script syntax.";
+            RegisterKickerText.Text = "PARSER DIAGNOSTICS";
+            RegisterTitleText.Text = "Syntax issues to review";
+            RegisterHintText.Text =
+                "Rule evaluation was skipped because PowerShell parsing reported errors.";
+            FindingsList.Visibility = Visibility.Collapsed;
+            DiagnosticsList.ItemsSource = result.Diagnostics.ToArray();
+            DiagnosticsList.Visibility = Visibility.Visible;
+            if (result.Diagnostics.Length > 0)
+            {
+                DiagnosticsList.SelectedIndex = 0;
+            }
         }
         else if (result.Findings.Length > 0)
         {
@@ -247,6 +278,47 @@ public sealed partial class MainPage : Page
             SourceLinesList.SelectedIndex = -1;
             JumpToSourceButton.IsEnabled = false;
         }
+
+        UpdateSourceLocationHint();
+    }
+
+    private void DiagnosticsList_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (DiagnosticsList.SelectedItem is not ParseDiagnostic diagnostic)
+        {
+            return;
+        }
+
+        DetailsTitleText.Text = $"Parser error \u00B7 {diagnostic.Code}";
+        LocationText.Text =
+            $"Line {diagnostic.SourceSpan.StartLine}, " +
+            $"Column {diagnostic.SourceSpan.StartColumn} | Syntax diagnostic";
+        EvidenceLabelText.Text = "Parser message";
+        EvidenceText.Text = diagnostic.Message;
+        PotentialEffectText.Text =
+            "This source could not be fully parsed; detection rules were skipped.";
+        LimitationsText.Text =
+            "A parser error is not a safety verdict. Correct the syntax, " +
+            "then inspect the complete script again.";
+        NextStepText.Text =
+            "Review the highlighted original source line and surrounding context.";
+
+        ScriptSourceLine? selectedLine =
+            _sourceDocument?.GetLine(diagnostic.SourceSpan.StartLine);
+        if (selectedLine is not null)
+        {
+            SourceLinesList.SelectedItem = selectedLine;
+            JumpToSourceButton.IsEnabled = true;
+        }
+        else
+        {
+            SourceLinesList.SelectedIndex = -1;
+            JumpToSourceButton.IsEnabled = false;
+        }
+
+        UpdateSourceLocationHint();
     }
 
     private async void ExportReport_Click(object sender, RoutedEventArgs e)
@@ -310,6 +382,38 @@ public sealed partial class MainPage : Page
             SourceLineStatusText.Text =
                 $"Viewing line {line.LineNumber} of {_sourceDocument.Lines.Length} \u00B7 " +
                 "original source \u00B7 not executed";
+        }
+
+        UpdateSourceLocationHint();
+    }
+
+    private void UpdateSourceLocationHint()
+    {
+        if (SourceLinesList.SelectedItem is not ScriptSourceLine line)
+        {
+            SourceLocationHintText.Text =
+                "Select a finding or diagnostic to locate its source.";
+            return;
+        }
+
+        if (DiagnosticsList.SelectedItem is ParseDiagnostic diagnostic &&
+            diagnostic.SourceSpan.StartLine == line.LineNumber)
+        {
+            SourceLocationHintText.Text =
+                $"Parser diagnostic \u00B7 line {line.LineNumber}, " +
+                $"column {diagnostic.SourceSpan.StartColumn}";
+        }
+        else if (FindingsList.SelectedItem is Finding finding &&
+                 finding.SourceSpan.StartLine == line.LineNumber)
+        {
+            SourceLocationHintText.Text =
+                $"Inspection finding \u00B7 line {line.LineNumber}, " +
+                $"column {finding.SourceSpan.StartColumn}";
+        }
+        else
+        {
+            SourceLocationHintText.Text =
+                $"Browsing original source \u00B7 line {line.LineNumber}";
         }
     }
 
