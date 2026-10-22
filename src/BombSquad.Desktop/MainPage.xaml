@@ -79,6 +79,7 @@
                         <Setter Target="HeaderMetadataPanel.(Grid.Column)" Value="1"/>
                         <Setter Target="VersionLabel.Visibility" Value="Collapsed"/>
                         <Setter Target="FooterSignature.Visibility" Value="Collapsed"/>
+                        <Setter Target="FooterLimitationsText.Text" Value="No findings does not mean safe. Scripts are never executed."/>
                         <Setter Target="BrandHeaderGrid.Padding" Value="16,12,16,12"/>
                         <Setter Target="WorkspaceStack.Padding" Value="16,18,16,22"/>
                         <Setter Target="FooterBar.Padding" Value="16,10,16,10"/>
@@ -643,14 +644,15 @@
                     <TextBlock x:Name="ParseStatusText"
                                Text="Ready. No inspection performed."
                                FontFamily="Consolas" FontSize="12"
-                               Foreground="#35463E" TextTrimming="CharacterEllipsis"/>
+                               Foreground="#35463E" TextWrapping="Wrap"/>
                     <TextBlock x:Name="ExportStatusText" Text=""
                                Visibility="Collapsed"
                                FontFamily="Segoe UI" FontSize="12"
-                               Foreground="#45765E" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="No findings does not mean safe. Inspected PowerShell is never executed."
+                               Foreground="#45765E" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="FooterLimitationsText"
+                               Text="No findings does not mean safe. Inspected PowerShell is never executed."
                                FontFamily="Segoe UI" FontSize="12"
-                               Foreground="#77827F" TextTrimming="CharacterEllipsis"/>
+                               Foreground="#77827F" TextWrapping="Wrap"/>
                 </StackPanel>
                 <TextBlock x:Name="FooterSignature" Grid.Column="1" Text="BOMB SQUAD · DESKTOP PREVIEW"
                            FontFamily="Consolas" FontSize="11"
