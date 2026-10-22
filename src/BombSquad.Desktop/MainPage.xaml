@@ -31,6 +31,37 @@
 
         <!-- Responsive layout follows WinUI AdaptiveTrigger breakpoints. -->
         <VisualStateManager.VisualStateGroups>
+            <!-- Keep the metric values readable instead of clipping labels on narrow windows. -->
+            <VisualStateGroup x:Name="MetricsWidthStates">
+                <VisualState x:Name="StackedMetrics">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="MetricsGrid.RowSpacing" Value="12"/>
+                        <Setter Target="CommandMetricPanel.(Grid.ColumnSpan)" Value="5"/>
+                        <Setter Target="MetricDividerOne.(Grid.Row)" Value="1"/>
+                        <Setter Target="MetricDividerOne.(Grid.Column)" Value="0"/>
+                        <Setter Target="MetricDividerOne.(Grid.ColumnSpan)" Value="5"/>
+                        <Setter Target="MetricDividerOne.Height" Value="1"/>
+                        <Setter Target="FindingMetricPanel.(Grid.Row)" Value="2"/>
+                        <Setter Target="FindingMetricPanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="FindingMetricPanel.(Grid.ColumnSpan)" Value="5"/>
+                        <Setter Target="MetricDividerTwo.(Grid.Row)" Value="3"/>
+                        <Setter Target="MetricDividerTwo.(Grid.Column)" Value="0"/>
+                        <Setter Target="MetricDividerTwo.(Grid.ColumnSpan)" Value="5"/>
+                        <Setter Target="MetricDividerTwo.Height" Value="1"/>
+                        <Setter Target="DiagnosticMetricPanel.(Grid.Row)" Value="4"/>
+                        <Setter Target="DiagnosticMetricPanel.(Grid.Column)" Value="0"/>
+                        <Setter Target="DiagnosticMetricPanel.(Grid.ColumnSpan)" Value="5"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="InlineMetrics">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="960"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
             <VisualStateGroup x:Name="WorkspaceWidthStates">
                 <VisualState x:Name="StackedWorkspace">
                     <VisualState.StateTriggers>
@@ -267,7 +298,14 @@
 
                 <!-- One consolidated instrument strip; no dashboard metric cards. -->
                 <Border Background="#253138" CornerRadius="7" Padding="21,17">
-                    <Grid ColumnSpacing="17">
+                    <Grid x:Name="MetricsGrid" ColumnSpacing="17">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="1"/>
@@ -275,7 +313,7 @@
                             <ColumnDefinition Width="1"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal" Spacing="15">
+                        <StackPanel x:Name="CommandMetricPanel" Orientation="Horizontal" Spacing="15">
                             <TextBlock x:Name="CommandCountText" Text="—"
                                        FontFamily="Bahnschrift" FontSize="42"
                                        FontWeight="Bold" Foreground="#FFFFFF"
@@ -287,8 +325,8 @@
                                            Foreground="#ABBDB9"/>
                             </StackPanel>
                         </StackPanel>
-                        <Rectangle Grid.Column="1" Fill="#506168"/>
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="15">
+                        <Rectangle x:Name="MetricDividerOne" Grid.Column="1" Fill="#506168"/>
+                        <StackPanel x:Name="FindingMetricPanel" Grid.Column="2" Orientation="Horizontal" Spacing="15">
                             <TextBlock x:Name="FindingCountText" Text="—"
                                        FontFamily="Bahnschrift" FontSize="42"
                                        FontWeight="Bold" Foreground="#F2B59E"
@@ -300,8 +338,8 @@
                                            Foreground="#ABBDB9"/>
                             </StackPanel>
                         </StackPanel>
-                        <Rectangle Grid.Column="3" Fill="#506168"/>
-                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="15">
+                        <Rectangle x:Name="MetricDividerTwo" Grid.Column="3" Fill="#506168"/>
+                        <StackPanel x:Name="DiagnosticMetricPanel" Grid.Column="4" Orientation="Horizontal" Spacing="15">
                             <TextBlock x:Name="DiagnosticCountText" Text="—"
                                        FontFamily="Bahnschrift" FontSize="42"
                                        FontWeight="Bold" Foreground="#FFFFFF"
