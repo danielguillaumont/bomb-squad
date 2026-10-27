@@ -16,6 +16,11 @@ public sealed record BatchFileAnalysis(
     AnalysisResult? Result,
     BatchInputError? InputError)
 {
+    // Capture exactly the text analyzed, so desktop source navigation does not
+    // accidentally display a modified file as evidence for an older result.
+    // This is held in memory only and omitted from the batch JSON envelope.
+    public string? SourceText { get; init; }
+
     public bool HasInputError => InputError is not null;
     public bool HasParserErrors => Result?.RulesSkipped == true;
 }
@@ -105,7 +110,10 @@ public sealed class BatchAnalysisService
                     new AnalysisRequest(file.SourceText, file.FullPath));
 
                 files.Add(new BatchFileAnalysis(
-                    requestedPath, file.FullPath, result, null));
+                    requestedPath, file.FullPath, result, null)
+                {
+                    SourceText = file.SourceText
+                });
             }
             catch (Exception ex) when (
                 ex is IOException or

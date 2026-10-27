@@ -267,6 +267,22 @@
                     </Grid>
                 </Grid>
 
+                <!-- Native multi-file picker; no recursive directory scanning. -->
+                <StackPanel Spacing="7">
+                    <Button x:Name="OpenBatchButton"
+                            Content="Open batch of .ps1 files"
+                            Click="OpenBatch_Click"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.Name="Choose up to 50 PowerShell files for batch inspection"
+                            Background="#FFFFFF" Foreground="#253138"
+                            BorderBrush="#CDD8D1" BorderThickness="1"
+                            CornerRadius="5" FontFamily="Segoe UI"
+                            FontSize="13" FontWeight="SemiBold" Padding="15,10"
+                            ToolTipService.ToolTip="Select up to 50 individual .ps1 files; none will be executed"/>
+                    <TextBlock Text="Batch inspection reads only selected files. No folders are scanned and no PowerShell runs."
+                               FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
+                </StackPanel>
+
                 <!-- Real source state; no simulated uploaded file or fake picker. -->
                 <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
                         BorderThickness="1" CornerRadius="7" Padding="16,13">
@@ -294,6 +310,27 @@
                                    Style="{StaticResource SectionLabel}"
                                    Foreground="#45765E" VerticalAlignment="Center"/>
                     </Grid>
+                </Border>
+
+                <!-- The selected batch is summarized separately from the active file. -->
+                <Border x:Name="BatchReviewPanel" Visibility="Collapsed"
+                        Background="#FFFFFF" BorderBrush="#CBD9D2"
+                        BorderThickness="1" CornerRadius="7" Padding="16,13">
+                    <StackPanel Spacing="9">
+                        <TextBlock Text="BATCH INSPECTION" Style="{StaticResource SectionLabel}"/>
+                        <TextBlock x:Name="BatchSummaryText"
+                                   Text="No batch selected."
+                                   FontFamily="Segoe UI" FontSize="13"
+                                   Foreground="#253138" TextWrapping="Wrap"/>
+                        <ComboBox x:Name="BatchFileSelector"
+                                  Header="File to examine"
+                                  HorizontalAlignment="Stretch"
+                                  DisplayMemberPath="Label"
+                                  SelectionChanged="BatchFileSelector_SelectionChanged"
+                                  AutomationProperties.Name="Choose which inspected batch file to examine"/>
+                        <TextBlock Text="The counts and evidence below describe the selected file. Export batch JSON includes all selected files."
+                                   FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
+                    </StackPanel>
                 </Border>
 
                 <!-- One consolidated instrument strip; no dashboard metric cards. -->
