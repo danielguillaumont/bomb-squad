@@ -12,7 +12,7 @@ BOMB SQUAD statically analyzes PowerShell source code, identifies supported pote
 
 ## What works today
 
-The current v0.4 development implementation includes:
+The current v0.5 development implementation includes:
 
 - PowerShell parsing using the PowerShell Abstract Syntax Tree (AST).
 - Six rule families for selected potentially consequential operations.
@@ -20,7 +20,7 @@ The current v0.4 development implementation includes:
 - Source line, column, and character-offset tracking.
 - Parser diagnostics and explicit handling of malformed scripts.
 - Evidence-backed findings with uncertainty and limitations.
-- Structured JSON report export.
+- Structured JSON report export for individual scripts and multi-file batches.
 - Optional CI/CD exit codes for automated review gates.
 - Automated tests covering detection, integration, CLI behavior, desktop support code, and non-execution.
 - A native Windows desktop application built with WinUI 3 and Windows App SDK.
@@ -28,7 +28,7 @@ The current v0.4 development implementation includes:
 - A native JSON Save dialog using the same report serializer as the CLI.
 - Windows GitHub Actions jobs for CLI/tests and desktop compilation.
 
-The CLI and desktop application both use the same static analysis engine. The desktop is a **v0.4 development preview**, not a signed or packaged release. Local verification currently includes **180 passing automated tests** and a successful Windows CI run with both jobs green.
+The CLI and desktop application both use the same static analysis engine. The desktop is a **v0.5 development preview**, not a signed or packaged release. Local verification currently includes **210 passing automated tests** and a successful Windows CI run with both jobs green.
 
 ## What's new in v0.4
 
@@ -42,6 +42,23 @@ The v0.4 development work improves the Windows desktop inspection experience:
 - Improved footer readability and reporting feedback.
 
 The desktop remains a development preview, not a signed or packaged release. All PowerShell inspection remains static and read-only. Supplied scripts are never executed.
+
+## What's new in v0.5
+
+v0.5 introduces multi-file PowerShell inspection while preserving the existing offline-first, read-only static analysis model.
+
+- Batch inspection of multiple explicitly selected `.ps1` files.
+- Independent parsing, findings, and diagnostics for each file.
+- Batch-level statistics for files, commands, findings, and errors.
+- Continued processing of other files when one contains syntax errors.
+- Multi-file CLI inspection and combined JSON report export.
+- Desktop batch file selection and switching between individual results.
+- Batch JSON export containing results for every selected file.
+- Expanded automated regression coverage.
+
+Batch inspection reads only explicitly selected files. It does not recursively scan folders or execute submitted PowerShell.
+
+The desktop remains a development preview, not a signed or packaged application.
 
 ## Quick start
 
@@ -75,7 +92,7 @@ The sample demonstrates all six implemented detection families. Its example comm
 
 To inspect your own script, replace the sample path with a `.ps1` file path.
 
-## Windows desktop preview (v0.4)
+## Windows desktop preview (v0.5)
 
 The native WinUI 3 desktop application is built separately from `BombSquad.slnx`. On Windows, build and launch it with:
 
@@ -91,6 +108,16 @@ Use **Export report** to save the current analysis as JSON through the native Wi
 Valid scripts with zero supported matches explicitly say **no matching findings**, not *safe*. For malformed scripts, the interface shows parser diagnostics and identifies that the detection rules were skipped. The inspected `.ps1` source is **never executed**.
 
 At this stage the repository does not provide a signed installer or a verified clean-machine distribution package. Desktop compilation is checked in Windows CI; GUI interactions were verified locally.
+
+### Multi-file desktop inspection
+
+Use **Open batch of .ps1 files** to select multiple local PowerShell scripts.
+
+The **Batch inspection** panel displays overall results. Use **File to examine** to switch between individual scripts, findings, parser diagnostics, and source evidence.
+
+Use **Export batch JSON** to save one report containing all selected files.
+
+Scripts containing syntax errors are identified separately. Detection rules are skipped for those scripts, while other valid files can still be inspected. Submitted PowerShell is never executed.
 
 ## Detection coverage
 
@@ -209,9 +236,9 @@ dotnet build .\BombSquad.slnx -c Release
 dotnet test .\BombSquad.slnx -c Release --no-build
 ```
 
-The **180 passing automated tests** cover positive detections, nonmatching commands, parser errors, file decoding and limits, source line mapping, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
+The **210 passing automated tests** cover positive detections, nonmatching commands, parser errors, file decoding and limits, source line mapping, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
 
-Build the desktop separately with the Debug command in the Windows desktop section. `.github/workflows/windows-ci.yml` has separate jobs for the CLI/test solution and WinUI desktop compilation. GitHub Actions run #32 passed on `main` after PR #4 was merged (merge commit `65b6673`); both the .NET 10 build/test and WinUI desktop jobs succeeded. These checks do not verify interactive GUI functionality.
+Build the desktop separately with the Debug command in the Windows desktop section. `.github/workflows/windows-ci.yml` has separate jobs for the CLI/test solution and WinUI desktop compilation. Windows CI has also passed on the v0.5 feature branch, including the .NET 10 build/test and WinUI desktop compilation jobs. These checks do not verify interactive GUI functionality.
 
 ## Safety and limitations
 
@@ -240,6 +267,10 @@ BOMB SQUAD is not an antivirus engine, malware sandbox, universal safety checker
 - [x] v0.3 closeout - Final documentation and PR #4 merged into `main` at `65b6673`
 - [x] v0.4 development - Interactive parser diagnostics, source navigation, Windows branding, keyboard shortcuts, and responsive desktop layout
 - [x] v0.4 local verification - 180 automated tests passing; desktop scenarios manually tested
+- [x] v0.4 merge - PR #5 merged into main
+- [x] v0.5 implementation - Batch analysis, multi-file CLI, desktop file switching, and batch JSON export
+- [x] v0.5 verification - 210 tests passing, Windows CI green, and desktop batch scenarios tested
+- [ ] v0.5 merge - Final review and pull request into main
 - [ ] Future - Accessibility audit, additional detection hardening, and expanded testing
 - [ ] Future - Signed installer, clean-machine testing, and release distribution
 

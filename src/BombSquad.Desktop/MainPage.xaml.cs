@@ -12,10 +12,14 @@ namespace BombSquad_Desktop;
 public sealed partial class MainPage : Page
 {
     private readonly AnalysisService _analysisService = new();
+    private readonly BatchAnalysisService _batchAnalysisService = new();
+    private BatchAnalysisResult? _currentBatch;
     private bool _isAnalyzing;
     private ScriptSourceDocument? _sourceDocument;
     private AnalysisResult? _currentResult;
     private string? _currentSourceIdentifier;
+
+    private sealed record BatchFileOption(int Index, string Label);
 
     private const string DemoScript = """
         if ($false) {
@@ -58,6 +62,7 @@ public sealed partial class MainPage : Page
                 return;
             }
 
+            ExitBatchMode();
             SetBusy(true);
             ParseStatusText.Text = "Reading and inspecting selected PowerShell file...";
 
@@ -96,6 +101,7 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        ExitBatchMode();
         SetBusy(true);
         try
         {
@@ -116,13 +122,142 @@ public sealed partial class MainPage : Page
         }
     }
 
+    private async void OpenBatch_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isAnalyzing)
+        {
+            return;
+        }
+
+        try
+        {
+            Window window = ((App)Application.Current).CurrentWindow
+                ?? throw new InvalidOperationException("The application window is not available.");
+
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+            };
+            picker.FileTypeFilter.Add(".ps1");
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
+
+            var selectedFiles = await picker.PickMultipleFilesAsync();
+            if (selectedFiles is null || selectedFiles.Count == 0)
+            {
+                return; // Cancellation preserves the current inspection.
+            }
+
+            if (selectedFiles.Count > BatchAnalysisService.MaximumFileCount)
+            {
+                ParseStatusText.Text =
+                    $"Select no more than {BatchAnalysisService.MaximumFileCount} files per batch.";
+                return;
+            }
+
+            string[] paths = selectedFiles.Select(file => file.Path).ToArray();
+            ExitBatchMode();
+            SetBusy(true);
+            ParseStatusText.Text = $"Inspecting {paths.Length} selected files as text...";
+
+            BatchAnalysisResult batch = await Task.Run(
+                () => _batchAnalysisService.AnalyzeFiles(paths));
+
+            _currentBatch = batch;
+            BatchSummaryText.Text =
+                $"{batch.FileCount} requested · {batch.AnalyzedFileCount} analyzed · " +
+                $"{batch.InputErrorCount} input errors · {batch.ParserErrorFileCount} files with syntax errors · " +
+                $"{batch.TotalFindingCount} total findings";
+
+            BatchFileSelector.ItemsSource = batch.Files
+                .Select((file, index) => new BatchFileOption(index, FormatBatchFileLabel(file, index)))
+                .ToArray();
+            BatchReviewPanel.Visibility = Visibility.Visible;
+            ExportReportButton.Content = "Export batch JSON";
+            BatchFileSelector.SelectedIndex = 0;
+        }
+        catch (Exception ex)
+        {
+            ExitBatchMode();
+            ClearAnalysis();
+            SourceNameText.Text = "Batch could not be inspected";
+            ParseStatusText.Text = $"Batch input error: {ex.Message}";
+            DetailsTitleText.Text = "Batch inspection not completed";
+            EvidenceText.Text = "No PowerShell was executed.";
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private static string FormatBatchFileLabel(BatchFileAnalysis file, int index)
+    {
+        string name = Path.GetFileName(file.FullPath ?? file.RequestedPath);
+        if (string.IsNullOrWhiteSpace(name)) name = "Unknown file";
+        string status = file.InputError is not null
+            ? $"Input error: {file.InputError.Code}"
+            : file.HasParserErrors
+                ? "Syntax errors"
+                : $"{file.Result?.Findings.Length ?? 0} findings";
+        return $"{index + 1}. {name} — {status}";
+    }
+
+    private void BatchFileSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_currentBatch is null || BatchFileSelector.SelectedItem is not BatchFileOption option)
+        {
+            return;
+        }
+
+        BatchFileAnalysis file = _currentBatch.Files[option.Index];
+        string path = file.FullPath ?? file.RequestedPath;
+        string displayName = Path.GetFileName(path);
+
+        if (file.Result is not null && file.SourceText is not null)
+        {
+            ShowAnalysis(file.Result, displayName, path, file.SourceText);
+        }
+        else
+        {
+            // Input errors are not clean scripts and must never look like successful inspections.
+            ClearAnalysis();
+            SourceNameText.Text = displayName;
+            ToolTipService.SetToolTip(SourceNameText, path);
+            CommandCountText.Text = "0";
+            FindingCountText.Text = "0";
+            DiagnosticCountText.Text = "0";
+            DetailsTitleText.Text = "File could not be inspected";
+            LocationText.Text = file.InputError?.Code ?? "Source unavailable";
+            EvidenceText.Text = file.InputError?.Message ?? "The source snapshot is unavailable.";
+            PotentialEffectText.Text = "This file was not analyzed.";
+            LimitationsText.Text = "No findings is not a safety verdict. This input could not be inspected.";
+            NextStepText.Text = "Correct the input issue and select the file again.";
+            ParseStatusText.Text = $"Batch file input error: {LocationText.Text}";
+        }
+
+        ExportReportButton.Content = "Export batch JSON";
+        ExportReportButton.IsEnabled = !_isAnalyzing;
+    }
+
+    private void ExitBatchMode()
+    {
+        _currentBatch = null;
+        BatchFileSelector.SelectedIndex = -1;
+        BatchFileSelector.ItemsSource = null;
+        BatchReviewPanel.Visibility = Visibility.Collapsed;
+        ExportReportButton.Content = "Export report";
+    }
+
     private void SetBusy(bool busy)
     {
         _isAnalyzing = busy;
         OpenFileButton.IsEnabled = !busy;
+        OpenBatchButton.IsEnabled = !busy;
+        BatchFileSelector.IsEnabled = !busy;
         DemoInspectionButton.IsEnabled = !busy;
         OpenSourceButton.IsEnabled = !busy && _sourceDocument is not null;
-        ExportReportButton.IsEnabled = !busy && _currentResult is not null;
+        ExportReportButton.IsEnabled = !busy &&
+            (_currentResult is not null || _currentBatch is not null);
     }
 
     private void ClearAnalysis()
@@ -323,13 +458,15 @@ public sealed partial class MainPage : Page
 
     private async void ExportReport_Click(object sender, RoutedEventArgs e)
     {
-        if (_isAnalyzing || _currentResult is null || _currentSourceIdentifier is null)
+        if (_isAnalyzing || (_currentBatch is null &&
+            (_currentResult is null || _currentSourceIdentifier is null)))
         {
             return;
         }
 
-        AnalysisResult result = _currentResult;
-        string sourceIdentifier = _currentSourceIdentifier;
+        BatchAnalysisResult? batch = _currentBatch;
+        AnalysisResult? result = _currentResult;
+        string sourceIdentifier = _currentSourceIdentifier ?? "batch.ps1";
         SetBusy(true);
 
         try
@@ -340,8 +477,9 @@ public sealed partial class MainPage : Page
             var picker = new FileSavePicker
             {
                 SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                SuggestedFileName = Path.GetFileNameWithoutExtension(sourceIdentifier)
-                    + "-bomb-squad-report"
+                SuggestedFileName = batch is null
+                    ? Path.GetFileNameWithoutExtension(sourceIdentifier) + "-bomb-squad-report"
+                    : "bomb-squad-batch-report"
             };
             picker.FileTypeChoices.Add("JSON report", new List<string> { ".json" });
             InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
@@ -354,11 +492,13 @@ public sealed partial class MainPage : Page
 
             // The native Save dialog asks for confirmation before replacing a file.
             // Nothing from the inspected PowerShell script is executed.
-            string report = JsonAnalysisReportWriter.Serialize(sourceIdentifier, result);
+            string report = batch is not null
+                ? BatchJsonAnalysisReportWriter.Serialize(batch)
+                : JsonAnalysisReportWriter.Serialize(sourceIdentifier, result!);
             await FileIO.WriteTextAsync(
                 selectedFile, report + Environment.NewLine, UnicodeEncoding.Utf8);
 
-            ExportStatusText.Text = $"Report saved: {selectedFile.Name}. Report may contain source excerpts.";
+            ExportStatusText.Text = $"Report saved: {selectedFile.Name}. Report may contain source excerpts and file paths.";
             ExportStatusText.Visibility = Visibility.Visible;
         }
         catch (Exception ex)
