@@ -1,27 +1,30 @@
 # BOMB SQUAD - Development Progress
 
-Last updated: 2026-10-17
-Current milestone: v0.3 - Desktop Foundation
-Development branch: feat/v03-desktop
+Last updated: 2026-10-27
+Current milestone: v0.6 - Baseline report comparison closeout
+Development branch: feat/v06-baseline-comparison
 Engine version: 0.2.0-dev
 Rule set version: 0.2.0-dev
 
 ## Current Status
 
-v0.2 is merged into `main` (PR #3, merge commit `4a59f87`). The v0.3 desktop implementation is complete on `feat/v03-desktop`, pushed to GitHub, and undergoing final documentation and PR review. The WinUI frontend reuses the static-only .NET analysis engine; imported PowerShell source is never executed.
+v0.5 was merged into `main` in PR #6 (`7e1d2e9`). v0.6 is implemented on the feature branch and awaits final closeout and its own pull request. The core comparison engine accepts two previously exported batch JSON reports without opening or executing the original PowerShell files.
 
-Latest verified checkpoint (2026-10-17):
+Last verified checkpoint (2026-10-27, Slice 4):
 
-- Release solution build and Debug desktop build passed locally
-- **176 automated tests passed, 0 failed, 0 skipped**
-- Real `.ps1` inspection, six detection families, and no-match/malformed states verified in the UI
-- Dedicated Source Focus viewer navigates to the selected finding's original line
-- Native JSON report export verified for valid and malformed samples; Save dialog cancellation is safe
-- Desktop and CLI use the shared JSON serializer
-- GitHub Actions Windows CI **run #29**, commit `d15ad95`: both build-and-test and WinUI desktop build jobs passed
-- Working tree clean after CI commit `d15ad95`
+- 246 automated tests passed in Release configuration, zero failures/skips.
+- WinUI desktop built and launched locally.
+- A baseline/current comparison displayed 1 newly detected, 1 still detected, and 0 no-longer-detected patterns.
+- Native desktop JSON export was validated with `sourceExecuted: false`.
+- Original **Try sample** still detected 6 commands, 6 findings, and 0 parser diagnostics.
+- GitHub Actions Windows CI run #53, commit `c8a5b99`, passed both build-and-test and WinUI desktop compilation jobs.
+- Feature branch clean and synchronized with GitHub after Slice 4.
 
-The v0.3 feature branch is **not yet merged into `main`**. The installed/signed distribution, extensive keyboard/accessibility checks, and clean-machine installation remain future work.
+Slice 5 updates documentation/version labels and adds four focused comparison regression tests. These additions are **not yet verified** until the local test run and hosted CI succeed. The desktop remains a development preview: no signed installer or verified clean-machine distribution exists.
+
+## Historical milestones
+
+The sections below preserve earlier checkpoint notes for traceability. Older "pending" merge/checklist entries are historical, not the current v0.6 status.
 
 ## PREP - Completed
 
@@ -231,7 +234,7 @@ Complete the v0.4 documentation, verify the final Windows CI checks, merge the v
 
 ## v0.5 - Multi-file batch inspection
 
-Development implementation completed on `feat/v05-batch-inspection`. Merge into `main` is pending.
+Implemented on `feat/v05-batch-inspection` and merged into `main` via PR #6 (`7e1d2e9`).
 
 - Implemented shared batch analysis and JSON serialization.
 - Added CLI multi-file inspection and export.
@@ -243,4 +246,24 @@ Development implementation completed on `feat/v05-batch-inspection`. Merge into 
 
 The rule set remains partial. Findings describe potential effects, not confirmed runtime behavior.
 
-Remaining closeout: documentation review, final verification, and merge. Signed installation and production distribution remain future work.
+v0.5 closeout is complete. Signed installation and production distribution remain future work.
+## v0.6 - Baseline Report Comparison
+
+Implemented on `feat/v06-baseline-comparison`:
+
+- Slice 1 (`8f450ba`): shared comparison engine, file-identity matching, finding multiset deltas, and indeterminate handling.
+- Slice 2 (`6071c2d`): deterministic structured comparison JSON writer; `sourceExecuted: false`.
+- Slice 3 (`0c78c99`): `--compare` CLI mode, optional `--json` and `--fail-on-new`, CI-friendly exit codes.
+- Slice 4 (`c8a5b99`): WinUI baseline comparison workspace, per-file change register, evidence inspection, and native JSON export.
+
+Verified on Slice 4: 246 Release tests; desktop Debug build; CLI smoke test; interactive desktop baseline/current selection, evidence and export; sample inspection unchanged; Windows CI run #53 passed both jobs.
+
+Slice 5 closeout checklist:
+
+- [ ] Four additional negative/edge-case report comparison tests pass in Release.
+- [ ] Desktop Debug build succeeds with updated v0.6 development label.
+- [ ] Desktop and CLI static-only comparison behaviors remain intact.
+- [ ] Hosted Windows CI passes on the final closeout commit.
+- [ ] PR against `main` opened, reviewed, merged, and local `main` synchronized.
+
+Important limits: comparison uses matching report paths and exact evidence; it does not track renamed files or infer that disappeared patterns were remediated. Parser/input failures and incompatible engine/rule-set metadata are indeterminate. The original PowerShell source is never executed or reopened during comparison. GUI interactions are verified manually, not by headless CI.

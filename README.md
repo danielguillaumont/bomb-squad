@@ -12,7 +12,7 @@ BOMB SQUAD statically analyzes PowerShell source code, identifies supported pote
 
 ## What works today
 
-The current v0.5 development implementation includes:
+The current v0.6 development implementation includes:
 
 - PowerShell parsing using the PowerShell Abstract Syntax Tree (AST).
 - Six rule families for selected potentially consequential operations.
@@ -27,8 +27,10 @@ The current v0.5 development implementation includes:
 - A file picker, findings review, source-line navigation, and a dedicated read-only source workspace.
 - A native JSON Save dialog using the same report serializer as the CLI.
 - Windows GitHub Actions jobs for CLI/tests and desktop compilation.
+- Two-snapshot baseline comparison for previously exported batch JSON reports in CLI and WinUI.
+- Comparison JSON export with newly, still, and no-longer-detected findings and incomplete-coverage status.
 
-The CLI and desktop application both use the same static analysis engine. The desktop is a **v0.5 development preview**, not a signed or packaged release. Local verification currently includes **210 passing automated tests** and a successful Windows CI run with both jobs green.
+The CLI and desktop application share the same static analysis and report-comparison engines. The desktop is a **v0.6 development preview**, not a signed or packaged release. Slice 4 was verified with **246 passing automated tests**, local WinUI interaction, and a successful hosted Windows CI run (#53). Slice 5 adds four additional regression tests; its final CI result remains to be verified.
 
 ## What's new in v0.4
 
@@ -59,6 +61,42 @@ v0.5 introduces multi-file PowerShell inspection while preserving the existing o
 Batch inspection reads only explicitly selected files. It does not recursively scan folders or execute submitted PowerShell.
 
 The desktop remains a development preview, not a signed or packaged application.
+
+## What's new in v0.6
+
+v0.6 adds **baseline comparison** of two previously exported v0.5-compatible batch JSON reports. The comparison feature never opens, parses, or executes the `.ps1` paths described by those reports.
+
+- New `--compare <baseline.json> <current.json>` CLI mode, with optional `--json <new-report.json>` export.
+- Optional `--fail-on-new` CI gate: `0` when the comparison is complete and no new findings are detected, `1` for one or more new matches, `2` for invalid inputs/export errors, and `3` for incomplete comparison coverage. Without the flag, a completed comparison may exit `0` despite new findings or incomplete coverage.
+- Desktop **Compare inspection reports** workspace for selecting two batch JSON snapshots, viewing per-file status and exact finding evidence, and exporting a comparison report.
+- Finding changes are classified as **newly detected**, **still detected**, or **no longer detected**. Occurrences are matched by rule ID and *exact source evidence*; moving unchanged evidence to another line does not count as new.
+- Parser failures, input failures, and engine/rule-set mismatches yield **indeterminate**, rather than falsely reporting resolved findings. Files appearing in only one snapshot are explicitly unmatched.
+
+**Interpretation matters:** these are static pattern matches, not runtime facts. A no-longer-detected pattern is **not** proof that code or a system is safe. Exact-evidence edits may look like both new and removed matches. Full report paths are used as file identities, so renamed/moved scripts are not tracked. Reports can contain sensitive paths and source excerpts.
+
+### Compare two saved batch reports from the CLI
+
+First save a baseline batch report, then save a current report after the source changes. Use unique output filenames: the CLI deliberately does not overwrite existing report files.
+
+```powershell
+$cli = ".\src\BombSquad.Cli\BombSquad.Cli.csproj"
+$script = ".\samples\example.ps1"
+
+# Capture the baseline at its original point in time.
+dotnet run --project $cli -c Release -- --batch $script --json ".\baseline.json"
+
+# Re-inspect the same script *after* making your own source changes.
+dotnet run --project $cli -c Release -- --batch $script --json ".\current.json"
+
+# Compare saved reports without reopening either .ps1 source.
+dotnet run --project $cli -c Release -- --compare ".\baseline.json" ".\current.json" --json ".\comparison.json" --fail-on-new
+```
+
+These commands are a workflow illustration: do not run the two batch captures back-to-back unchanged if you intend to demonstrate new findings. `--fail-on-new` returning `1` or `3` is an intentional CI signal; inspect the comparison before drawing conclusions. Original PowerShell content is never executed.
+
+### Compare saved reports in the desktop app
+
+Click **Compare inspection reports**, choose the baseline (older) and current (newer) batch JSON snapshots, and inspect the summary, per-file coverage, changed findings, and exact evidence. **Export comparison** uses the native Windows Save dialog. **Back to inspection** returns to the normal source examination workspace. The comparison operates on the saved JSON only.
 
 ## Quick start
 
@@ -92,7 +130,7 @@ The sample demonstrates all six implemented detection families. Its example comm
 
 To inspect your own script, replace the sample path with a `.ps1` file path.
 
-## Windows desktop preview (v0.5)
+## Windows desktop preview (v0.6)
 
 The native WinUI 3 desktop application is built separately from `BombSquad.slnx`. On Windows, build and launch it with:
 
@@ -236,9 +274,9 @@ dotnet build .\BombSquad.slnx -c Release
 dotnet test .\BombSquad.slnx -c Release --no-build
 ```
 
-The **210 passing automated tests** cover positive detections, nonmatching commands, parser errors, file decoding and limits, source line mapping, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
+The **246 automated tests verified in Slice 4**, plus four new Slice 5 regression tests pending verification, cover positive detections, nonmatching commands, parser errors, file decoding and limits, source line mapping, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
 
-Build the desktop separately with the Debug command in the Windows desktop section. `.github/workflows/windows-ci.yml` has separate jobs for the CLI/test solution and WinUI desktop compilation. Windows CI has also passed on the v0.5 feature branch, including the .NET 10 build/test and WinUI desktop compilation jobs. These checks do not verify interactive GUI functionality.
+Build the desktop separately with the Debug command in the Windows desktop section. `.github/workflows/windows-ci.yml` has separate jobs for the CLI/test solution and WinUI desktop compilation. Windows CI also passed on the v0.6 feature branch at Slice 4 (run #53), including the .NET 10 build/test and WinUI desktop compilation jobs. These checks do not verify interactive GUI functionality.
 
 ## Safety and limitations
 
@@ -270,7 +308,10 @@ BOMB SQUAD is not an antivirus engine, malware sandbox, universal safety checker
 - [x] v0.4 merge - PR #5 merged into main
 - [x] v0.5 implementation - Batch analysis, multi-file CLI, desktop file switching, and batch JSON export
 - [x] v0.5 verification - 210 tests passing, Windows CI green, and desktop batch scenarios tested
-- [ ] v0.5 merge - Final review and pull request into main
+- [x] v0.5 merge - PR #6 merged into `main` (`7e1d2e9`)
+- [x] v0.6 implementation - Batch JSON baseline comparison in shared engine, CLI, and WinUI desktop
+- [x] v0.6 Slice 4 verification - 246 tests passing, hosted Windows CI #53 green, and desktop comparison/export tested
+- [ ] v0.6 closeout - Final regression checks, documentation, and pull request into `main`
 - [ ] Future - Accessibility audit, additional detection hardening, and expanded testing
 - [ ] Future - Signed installer, clean-machine testing, and release distribution
 

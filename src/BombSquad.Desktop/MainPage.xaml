@@ -92,6 +92,10 @@
                         <Setter Target="ExportReportButton.(Grid.Column)" Value="0"/>
                         <Setter Target="OpenSourceButton.(Grid.Row)" Value="1"/>
                         <Setter Target="OpenSourceButton.(Grid.Column)" Value="1"/>
+                        <Setter Target="ComparisonExportButton.(Grid.Row)" Value="1"/>
+                        <Setter Target="ComparisonExportButton.(Grid.Column)" Value="0"/>
+                        <Setter Target="ComparisonBackButton.(Grid.Row)" Value="1"/>
+                        <Setter Target="ComparisonBackButton.(Grid.Column)" Value="1"/>
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="SingleRowActions">
@@ -170,7 +174,7 @@
                                        Foreground="#315B45"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock x:Name="VersionLabel" Text="v0.5 development" FontFamily="Consolas"
+                    <TextBlock x:Name="VersionLabel" Text="v0.6 development" FontFamily="Consolas"
                                FontSize="12" Foreground="#798680"
                                VerticalAlignment="Center"/>
                 </StackPanel>
@@ -280,6 +284,21 @@
                             FontSize="13" FontWeight="SemiBold" Padding="15,10"
                             ToolTipService.ToolTip="Select up to 50 individual .ps1 files; none will be executed"/>
                     <TextBlock Text="Batch inspection reads only selected files. No folders are scanned and no PowerShell runs."
+                               FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <!-- Comparison reads saved batch JSON reports, never original scripts. -->
+                <StackPanel Spacing="7">
+                    <Button x:Name="OpenComparisonWorkspaceButton"
+                            Content="Compare inspection reports"
+                            Click="OpenComparisonWorkspace_Click"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.Name="Compare two saved batch JSON inspection reports"
+                            Background="#EDF1EF" Foreground="#253138"
+                            BorderBrush="#CBD9D2" BorderThickness="1"
+                            CornerRadius="5" FontFamily="Segoe UI"
+                            FontSize="13" FontWeight="SemiBold" Padding="15,10"/>
+                    <TextBlock Text="Compare two existing batch JSON snapshots. No original PowerShell files are opened."
                                FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
                 </StackPanel>
 
@@ -611,6 +630,143 @@
                 </Grid>
 
 
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- An independent workspace for comparing previously saved batch reports. -->
+        <ScrollViewer x:Name="ComparisonWorkspaceScrollViewer" Grid.Row="1"
+                      Visibility="Collapsed"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel Padding="30,24,30,28" Spacing="17">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="BASELINE COMPARISON" Style="{StaticResource SectionLabel}"/>
+                    <TextBlock Text="Understand what changed between inspections."
+                               FontFamily="Bahnschrift" FontSize="28"
+                               FontWeight="SemiBold" Foreground="#20292D" TextWrapping="Wrap"/>
+                    <TextBlock Text="Compare two previously exported batch JSON reports. Findings are static patterns, not confirmed effects."
+                               FontSize="14" Foreground="#5D6966" TextWrapping="Wrap"/>
+                </StackPanel>
+                <Grid ColumnSpacing="10" RowSpacing="10" HorizontalAlignment="Left">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Button x:Name="ComparisonLoadButton" Content="Choose two JSON reports"
+                            Click="ComparisonLoad_Click" HorizontalAlignment="Left"
+                            Background="#C5533F" Foreground="#FFFFFF"
+                            BorderThickness="0" CornerRadius="5" Padding="16,12"
+                            FontWeight="SemiBold"
+                            AutomationProperties.Name="Select baseline and current batch JSON reports"/>
+                    <Button x:Name="ComparisonExportButton" Grid.Column="1" Content="Export comparison"
+                            Click="ComparisonExport_Click" IsEnabled="False"
+                            Background="#FFFFFF" Foreground="#253138"
+                            BorderBrush="#CDD8D1" BorderThickness="1"
+                            CornerRadius="5" Padding="15,12"
+                            AutomationProperties.Name="Save the current comparison as JSON"/>
+                    <Button x:Name="ComparisonBackButton" Grid.Column="2" Content="Back to inspection" Click="ComparisonBack_Click"
+                            Background="#EDF1EF" Foreground="#253138"
+                            BorderBrush="#CBD9D2" BorderThickness="1"
+                            CornerRadius="5" Padding="15,12"
+                            AutomationProperties.Name="Return to the inspection workspace"/>
+                </Grid>
+                <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
+                        BorderThickness="1" CornerRadius="7" Padding="16,14">
+                    <StackPanel Spacing="7">
+                        <TextBlock Text="REPORT SNAPSHOTS" Style="{StaticResource SectionLabel}"/>
+                        <TextBlock x:Name="ComparisonBaselinePathText"
+                                   Text="Baseline: Not selected" FontFamily="Consolas"
+                                   FontSize="12" Foreground="#35463E" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="ComparisonCurrentPathText"
+                                   Text="Current: Not selected" FontFamily="Consolas"
+                                   FontSize="12" Foreground="#35463E" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="ComparisonStatusText"
+                                   Text="Choose two existing BOMB SQUAD batch reports to compare."
+                                   FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="#253138" CornerRadius="7" Padding="21,17">
+                    <StackPanel Spacing="7">
+                        <TextBlock Text="FINDING CHANGES" FontSize="12"
+                                   FontWeight="SemiBold" Foreground="#ABBDB9"/>
+                        <TextBlock x:Name="ComparisonMetricsText"
+                                   Text="No reports compared."
+                                   FontFamily="Consolas" FontSize="15"
+                                   Foreground="#FFFFFF" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="ComparisonCoverageText"
+                                   Text="Comparison completeness is not yet known."
+                                   FontSize="12" Foreground="#ABBDB9" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
+                        BorderThickness="1" CornerRadius="7" Padding="18,16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="FILE COMPARISON" Style="{StaticResource SectionLabel}"/>
+                        <ComboBox x:Name="ComparisonFileSelector"
+                                  Header="File identity to examine"
+                                  IsEnabled="False" HorizontalAlignment="Stretch"
+                                  DisplayMemberPath="Label"
+                                  SelectionChanged="ComparisonFileSelector_SelectionChanged"
+                                  AutomationProperties.Name="Choose file comparison details"/>
+                        <TextBlock x:Name="ComparisonFileStatusText"
+                                   Text="No file selected."
+                                   FontSize="13" Foreground="#35463E" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="ComparisonFileCountsText"
+                                   Text="" FontFamily="Consolas" FontSize="12"
+                                   Foreground="#687671" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
+                        BorderThickness="1" CornerRadius="7" Padding="18,16">
+                    <StackPanel Spacing="11">
+                        <TextBlock Text="CHANGE REGISTER" Style="{StaticResource SectionLabel}"/>
+                        <TextBlock Text="Select a finding change to inspect its exact evidence. Counts represent occurrences, not severity."
+                                   FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
+                        <ListView x:Name="ComparisonChangeList"
+                                  Height="205" Background="Transparent" BorderThickness="0"
+                                  SelectionMode="Single"
+                                  SelectionChanged="ComparisonChangeList_SelectionChanged"
+                                  AutomationProperties.Name="Changes to detected findings">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="5,8,5,8" Spacing="3">
+                                        <TextBlock Text="{Binding Label}" FontSize="14"
+                                                   FontWeight="SemiBold" Foreground="#253138"
+                                                   TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Description}"
+                                                   FontSize="12" Foreground="#687671"
+                                                   TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="ComparisonChangeHintText"
+                                   Text="No finding changes to display."
+                                   FontSize="13" Foreground="#687671" TextWrapping="Wrap"/>
+                        <TextBlock Text="EXACT SOURCE EVIDENCE" Style="{StaticResource SectionLabel}"/>
+                        <Border Background="#222E34" CornerRadius="5" Padding="15,13">
+                            <TextBlock x:Name="ComparisonEvidenceText"
+                                       Text="Choose a finding change."
+                                       FontFamily="Consolas" FontSize="12"
+                                       Foreground="#FFFFFF" TextWrapping="Wrap"/>
+                        </Border>
+                        <TextBlock Text="Comparison matches rule ID and exact evidence text; source lines are not used for identity."
+                                   FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="#EDF1EF" CornerRadius="7" Padding="17,14">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="INTERPRETATION AND LIMITATIONS" Style="{StaticResource SectionLabel}"/>
+                        <TextBlock x:Name="ComparisonLimitationsText"
+                                   Text="No longer detected is not proof of safety. Incomplete reports cannot yield reliable deltas."
+                                   FontSize="12" Foreground="#35463E" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

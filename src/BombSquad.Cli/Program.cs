@@ -7,6 +7,11 @@ if (args.Length > 0 && args[0] == "--batch")
     return BatchCliCommand.Run(args);
 }
 
+if (args.Length > 0 && args[0] == "--compare")
+{
+    return ComparisonCliCommand.Run(args);
+}
+
 bool malformedDemo =
     args.Length == 1 && args[0] == "--demo-malformed";
 
