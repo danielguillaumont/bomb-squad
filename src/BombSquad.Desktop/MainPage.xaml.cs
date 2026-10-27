@@ -251,6 +251,11 @@ public sealed partial class MainPage : Page
     private void SetBusy(bool busy)
     {
         _isAnalyzing = busy;
+        OpenComparisonWorkspaceButton.IsEnabled = !busy;
+        ComparisonLoadButton.IsEnabled = !busy;
+        ComparisonExportButton.IsEnabled = !busy && _currentComparison is not null;
+        ComparisonFileSelector.IsEnabled = !busy && _currentComparison is not null;
+        ComparisonChangeList.IsEnabled = !busy && _currentComparison is not null;
         OpenFileButton.IsEnabled = !busy;
         OpenBatchButton.IsEnabled = !busy;
         BatchFileSelector.IsEnabled = !busy;
@@ -587,6 +592,7 @@ public sealed partial class MainPage : Page
 
     private void ShowReviewWorkspace()
     {
+        ComparisonWorkspaceScrollViewer.Visibility = Visibility.Collapsed;
         SourceExplorerSection.Visibility = Visibility.Collapsed;
         ReviewWorkspaceScrollViewer.Visibility = Visibility.Visible;
     }
@@ -598,6 +604,7 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        ComparisonWorkspaceScrollViewer.Visibility = Visibility.Collapsed;
         ReviewWorkspaceScrollViewer.Visibility = Visibility.Collapsed;
         SourceExplorerSection.Visibility = Visibility.Visible;
 
