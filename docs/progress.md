@@ -228,3 +228,19 @@ Safety requirements remain unchanged:
 ## Next Milestone
 
 Complete the v0.4 documentation, verify the final Windows CI checks, merge the v0.4 pull request into `main`, and synchronize the local repository. Plan future enhancements on a new feature branch after the merge.
+
+## v0.5 - Multi-file batch inspection
+
+Development implementation completed on `feat/v05-batch-inspection`. Merge into `main` is pending.
+
+- Implemented shared batch analysis and JSON serialization.
+- Added CLI multi-file inspection and export.
+- Added desktop batch selection, file switching, and JSON export.
+- Verified clean, matching, and malformed PowerShell inputs.
+- Passed 210 automated tests and Windows desktop compilation.
+- Passed Windows GitHub Actions on the feature branch.
+- Verified exported batch reports indicate that source was not executed.
+
+The rule set remains partial. Findings describe potential effects, not confirmed runtime behavior.
+
+Remaining closeout: documentation review, final verification, and merge. Signed installation and production distribution remain future work.

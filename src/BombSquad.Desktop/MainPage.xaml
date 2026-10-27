@@ -170,7 +170,7 @@
                                        Foreground="#315B45"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock x:Name="VersionLabel" Text="v0.4 development" FontFamily="Consolas"
+                    <TextBlock x:Name="VersionLabel" Text="v0.5 development" FontFamily="Consolas"
                                FontSize="12" Foreground="#798680"
                                VerticalAlignment="Center"/>
                 </StackPanel>
