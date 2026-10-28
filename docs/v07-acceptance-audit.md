@@ -15,11 +15,11 @@
 | A07 | `Invoke-Expression` on variable, runtime contents unknown | **Covered for supported syntax** — dynamic-execution finding | Verify alias and expression variants |
 | A08 | Defined function with sensitive body: definition context disclosed | **Improved in Slice 3** — findings in a function body explicitly note that definition does not call the function; invocation/reachability is not resolved | Keep unknown call paths and nested scopes in future audits |
 | A09 | Alias/custom-function collision: no unsupported built-in assumption | **Partial, improved in Slice 3** — when a same-named function is declared anywhere in the inspected source, built-in-specific rule findings are conservatively withheld and ambiguity surfaced; lexical scopes, aliases, invocation order and runtime binding are not resolved | Further scope-aware matching and alias review remain future work |
-| A10 | Malformed syntax: diagnostics and honest partial findings | **Partial / differs from plan** — diagnostics emitted, but all findings skipped on any syntax error | Decide safe partial-analysis strategy; test explicit status and limitation first |
-| A11 | Unknown native executable: unknown behavior visible | **Gap** — ordinary unknown literal command is represented in command list but not explicitly flagged as unknown external behavior | Define UI/model scope and fixture |
+| A10 | Malformed syntax: diagnostics and honest partial findings | **Partial, clarified in Slice 4** — diagnostics emitted; all rules still skipped on any syntax error, now with an explicit incomplete-analysis unresolved note | Decide safe partial-analysis strategy; test explicit status and limitation first |
+| A11 | Unknown native executable: unknown behavior visible | **Partial, improved in Slice 4** — recognizable `.exe`, `.cmd`, `.bat`, `.com`, and `.ps1` invocations receive unresolved-target review notes; unknown bare command names remain unclassified | Define UI/model scope and fixture |
 | A12 | Unicode/multiline mapping | **Covered for the tested scenario** — parser uses AST spans; CRLF/Unicode regression | Expand malformed multiline + long-line checks |
 | A13 | Oversize input rejected gracefully | **Partial** — 1 MiB UTF-8 paste limit covered; file/batch modes need separate audit | Check all input paths and consistent limits |
-| A14 | Unsupported module-defined command: unresolved | **Gap** — literal unfamiliar command is not currently systematically described as unresolved module behavior | Add explicit unsupported-command model after scope review |
+| A14 | Unsupported module-defined command: unresolved | **Partial, improved in Slice 4** — qualified and path-like literal command names receive unresolved-target review notes, but bare module-defined commands cannot be identified without runtime resolution | Add explicit unsupported-command model after scope review |
 | A15 | No match: never claims safe | **Covered** — analysis limitations deny safety inference | Audit every UI/CLI/export message |
 
 ## Release priorities uncovered
@@ -42,3 +42,10 @@ git diff --check
 Expected: 272 total tests if all 12 added tests pass, and a successful Windows Desktop build. If a new acceptance test fails, **do not weaken the assertion to make it green**; the failure may identify a real coverage gap. Report the exact result.
 
 Keep this audit as a working document. A future v0.7 closeout pass should update each row using real Windows test evidence, not unverified assumptions.
+
+## Slice 4 policy: incomplete and unresolved input
+
+- **Malformed source (A10):** retain the conservative all-rules-skipped policy. Parsed commands and syntax diagnostics are displayed for review, but the absence of findings is not a verdict. JSON exports and desktop views retain the incomplete status and a specific review note. Partial-finding evaluation remains an explicit, unimplemented master-plan request.
+- **External and qualified invocations (A11/A14):** add static unresolved notes for obvious filename extensions (`.exe`, `.cmd`, `.bat`, `.com`, `.ps1`) and path- or module-qualified command names. No target lookup, module loading, PATH access, runtime command discovery or execution occurs. Ordinary bare literal commands are not classified as either internal or external.
+- **UI distinction:** when no implemented rule matches but unresolved notes exist, the desktop displays the notes instead of silently saying only that no rule matched. Findings, where present, remain conditional review leads.
+- **Residual limitations:** complete PowerShell binding, native-command identity, aliased or dynamic commands, parser error recovery, and all possible module-defined commands remain outside the supported v1 scope.

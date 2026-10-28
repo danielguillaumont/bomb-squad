@@ -85,6 +85,31 @@ public sealed class AnalysisService
                 "Built-in-specific detection was withheld; " +
                 "scope and invocation order are unresolved."));
 
+        // Report syntactically recognizable but unresolved invocation targets.
+        // No filesystem lookup, command discovery or code execution occurs.
+        // Ordinary literal cmdlet names cannot reliably be classified as
+        // native, module-provided, or built-in without runtime resolution.
+        var qualifiedCommands = parsed.Commands
+            .Where(command => IsQualifiedOrExternalTarget(command.CommandName))
+            .ToImmutableArray();
+
+        unsupportedConstructs = unsupportedConstructs.AddRange(
+            qualifiedCommands.Select(command =>
+                $"Unresolved external or qualified command target " +
+                $"'{command.CommandName}' at line {command.Span.StartLine}, " +
+                $"column {command.Span.StartColumn}. " +
+                "The executable, script, module, or path target and its " +
+                "behavior were not resolved. This is not proof of execution."));
+
+        if (hasSyntaxErrors)
+        {
+            unsupportedConstructs = unsupportedConstructs.Add(
+                $"Incomplete analysis: {parsed.Diagnostics.Length} PowerShell " +
+                "parser diagnostic(s) reported. Detection rules were " +
+                "skipped for the entire source; parsed command nodes are " +
+                "for inspection only and are not cleared of risk.");
+        }
+
         var limitations = ImmutableArray.Create(
             "This is a partial rule set. Six rule IDs are active: " +
             "BS-FS-001, BS-SS-001, BS-RG-001, BS-ID-001, BS-TS-001, and BS-DE-001.",
@@ -123,6 +148,15 @@ public sealed class AnalysisService
                 "declaration order, or actual runtime command binding.");
         }
 
+        if (!qualifiedCommands.IsEmpty)
+        {
+            limitations = limitations.Add(
+                "Literal external executable, script, module-qualified, " +
+                "and path-qualified invocations have not been resolved. " +
+                "Other bare literal commands can also have unknown " +
+                "implementations; this is not complete command discovery.");
+        }
+
         if (hasSyntaxErrors)
         {
             limitations = limitations.Add(
@@ -145,5 +179,22 @@ public sealed class AnalysisService
         {
             Commands = parsed.Commands
         };
+    }
+
+    private static bool IsQualifiedOrExternalTarget(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        // These suffixes are only syntactic clues. They do not establish
+        // whether a target exists, what it does, or whether it runs.
+        return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".bat", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".com", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains('\\') || name.Contains('/');
     }
 }
