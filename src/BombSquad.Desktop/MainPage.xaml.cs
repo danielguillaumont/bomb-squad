@@ -256,6 +256,9 @@ public sealed partial class MainPage : Page
         ComparisonExportButton.IsEnabled = !busy && _currentComparison is not null;
         ComparisonFileSelector.IsEnabled = !busy && _currentComparison is not null;
         ComparisonChangeList.IsEnabled = !busy && _currentComparison is not null;
+        OpenPasteButton.IsEnabled = !busy;
+        InspectPasteButton.IsEnabled = !busy;
+        ClosePasteButton.IsEnabled = !busy;
         OpenFileButton.IsEnabled = !busy;
         OpenBatchButton.IsEnabled = !busy;
         BatchFileSelector.IsEnabled = !busy;
