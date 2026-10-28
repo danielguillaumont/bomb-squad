@@ -13,8 +13,8 @@
 | A05 | `Register-ScheduledTask` registration request | **Covered for supported syntax** — conditional task rule | Extend negative fixtures |
 | A06 | Defender preference attempted change, not guaranteed | **Covered for supported syntax** — conditional security-setting rule | Verify opposite-value and false-positive variants |
 | A07 | `Invoke-Expression` on variable, runtime contents unknown | **Covered for supported syntax** — dynamic-execution finding | Verify alias and expression variants |
-| A08 | Defined function with sensitive body: definition context disclosed | **Gap** — parser traverses nested function bodies and rule engine does not retain definition/invocation context | Prioritize context-sensitive test and a narrow model fix |
-| A09 | Alias/custom-function collision: no unsupported built-in assumption | **Gap** — rule engine compares bare command names and does not resolve command shadowing | Add negative fixture; choose narrow conservative behavior |
+| A08 | Defined function with sensitive body: definition context disclosed | **Improved in Slice 3** — findings in a function body explicitly note that definition does not call the function; invocation/reachability is not resolved | Keep unknown call paths and nested scopes in future audits |
+| A09 | Alias/custom-function collision: no unsupported built-in assumption | **Partial, improved in Slice 3** — when a same-named function is declared anywhere in the inspected source, built-in-specific rule findings are conservatively withheld and ambiguity surfaced; lexical scopes, aliases, invocation order and runtime binding are not resolved | Further scope-aware matching and alias review remain future work |
 | A10 | Malformed syntax: diagnostics and honest partial findings | **Partial / differs from plan** — diagnostics emitted, but all findings skipped on any syntax error | Decide safe partial-analysis strategy; test explicit status and limitation first |
 | A11 | Unknown native executable: unknown behavior visible | **Gap** — ordinary unknown literal command is represented in command list but not explicitly flagged as unknown external behavior | Define UI/model scope and fixture |
 | A12 | Unicode/multiline mapping | **Covered for the tested scenario** — parser uses AST spans; CRLF/Unicode regression | Expand malformed multiline + long-line checks |
@@ -24,7 +24,7 @@
 
 ## Release priorities uncovered
 
-1. **First security/interpretation priority:** A08 and A09, because misleading findings from function definitions and shadowed cmdlets are a credibility risk. Make execution context visible; do not claim these operations occurred.
+1. **Function-context checkpoint (Slice 3):** A08 and A09 now disclose function-body context and conservatively withhold built-in-specific matches for name collisions. This is **not** reachability analysis or runtime binding resolution; document both residual limitations.
 2. **Second:** A10 — decide and test a conservative policy for partial syntax errors. Do not silently change all-errors-skip behavior without protecting the no-execution rule.
 3. **Third:** A11/A14 unknown-command visibility and A13 input-limit consistency, followed by scaling, keyboard, and distribution gates.
 

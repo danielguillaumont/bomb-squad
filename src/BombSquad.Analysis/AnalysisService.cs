@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using BombSquad.Core;
 using BombSquad.Rules;
 
@@ -24,9 +24,40 @@ public sealed class AnalysisService
             ? AnalysisStatus.ParsedWithErrors
             : AnalysisStatus.Parsed;
 
-        ImmutableArray<Finding> findings = hasSyntaxErrors
+        // Evaluate possible built-in matches, then withhold a match only
+        // when that candidate's name collides with a source-defined function.
+        // Benign helper-function calls do not become spurious warnings.
+        ImmutableArray<Finding> candidateFindings = hasSyntaxErrors
             ? ImmutableArray<Finding>.Empty
             : _ruleEngine.Evaluate(parsed.Commands);
+
+        var ambiguousOffsets = parsed.Commands
+            .Where(command => command.MayBeShadowedBySourceFunction)
+            .Select(command => command.Span.StartOffset)
+            .ToHashSet();
+
+        ImmutableArray<Finding> evaluatedFindings = candidateFindings
+            .Where(finding => !ambiguousOffsets.Contains(
+                finding.SourceSpan.StartOffset))
+            .ToImmutableArray();
+
+        var insideDefinitionOffsets = parsed.Commands
+            .Where(command => command.IsInsideFunctionDefinition)
+            .Select(command => command.Span.StartOffset)
+            .ToHashSet();
+
+        ImmutableArray<Finding> findings = evaluatedFindings
+            .Select(finding => insideDefinitionOffsets.Contains(
+                    finding.SourceSpan.StartOffset)
+                ? finding with
+                {
+                    Limitations = finding.Limitations.Add(
+                        "This command is inside a function definition. " +
+                        "Defining the function does not call it; " +
+                        "whether this function is invoked is unknown.")
+                }
+                : finding)
+            .ToImmutableArray();
 
         var unsupportedConstructs = parsed.Commands
             .Where(command => command.CommandName is null)
@@ -35,6 +66,24 @@ public sealed class AnalysisService
                 $"{command.Span.StartLine}, " +
                 $"column {command.Span.StartColumn}.")
             .ToImmutableArray();
+
+        var suppressedOffsets = candidateFindings
+            .Where(finding => ambiguousOffsets.Contains(
+                finding.SourceSpan.StartOffset))
+            .Select(finding => finding.SourceSpan.StartOffset)
+            .ToHashSet();
+
+        var shadowedCommands = parsed.Commands
+            .Where(command => suppressedOffsets.Contains(command.Span.StartOffset))
+            .ToImmutableArray();
+
+        unsupportedConstructs = unsupportedConstructs.AddRange(
+            shadowedCommands.Select(command =>
+                $"Command '{command.CommandName}' at line " +
+                $"{command.Span.StartLine}, column {command.Span.StartColumn} " +
+                "matches a function name defined in this source. " +
+                "Built-in-specific detection was withheld; " +
+                "scope and invocation order are unresolved."));
 
         var limitations = ImmutableArray.Create(
             "This is a partial rule set. Six rule IDs are active: " +
@@ -57,6 +106,22 @@ public sealed class AnalysisService
             "confirmed execution or effects.",
             "The absence of findings does not establish safety."
         );
+
+        if (parsed.Commands.Any(command => command.IsInsideFunctionDefinition))
+        {
+            limitations = limitations.Add(
+                "Some commands occur inside function definitions. " +
+                "Definition is not execution and function reachability is not analyzed.");
+        }
+
+        if (!shadowedCommands.IsEmpty)
+        {
+            limitations = limitations.Add(
+                "Commands whose names match functions defined in this source " +
+                "were excluded from built-in-specific rules. " +
+                "This conservative file-wide check does not resolve lexical scope, " +
+                "declaration order, or actual runtime command binding.");
+        }
 
         if (hasSyntaxErrors)
         {
