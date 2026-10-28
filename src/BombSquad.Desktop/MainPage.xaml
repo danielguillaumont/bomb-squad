@@ -174,7 +174,7 @@
                                        Foreground="#315B45"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock x:Name="VersionLabel" Text="v0.6 development" FontFamily="Consolas"
+                    <TextBlock x:Name="VersionLabel" Text="v0.7 development" FontFamily="Consolas"
                                FontSize="12" Foreground="#798680"
                                VerticalAlignment="Center"/>
                 </StackPanel>
@@ -301,7 +301,8 @@
                                  MaxLength="1048576" Height="178"
                                  FontFamily="Consolas" FontSize="13"
                                  IsSpellCheckEnabled="False"
-                                 AutomationProperties.Name="PowerShell source to inspect as inert text"/>
+                                 AutomationProperties.Name="PowerShell source to inspect as inert text"
+                                 AutomationProperties.HelpText="Maximum one mebibyte of UTF-8. The input is analyzed but never executed."/>
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Button x:Name="InspectPasteButton"
                                     Content="Inspect pasted text"
@@ -604,6 +605,7 @@
                                     <Button x:Name="JumpToSourceButton"
                                             Content="Inspect source"
                                             Click="JumpToSource_Click"
+                                             AutomationProperties.Name="Navigate to the selected finding in the read-only source view"
                                             IsEnabled="False"
                                             Background="#EDF1EF" Foreground="#253138"
                                             BorderBrush="#CBD9D2" BorderThickness="1"
@@ -928,6 +930,7 @@
                 <StackPanel Spacing="3">
                     <TextBlock x:Name="ParseStatusText"
                                Text="Ready. No inspection performed."
+                               AutomationProperties.LiveSetting="Polite"
                                FontFamily="Consolas" FontSize="12"
                                Foreground="#35463E" TextWrapping="Wrap"/>
                     <TextBlock x:Name="ExportStatusText" Text=""

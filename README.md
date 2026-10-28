@@ -12,7 +12,7 @@ BOMB SQUAD statically analyzes PowerShell source code, identifies supported pote
 
 ## What works today
 
-The current v0.6 development implementation includes:
+The current v0.7 development implementation includes:
 
 - PowerShell parsing using the PowerShell Abstract Syntax Tree (AST).
 - Six rule families for selected potentially consequential operations.
@@ -30,7 +30,19 @@ The current v0.6 development implementation includes:
 - Two-snapshot baseline comparison for previously exported batch JSON reports in CLI and WinUI.
 - Comparison JSON export with newly, still, and no-longer-detected findings and incomplete-coverage status.
 
-The CLI and desktop application share the same static analysis and report-comparison engines. The desktop is a **v0.6 development preview**, not a signed or packaged release. Slice 4 was verified with **246 passing automated tests**, local WinUI interaction, and a successful hosted Windows CI run (#53). Slice 5 adds four additional regression tests; its final CI result remains to be verified.
+The CLI and desktop application share the same static analysis and report-comparison engines. The desktop is a **v0.7 development preview**, not a signed or packaged release. The last verified v0.7 baseline included **297 passing automated tests** and successful Windows CI (#60, commit `1073a5f`). The final v0.7 closeout tests, accessibility checks, and milestone merge remain pending until verified.
+
+## What's new in v0.7
+
+v0.7 focuses on the original v1 inspection journey and honest uncertainty reporting, not additional detection families.
+
+- **Paste PowerShell snippet** accepts UTF-8 text up to 1 MiB for read-only AST inspection without writing a `.ps1` file.
+- Function-body findings explain that defining a function does not invoke it. Built-in-specific matches are conservatively withheld when source-defined function names collide; lexical scope and runtime binding are **not** resolved.
+- Incomplete PowerShell source produces parser diagnostics and skips all detection rules rather than implying clearance.
+- Recognizable external and module/path-qualified command names produce unresolved-target review notes; this is not runtime command discovery.
+- Added acceptance-gate and regression tests in `docs/v07-acceptance-audit.md`, plus a v0.7 manual closeout checklist.
+
+The analyzer never executes the supplied source. Zero findings does not establish safety. The app remains a development preview; clean-machine distribution is planned for v0.8.
 
 ## What's new in v0.4
 

@@ -49,3 +49,11 @@ Keep this audit as a working document. A future v0.7 closeout pass should update
 - **External and qualified invocations (A11/A14):** add static unresolved notes for obvious filename extensions (`.exe`, `.cmd`, `.bat`, `.com`, `.ps1`) and path- or module-qualified command names. No target lookup, module loading, PATH access, runtime command discovery or execution occurs. Ordinary bare literal commands are not classified as either internal or external.
 - **UI distinction:** when no implemented rule matches but unresolved notes exist, the desktop displays the notes instead of silently saying only that no rule matched. Findings, where present, remain conditional review leads.
 - **Residual limitations:** complete PowerShell binding, native-command identity, aliased or dynamic commands, parser error recovery, and all possible module-defined commands remain outside the supported v1 scope.
+
+## Slice 5 release-readiness checkpoint (pending verification)
+
+- **A12:** Additional long-comment / Unicode / CRLF tests should preserve exact AST finding line and source evidence.
+- **A13:** Large UTF-8 paste boundary and many-command handling are covered by release-readiness regression tests; their success must be verified in CI.
+- **A10/A11/A14:** Existing malformed-input and unresolved-invocation handling remains intentionally conservative.
+- **Desktop accessibility:** Additional automation labels and a polite inspection-status announcement are present. This does **not** replace a manual keyboard, screen-reader, or display-scaling audit.
+- **Release gate:** Consult `docs/v07-closeout-checklist.md` before merging the v0.7 branch. Clean-machine installation and signed distribution remain v0.8 tasks.
