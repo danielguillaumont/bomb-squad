@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.Management.Automation.Language;
 using BombSquad.Core;
 
@@ -16,6 +16,16 @@ public sealed class PowerShellParser
             out ParseError[] errors
         );
 
+        // A static function declaration can change command-name resolution.
+        // Conservatively collect declarations across this source rather than
+        // asserting that a particular built-in cmdlet will be invoked.
+        var declaredFunctionNames = ast
+            .FindAll(node => node is FunctionDefinitionAst,
+                searchNestedScriptBlocks: true)
+            .OfType<FunctionDefinitionAst>()
+            .Select(definition => definition.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var commands = ast
             .FindAll(
                 node => node is CommandAst,
@@ -29,7 +39,11 @@ public sealed class PowerShellParser
             )
             {
                 LiteralParameters = ExtractLiteralParameters(command),
-                IsDynamicInvocation = IsDynamicInvocation(command)
+                IsDynamicInvocation = IsDynamicInvocation(command),
+                IsInsideFunctionDefinition = IsInsideFunctionDefinition(command),
+                MayBeShadowedBySourceFunction =
+                    command.GetCommandName() is string name &&
+                    declaredFunctionNames.Contains(name)
             })
             .ToImmutableArray();
 
@@ -45,6 +59,20 @@ public sealed class PowerShellParser
             Commands: commands,
             Diagnostics: diagnostics
         );
+    }
+
+    private static bool IsInsideFunctionDefinition(CommandAst command)
+    {
+        for (Ast? parent = command.Parent; parent is not null;
+             parent = parent.Parent)
+        {
+            if (parent is FunctionDefinitionAst)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDynamicInvocation(CommandAst command)

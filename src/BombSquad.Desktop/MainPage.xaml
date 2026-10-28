@@ -174,7 +174,7 @@
                                        Foreground="#315B45"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock x:Name="VersionLabel" Text="v0.6 development" FontFamily="Consolas"
+                    <TextBlock x:Name="VersionLabel" Text="v0.7 development" FontFamily="Consolas"
                                FontSize="12" Foreground="#798680"
                                VerticalAlignment="Center"/>
                 </StackPanel>
@@ -271,6 +271,61 @@
                     </Grid>
                 </Grid>
 
+                <!-- Explicit, bounded paste flow; source is never executed or saved automatically. -->
+                <StackPanel Spacing="7">
+                    <Button x:Name="OpenPasteButton"
+                            Content="Paste PowerShell snippet"
+                            Click="OpenPaste_Click"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.Name="Open the local PowerShell paste inspector"
+                            Background="#FFFFFF" Foreground="#253138"
+                            BorderBrush="#CDD8D1" BorderThickness="1"
+                            CornerRadius="5" FontFamily="Segoe UI"
+                            FontSize="13" FontWeight="SemiBold" Padding="15,10"/>
+                    <TextBlock Text="Paste a command or snippet. Inspect it locally without creating or running a .ps1 file."
+                               FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <Border x:Name="PasteInputPanel" Visibility="Collapsed"
+                        Background="#FFFFFF" BorderBrush="#DCE2DD"
+                        BorderThickness="1" CornerRadius="7" Padding="17,15">
+                    <StackPanel Spacing="11">
+                        <TextBlock Text="PASTE SOURCE / LOCAL ONLY"
+                                   Style="{StaticResource SectionLabel}"/>
+                        <TextBlock Text="Paste PowerShell to inspect. It stays in memory unless you explicitly export an analysis report."
+                                   Foreground="#5D6966" FontSize="13" TextWrapping="Wrap"/>
+                        <TextBox x:Name="PasteSourceTextBox"
+                                 Header="PowerShell text"
+                                 PlaceholderText="Example: Remove-Item -LiteralPath 'demo-cache'"
+                                 AcceptsReturn="True" TextWrapping="NoWrap"
+                                 MaxLength="1048576" Height="178"
+                                 FontFamily="Consolas" FontSize="13"
+                                 IsSpellCheckEnabled="False"
+                                 AutomationProperties.Name="PowerShell source to inspect as inert text"
+                                 AutomationProperties.HelpText="Maximum one mebibyte of UTF-8. The input is analyzed but never executed."/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="InspectPasteButton"
+                                    Content="Inspect pasted text"
+                                    Click="InspectPaste_Click"
+                                    AutomationProperties.Name="Inspect the pasted PowerShell without executing it"
+                                    Background="#C5533F" Foreground="#FFFFFF"
+                                    BorderThickness="0" CornerRadius="5"
+                                    Padding="16,10"/>
+                            <Button x:Name="ClosePasteButton"
+                                    Content="Close editor"
+                                    Click="ClosePaste_Click"
+                                    AutomationProperties.Name="Close the PowerShell paste editor"
+                                    Background="#EDF1EF" Foreground="#253138"
+                                    BorderBrush="#CBD9D2" BorderThickness="1"
+                                    CornerRadius="5" Padding="16,10"/>
+                        </StackPanel>
+                        <TextBlock x:Name="PasteStatusText" Text=""
+                                   Foreground="#A84537" FontSize="12"
+                                   TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                        <TextBlock Text="Maximum 1 MiB of UTF-8 text. Static findings are review leads, not proof of behavior."
+                                   Foreground="#687671" FontSize="12" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
                 <!-- Native multi-file picker; no recursive directory scanning. -->
                 <StackPanel Spacing="7">
                     <Button x:Name="OpenBatchButton"
@@ -550,6 +605,7 @@
                                     <Button x:Name="JumpToSourceButton"
                                             Content="Inspect source"
                                             Click="JumpToSource_Click"
+                                             AutomationProperties.Name="Navigate to the selected finding in the read-only source view"
                                             IsEnabled="False"
                                             Background="#EDF1EF" Foreground="#253138"
                                             BorderBrush="#CBD9D2" BorderThickness="1"
@@ -874,6 +930,7 @@
                 <StackPanel Spacing="3">
                     <TextBlock x:Name="ParseStatusText"
                                Text="Ready. No inspection performed."
+                               AutomationProperties.LiveSetting="Polite"
                                FontFamily="Consolas" FontSize="12"
                                Foreground="#35463E" TextWrapping="Wrap"/>
                     <TextBlock x:Name="ExportStatusText" Text=""

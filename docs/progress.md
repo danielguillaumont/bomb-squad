@@ -1,26 +1,25 @@
 # BOMB SQUAD - Development Progress
 
-Last updated: 2026-10-27
-Current milestone: v0.6 - Baseline report comparison closeout
-Development branch: feat/v06-baseline-comparison
+Last updated: 2026-10-28
+Current milestone: v0.7 - Core completion and hardening (closeout candidate)
+Development branch: feat/v07-v1-hardening
+Base: v0.6 merged to `main` in PR #7 (`1093d95`)
 Engine version: 0.2.0-dev
 Rule set version: 0.2.0-dev
 
 ## Current Status
 
-v0.5 was merged into `main` in PR #6 (`7e1d2e9`). v0.6 is implemented on the feature branch and awaits final closeout and its own pull request. The core comparison engine accepts two previously exported batch JSON reports without opening or executing the original PowerShell files.
+v0.6 was merged into `main` in PR #7. v0.7 development on `feat/v07-v1-hardening` adds safe paste inspection, an acceptance-gate audit, function-context and command-shadowing limitations, and explicit unresolved-target/incomplete-parsing notes.
 
-Last verified checkpoint (2026-10-27, Slice 4):
+Last verified checkpoint (2026-10-28, Slice 4):
 
-- 246 automated tests passed in Release configuration, zero failures/skips.
+- 297 automated tests passed, zero failures/skips.
 - WinUI desktop built and launched locally.
-- A baseline/current comparison displayed 1 newly detected, 1 still detected, and 0 no-longer-detected patterns.
-- Native desktop JSON export was validated with `sourceExecuted: false`.
-- Original **Try sample** still detected 6 commands, 6 findings, and 0 parser diagnostics.
-- GitHub Actions Windows CI run #53, commit `c8a5b99`, passed both build-and-test and WinUI desktop compilation jobs.
-- Feature branch clean and synchronized with GitHub after Slice 4.
+- Manual tests covered paste inspection, defined functions, shadowed cmdlet names, unresolved `.exe`/module-qualified commands, and malformed PowerShell.
+- GitHub Actions Windows CI #60 passed both test and WinUI build jobs for commit `1073a5f`.
+- The feature branch was clean and synchronized with GitHub after Slice 4.
 
-Slice 5 updates documentation/version labels and adds four focused comparison regression tests. These additions are **not yet verified** until the local test run and hosted CI succeed. The desktop remains a development preview: no signed installer or verified clean-machine distribution exists.
+Slice 5 updates the v0.7 version display, accessibility metadata, release guidance, and adds six focused regression tests. **These changes must pass local Windows builds, manual keyboard/scaling checks, and hosted CI before v0.7 can be considered closed.** No signed installer or tested clean-machine distribution exists yet; that is planned for v0.8.
 
 ## Historical milestones
 

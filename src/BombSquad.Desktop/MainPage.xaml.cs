@@ -256,6 +256,9 @@ public sealed partial class MainPage : Page
         ComparisonExportButton.IsEnabled = !busy && _currentComparison is not null;
         ComparisonFileSelector.IsEnabled = !busy && _currentComparison is not null;
         ComparisonChangeList.IsEnabled = !busy && _currentComparison is not null;
+        OpenPasteButton.IsEnabled = !busy;
+        InspectPasteButton.IsEnabled = !busy;
+        ClosePasteButton.IsEnabled = !busy;
         OpenFileButton.IsEnabled = !busy;
         OpenBatchButton.IsEnabled = !busy;
         BatchFileSelector.IsEnabled = !busy;
@@ -342,6 +345,7 @@ public sealed partial class MainPage : Page
         DiagnosticCountText.Text = result.Diagnostics.Length.ToString();
         ParseStatusText.Text =
             $"Status: {result.Status} | Rules skipped: {result.RulesSkipped} | " +
+            $"Unresolved notes: {result.UnsupportedConstructs.Length} | " +
             $"Engine: {result.EngineVersion}";
 
         FindingsList.ItemsSource = result.Findings.ToArray();
@@ -376,13 +380,26 @@ public sealed partial class MainPage : Page
         }
         else
         {
-            DetailsTitleText.Text = "No matching findings";
-            LocationText.Text = "No supported rule matches";
-            EvidenceText.Text = "No matching source evidence.";
-            PotentialEffectText.Text = "The implemented detection rules found no matching operations.";
+            bool hasUnresolved = !result.UnsupportedConstructs.IsEmpty;
+            DetailsTitleText.Text = hasUnresolved
+                ? "No rule matches — unresolved invocations"
+                : "No matching findings";
+            LocationText.Text = hasUnresolved
+                ? $"{result.UnsupportedConstructs.Length} unresolved review note(s)"
+                : "No supported rule matches";
+            EvidenceText.Text = hasUnresolved
+                ? string.Join(Environment.NewLine, result.UnsupportedConstructs)
+                : "No matching source evidence.";
+            PotentialEffectText.Text = hasUnresolved
+                ? "Command binding or behavior was not fully established. " +
+                  "No implemented risk rule matched this source."
+                : "The implemented detection rules found no matching operations.";
             LimitationsText.Text =
-                "The current rule set is partial. No findings does not establish safety.";
-            NextStepText.Text = "Review the script, its inputs, and its execution context.";
+                "The current rule set is partial. No findings does not establish safety. " +
+                (hasUnresolved ? "Review unresolved command targets and function binding." : "");
+            NextStepText.Text = hasUnresolved
+                ? "Verify command targets, inputs, and intended execution context separately."
+                : "Review the script, its inputs, and its execution context.";
         }
     }
 

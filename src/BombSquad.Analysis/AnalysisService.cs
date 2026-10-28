@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using BombSquad.Core;
 using BombSquad.Rules;
 
@@ -24,9 +24,40 @@ public sealed class AnalysisService
             ? AnalysisStatus.ParsedWithErrors
             : AnalysisStatus.Parsed;
 
-        ImmutableArray<Finding> findings = hasSyntaxErrors
+        // Evaluate possible built-in matches, then withhold a match only
+        // when that candidate's name collides with a source-defined function.
+        // Benign helper-function calls do not become spurious warnings.
+        ImmutableArray<Finding> candidateFindings = hasSyntaxErrors
             ? ImmutableArray<Finding>.Empty
             : _ruleEngine.Evaluate(parsed.Commands);
+
+        var ambiguousOffsets = parsed.Commands
+            .Where(command => command.MayBeShadowedBySourceFunction)
+            .Select(command => command.Span.StartOffset)
+            .ToHashSet();
+
+        ImmutableArray<Finding> evaluatedFindings = candidateFindings
+            .Where(finding => !ambiguousOffsets.Contains(
+                finding.SourceSpan.StartOffset))
+            .ToImmutableArray();
+
+        var insideDefinitionOffsets = parsed.Commands
+            .Where(command => command.IsInsideFunctionDefinition)
+            .Select(command => command.Span.StartOffset)
+            .ToHashSet();
+
+        ImmutableArray<Finding> findings = evaluatedFindings
+            .Select(finding => insideDefinitionOffsets.Contains(
+                    finding.SourceSpan.StartOffset)
+                ? finding with
+                {
+                    Limitations = finding.Limitations.Add(
+                        "This command is inside a function definition. " +
+                        "Defining the function does not call it; " +
+                        "whether this function is invoked is unknown.")
+                }
+                : finding)
+            .ToImmutableArray();
 
         var unsupportedConstructs = parsed.Commands
             .Where(command => command.CommandName is null)
@@ -35,6 +66,49 @@ public sealed class AnalysisService
                 $"{command.Span.StartLine}, " +
                 $"column {command.Span.StartColumn}.")
             .ToImmutableArray();
+
+        var suppressedOffsets = candidateFindings
+            .Where(finding => ambiguousOffsets.Contains(
+                finding.SourceSpan.StartOffset))
+            .Select(finding => finding.SourceSpan.StartOffset)
+            .ToHashSet();
+
+        var shadowedCommands = parsed.Commands
+            .Where(command => suppressedOffsets.Contains(command.Span.StartOffset))
+            .ToImmutableArray();
+
+        unsupportedConstructs = unsupportedConstructs.AddRange(
+            shadowedCommands.Select(command =>
+                $"Command '{command.CommandName}' at line " +
+                $"{command.Span.StartLine}, column {command.Span.StartColumn} " +
+                "matches a function name defined in this source. " +
+                "Built-in-specific detection was withheld; " +
+                "scope and invocation order are unresolved."));
+
+        // Report syntactically recognizable but unresolved invocation targets.
+        // No filesystem lookup, command discovery or code execution occurs.
+        // Ordinary literal cmdlet names cannot reliably be classified as
+        // native, module-provided, or built-in without runtime resolution.
+        var qualifiedCommands = parsed.Commands
+            .Where(command => IsQualifiedOrExternalTarget(command.CommandName))
+            .ToImmutableArray();
+
+        unsupportedConstructs = unsupportedConstructs.AddRange(
+            qualifiedCommands.Select(command =>
+                $"Unresolved external or qualified command target " +
+                $"'{command.CommandName}' at line {command.Span.StartLine}, " +
+                $"column {command.Span.StartColumn}. " +
+                "The executable, script, module, or path target and its " +
+                "behavior were not resolved. This is not proof of execution."));
+
+        if (hasSyntaxErrors)
+        {
+            unsupportedConstructs = unsupportedConstructs.Add(
+                $"Incomplete analysis: {parsed.Diagnostics.Length} PowerShell " +
+                "parser diagnostic(s) reported. Detection rules were " +
+                "skipped for the entire source; parsed command nodes are " +
+                "for inspection only and are not cleared of risk.");
+        }
 
         var limitations = ImmutableArray.Create(
             "This is a partial rule set. Six rule IDs are active: " +
@@ -58,6 +132,31 @@ public sealed class AnalysisService
             "The absence of findings does not establish safety."
         );
 
+        if (parsed.Commands.Any(command => command.IsInsideFunctionDefinition))
+        {
+            limitations = limitations.Add(
+                "Some commands occur inside function definitions. " +
+                "Definition is not execution and function reachability is not analyzed.");
+        }
+
+        if (!shadowedCommands.IsEmpty)
+        {
+            limitations = limitations.Add(
+                "Commands whose names match functions defined in this source " +
+                "were excluded from built-in-specific rules. " +
+                "This conservative file-wide check does not resolve lexical scope, " +
+                "declaration order, or actual runtime command binding.");
+        }
+
+        if (!qualifiedCommands.IsEmpty)
+        {
+            limitations = limitations.Add(
+                "Literal external executable, script, module-qualified, " +
+                "and path-qualified invocations have not been resolved. " +
+                "Other bare literal commands can also have unknown " +
+                "implementations; this is not complete command discovery.");
+        }
+
         if (hasSyntaxErrors)
         {
             limitations = limitations.Add(
@@ -80,5 +179,22 @@ public sealed class AnalysisService
         {
             Commands = parsed.Commands
         };
+    }
+
+    private static bool IsQualifiedOrExternalTarget(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        // These suffixes are only syntactic clues. They do not establish
+        // whether a target exists, what it does, or whether it runs.
+        return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".bat", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".com", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains('\\') || name.Contains('/');
     }
 }
