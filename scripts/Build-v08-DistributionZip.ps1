@@ -23,23 +23,44 @@ $repo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 if ((Get-Location).Path -ne $repo) {
     throw 'Run this script from the BOMB SQUAD repository root.'
 }
-$branchText = & git branch --show-current
-if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect current Git branch.' }
-$branch = ([string]$branchText).Trim()
-$inGitHubActions = ($env:GITHUB_ACTIONS -eq 'true')
-if (-not $inGitHubActions -and $branch -ne 'feat/v08-windows-distribution') {
-    throw 'Expected v0.8 feature branch for local ZIP packaging.'
+# GitHub pull requests are checked out as detached HEADs (no branch name).
+$branchLines = @(& git branch --show-current)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not query Git branch. Stop.'
+}
+$branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
+$isFeature = $branch -eq 'feat/v08-windows-distribution'
+$isMain = $branch -eq 'main'
+$isPullRequest = (
+    [string]::IsNullOrWhiteSpace($branch) -and
+    $env:GITHUB_ACTIONS -eq 'true' -and
+    $env:GITHUB_EVENT_NAME -eq 'pull_request' -and
+    $env:GITHUB_BASE_REF -eq 'main' -and
+    $env:GITHUB_HEAD_REF -eq 'feat/v08-windows-distribution'
+)
+if (-not ($isFeature -or $isMain -or $isPullRequest)) {
+    throw "Unsupported distribution checkout (branch='$branch'; event='$env:GITHUB_EVENT_NAME'). Stop."
+}
+if ($isPullRequest) {
+    Write-Host 'Packaging checked-out GitHub pull request merge commit (detached HEAD).'
 }
 & git merge-base --is-ancestor 6d01422 HEAD
 if ($LASTEXITCODE -ne 0) {
     throw 'Current branch does not contain verified Slice 2 commit 6d01422. Stop.'
 }
-$commit = (& git rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
-    throw 'Cannot determine Git source commit. Stop.'
+$headLines = @(& git rev-parse --verify HEAD)
+if ($LASTEXITCODE -ne 0 -or $headLines.Count -ne 1 -or
+    [string]::IsNullOrWhiteSpace([string]$headLines[0])) {
+    throw 'Cannot determine Git source commit (rev-parse --verify HEAD). Stop.'
 }
+$commit = ([string]$headLines[0]).Trim()
 
-$publish = (Resolve-Path -LiteralPath $PublishDirectory).Path.TrimEnd([char]'\')
+$publishResolved = Resolve-Path -LiteralPath $PublishDirectory -ErrorAction Stop
+if ($null -eq $publishResolved -or
+    [string]::IsNullOrWhiteSpace([string]$publishResolved.Path)) {
+    throw 'PublishDirectory cannot be resolved to an existing path. Stop.'
+}
+$publish = ([string]$publishResolved.Path).TrimEnd([char]'\')
 $probeRoot = Split-Path -Parent $publish
 if ((Split-Path -Leaf $publish) -ne 'publish' -or
     (Split-Path -Leaf $probeRoot) -notlike 'BombSquad-v08-PublishProbe-*') {

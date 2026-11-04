@@ -1,7 +1,9 @@
 # BOMB SQUAD v0.8 - Distribution Preview Closeout Checklist
 
-**Branch:** `feat/v08-windows-distribution`  
-**Latest previously validated commit:** `4f5cee5`  
+**Branch:** `feat/v08-windows-distribution`
+
+**Latest previously validated commit:** `4f5cee5`
+
 **Scope:** Development preview milestone; no public Release, signed installer, or claims of clean-machine compatibility.
 
 ## Recorded evidence (already verified)
