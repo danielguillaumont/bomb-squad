@@ -499,9 +499,11 @@ public sealed partial class MainPage : Page
             var picker = new FileSavePicker
             {
                 SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                SuggestedFileName = batch is null
+                SuggestedFileName = (batch is null
                     ? Path.GetFileNameWithoutExtension(sourceIdentifier) + "-bomb-squad-report"
-                    : "bomb-squad-batch-report"
+                    : "bomb-squad-batch-report") + "-" +
+                    DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" +
+                    Guid.NewGuid().ToString("N")[..8]
             };
             picker.FileTypeChoices.Add("JSON report", new List<string> { ".json" });
             InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));

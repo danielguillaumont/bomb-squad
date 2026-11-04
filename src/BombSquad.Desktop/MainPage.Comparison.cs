@@ -243,7 +243,9 @@ public sealed partial class MainPage
             var picker = new FileSavePicker
             {
                 SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                SuggestedFileName = "bomb-squad-comparison"
+                SuggestedFileName = "bomb-squad-comparison-" +
+                    DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" +
+                    Guid.NewGuid().ToString("N")[..8]
             };
             picker.FileTypeChoices.Add("JSON report", new List<string> { ".json" });
             InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
