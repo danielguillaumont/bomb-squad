@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Generate project-local packages.lock.json files for repeatable NuGet restores. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+</Project>

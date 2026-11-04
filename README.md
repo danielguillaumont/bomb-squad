@@ -12,7 +12,7 @@ BOMB SQUAD statically analyzes PowerShell source code, identifies supported pote
 
 ## What works today
 
-The current v0.7 development implementation includes:
+The current v0.8 development preview includes:
 
 - PowerShell parsing using the PowerShell Abstract Syntax Tree (AST).
 - Six rule families for selected potentially consequential operations.
@@ -30,7 +30,7 @@ The current v0.7 development implementation includes:
 - Two-snapshot baseline comparison for previously exported batch JSON reports in CLI and WinUI.
 - Comparison JSON export with newly, still, and no-longer-detected findings and incomplete-coverage status.
 
-The CLI and desktop application share the same static analysis and report-comparison engines. The desktop is a **v0.7 development preview**, not a signed or packaged release. The last verified v0.7 baseline included **297 passing automated tests** and successful Windows CI (#60, commit `1073a5f`). The final v0.7 closeout tests, accessibility checks, and milestone merge remain pending until verified.
+The CLI and desktop application share the same static analysis and report-comparison engines. The current **v0.8 development preview** is unsigned and not a public GitHub Release. The latest previously verified baseline included **303 passing automated tests**; clean-machine compatibility has not been tested. The distribution ZIP and its integrity manifest were verified on the development machine and in GitHub Actions.
 
 ## What's new in v0.7
 
@@ -307,6 +307,18 @@ The current version has a partial rule set. It does not resolve every dynamic co
 **No findings does not mean a script is safe.**
 
 BOMB SQUAD is not an antivirus engine, malware sandbox, universal safety checker, or replacement for professional code review.
+
+## v0.8 Windows distribution preview (closeout in progress)
+
+The v0.8 branch adds a **self-contained, unpackaged Windows x64 development preview**, not a signed installer or a public GitHub Release.
+
+- The Windows publish probe checks the published executable and physical shield/window branding assets.
+- Windows dependency versions are pinned, and six project-level NuGet lock files support locked restores. The .NET SDK version itself is not pinned to an exact patch.
+- A ZIP distribution script generates the preview application, a JSON per-file SHA-256 manifest, and `SHA256SUMS.txt`; a separate verifier extracts and validates all files.
+- GitHub Actions builds, packages, verifies, and uploads an expiring workflow artifact. This is a preview build artifact, **not** a production release.
+- The downloaded GitHub-built artifact passed 558/558 file checks. Its EXE launched on the developer's Windows PC; **Try sample** showed 6 commands, 6 findings, and 0 parser errors.
+
+**Important:** Fresh Windows x64 testing **without** the .NET SDK or developer tools is **NOT TESTED / DEFERRED** because there was insufficient free RAM for the proposed test VM. This preview is unsigned; integrity checks alone do not establish publisher authenticity or clean-machine compatibility. Inspecting PowerShell source remains read-only and does not execute that source. Before a public v1.0 release, test on a clean Windows environment and make an explicit signing/installer decision. See [`docs/v08-closeout-checklist.md`](docs/v08-closeout-checklist.md).
 
 ## Roadmap
 
