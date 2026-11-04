@@ -23,7 +23,7 @@ Branch: `feat/v09-release-candidate`
 
 ## Remaining before v0.9 milestone closeout
 
-- [ ] Review export validation failure-path regression coverage.
+- [x] Reviewed export validation coverage: JSON writer tests and a successful desktop export are verified; WinUI storage failure injection remains deferred.
 - [ ] Synchronize README development status and milestone table.
 - [ ] Review user-facing warnings, documentation and limitations.
 - [ ] Confirm final Windows CI on the latest feature-branch commit.
