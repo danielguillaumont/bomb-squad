@@ -23,9 +23,12 @@ $repo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 if ((Get-Location).Path -ne $repo) {
     throw 'Run this script from the BOMB SQUAD repository root.'
 }
-$branch = (& git branch --show-current).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne 'feat/v08-windows-distribution') {
-    throw 'Expected feat/v08-windows-distribution. Stop.'
+$branchText = & git branch --show-current
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect current Git branch.' }
+$branch = ([string]$branchText).Trim()
+$inGitHubActions = ($env:GITHUB_ACTIONS -eq 'true')
+if (-not $inGitHubActions -and $branch -ne 'feat/v08-windows-distribution') {
+    throw 'Expected v0.8 feature branch for local ZIP packaging.'
 }
 & git merge-base --is-ancestor 6d01422 HEAD
 if ($LASTEXITCODE -ne 0) {

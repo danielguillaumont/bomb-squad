@@ -1,0 +1,65 @@
+name: Windows Distribution Preview
+
+# Preview artifact only. This workflow does not create a GitHub Release.
+on:
+  push:
+    branches:
+      - main
+      - feat/v08-windows-distribution
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-and-verify:
+    name: Publish, ZIP, Verify (win-x64)
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          # The existing ZIP builder verifies an ancestor commit.
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify locked solution dependencies
+        shell: powershell
+        run: |
+          dotnet restore BombSquad.slnx --locked-mode
+          if ($LASTEXITCODE -ne 0) { throw 'Solution locked restore failed.' }
+
+      - name: Verify locked WinUI dependencies
+        shell: powershell
+        run: |
+          dotnet restore src/BombSquad.Desktop/BombSquad.Desktop.csproj --locked-mode
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop locked restore failed.' }
+
+      - name: Run regression tests
+        shell: powershell
+        run: |
+          dotnet test BombSquad.slnx -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Release tests failed.' }
+
+      - name: Build and verify preview distribution
+        id: package
+        shell: powershell
+        run: .\scripts\Run-v08-DistributionCI.ps1
+
+      - name: Upload preview ZIP, manifest and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: BOMB-SQUAD-v0.8-preview-win-x64-${{ github.sha }}
+          path: ${{ steps.package.outputs.artifact_dir }}/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
