@@ -254,8 +254,7 @@ public sealed partial class MainPage
 
             SetBusy(true);
             string json = BatchReportComparisonJsonWriter.Serialize(_currentComparison);
-            await FileIO.WriteTextAsync(selectedFile, json + Environment.NewLine,
-                Windows.Storage.Streams.UnicodeEncoding.Utf8);
+            await WriteVerifiedReportAsync(selectedFile, json);
             ComparisonStatusText.Text =
                 $"Comparison saved: {selectedFile.Name}. Export may contain source evidence and local paths.";
         }
