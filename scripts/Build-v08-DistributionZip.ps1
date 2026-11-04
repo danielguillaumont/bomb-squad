@@ -36,7 +36,7 @@ $isPullRequest = (
     $env:GITHUB_ACTIONS -eq 'true' -and
     $env:GITHUB_EVENT_NAME -eq 'pull_request' -and
     $env:GITHUB_BASE_REF -eq 'main' -and
-    $env:GITHUB_HEAD_REF -eq 'feat/v08-windows-distribution'
+    (-not [string]::IsNullOrWhiteSpace($env:GITHUB_HEAD_REF))
 )
 if (-not ($isFeature -or $isMain -or $isPullRequest)) {
     throw "Unsupported distribution checkout (branch='$branch'; event='$env:GITHUB_EVENT_NAME'). Stop."
