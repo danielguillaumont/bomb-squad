@@ -4,7 +4,7 @@
 
 [![Windows CI](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-ci.yml/badge.svg)](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-ci.yml)
 [![Windows Distribution Preview](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml/badge.svg)](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml)
-![Status](https://img.shields.io/badge/status-v0.8%20development%20preview-64748b)
+![Status](https://img.shields.io/badge/status-v0.9%20release%20candidate-64748b)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-2563eb)
 
 **BOMB SQUAD** is an offline-first, read-only **PowerShell Change & Risk Inspector** built with **C# / .NET 10**, the PowerShell **Abstract Syntax Tree (AST)**, and **WinUI 3**. It helps security-minded developers, administrators, and reviewers understand potentially consequential operations in a script *before* deciding whether to run it.
@@ -15,7 +15,7 @@ It identifies selected patterns involving files, Defender settings, registry val
 
 ## Project status
 
-| Area | v0.8 status |
+| Area | v0.9 development status |
 | --- | --- |
 | Static PowerShell inspection | Implemented — six detection rule families |
 | Windows desktop | Native WinUI 3 development preview |
@@ -23,12 +23,12 @@ It identifies selected patterns involving files, Defender settings, registry val
 | Multi-file inspection | Implemented for explicitly selected `.ps1` files |
 | Baseline comparison | Implemented for two saved batch JSON snapshots |
 | Pasted PowerShell snippets | Implemented with bounded, in-memory input |
-| Automated regression suite | **303 tests passing** at v0.8 closeout |
-| Windows build and distribution CI | Passing; preview ZIP and checksums generated and verified |
+| Automated regression suite | **317 tests passing** locally on the v0.9 branch |
+| Windows build and distribution CI | Previously passed; final v0.9 CI re-verification pending |
 | Public signed release / installer | **Not yet available** |
 | Clean-machine compatibility | **Not yet verified**; required before v1.0 |
 
-**v0.8 is merged into `main`** through [PR #9](https://github.com/danielguillaumont/bomb-squad/pull/9). The current distribution is an **unsigned development preview**, not a production installer or published GitHub Release.
+**v0.8 is merged into `main`** through [PR #9](https://github.com/danielguillaumont/bomb-squad/pull/9). The `feat/v09-release-candidate` branch contains the v0.9 development release candidate, which has not yet merged into `main`. The distribution remains an **unsigned development preview**, not a production installer or published GitHub Release.
 
 ## What you can do
 
@@ -152,6 +152,21 @@ A comparison matches **rule ID plus exact source evidence**, not line numbers. E
 
 These values describe the **strict-mode flags**. Without them, a completed inspection or comparison may exit `0` even with findings. **Exit code `0` never certifies that the script is safe.**
 
+## v0.9 release candidate
+
+The `feat/v09-release-candidate` branch is undergoing final development release-candidate verification. This is not a public or signed release.
+
+- 317 automated .NET tests passed locally.
+- Windows Desktop Debug build and targeted CLI checks passed.
+- ZIP entry preflight rejects unsafe archive structures before extraction; extracted-file SHA-256 verification remains required.
+- Desktop JSON exports validate serialized content and read the saved file back for verification.
+- The desktop displays `v0.9 release candidate`. Engine and rule-set identifiers remain `0.2.0-dev` for comparison compatibility.
+- Final hosted CI, distribution artifact review, and pull-request review remain outstanding.
+
+See the [v0.9 closeout checklist](docs/v09-closeout-checklist.md), [release-candidate gates](docs/v09-release-candidate-gates.md), and [ZIP preflight notes](docs/v09-slice2-zip-preflight.md).
+
+A fresh non-administrative Windows x64 machine without the SDK has not been verified. The preview is unsigned. Reports may expose local file paths and source evidence. Comparisons require compatible snapshots with matching file identities. No findings does not establish safety.
+
 ## Windows x64 distribution preview (v0.8)
 
 v0.8 establishes a **reproducible preview packaging pipeline** for a self-contained, unpackaged Windows x64 application:
@@ -226,7 +241,7 @@ BOMB SQUAD is **not** an antivirus engine, execution sandbox, malware verdict sy
 | v0.6 | Baseline JSON comparison in CLI and desktop | Complete |
 | v0.7 | Pasted inspection, uncertainty handling, acceptance checks | Complete |
 | **v0.8** | **Windows preview ZIP, dependency locking, build/distribution CI** | **Complete — merged via PR #9** |
-| v0.9 | Release-candidate QA, clean-machine validation, accessibility and packaging decisions | Planned |
+| **v0.9** | **Release gates, ZIP preflight, desktop export verification, CLI and UI QA** | **Final closeout in progress; not yet merged** |
 | v1.0 | Final user documentation, release validation, version/tag, signed installer decision | Planned |
 
 The v1.0 scope prioritizes **reliability and honest reporting** over claiming comprehensive PowerShell coverage. For engineering notes, see [development progress](docs/progress.md), [v0.7 acceptance audit](docs/v07-acceptance-audit.md), and architecture decisions in [`docs/adr`](docs/adr).
