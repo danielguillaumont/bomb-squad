@@ -243,7 +243,9 @@ public sealed partial class MainPage
             var picker = new FileSavePicker
             {
                 SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                SuggestedFileName = "bomb-squad-comparison"
+                SuggestedFileName = "bomb-squad-comparison-" +
+                    DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" +
+                    Guid.NewGuid().ToString("N")[..8]
             };
             picker.FileTypeChoices.Add("JSON report", new List<string> { ".json" });
             InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
@@ -252,8 +254,7 @@ public sealed partial class MainPage
 
             SetBusy(true);
             string json = BatchReportComparisonJsonWriter.Serialize(_currentComparison);
-            await FileIO.WriteTextAsync(selectedFile, json + Environment.NewLine,
-                Windows.Storage.Streams.UnicodeEncoding.Utf8);
+            await WriteVerifiedReportAsync(selectedFile, json);
             ComparisonStatusText.Text =
                 $"Comparison saved: {selectedFile.Name}. Export may contain source evidence and local paths.";
         }

@@ -29,7 +29,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Could not query Git branch. Stop.'
 }
 $branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
-$isFeature = $branch -eq 'feat/v08-windows-distribution'
+$isFeature = $branch -in @('feat/v08-windows-distribution', 'feat/v09-release-candidate')
 $isMain = $branch -eq 'main'
 $isPullRequest = (
     [string]::IsNullOrWhiteSpace($branch) -and
@@ -141,12 +141,25 @@ Write-Host "Preview output folder: $bundle"
 Write-Host "Published files: $($files.Count)"
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    $publish,
+$archive = [System.IO.Compression.ZipFile]::Open(
     $zipPath,
-    [System.IO.Compression.CompressionLevel]::Optimal,
-    $false
+    [System.IO.Compression.ZipArchiveMode]::Create
 )
+try {
+    foreach ($file in $files) {
+        $entryName = $file.FullName.Substring($prefix.Length).Replace('\', '/')
+
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $archive,
+            $file.FullName,
+            $entryName,
+            [System.IO.Compression.CompressionLevel]::Optimal
+        ) | Out-Null
+    }
+}
+finally {
+    $archive.Dispose()
+}
 if (-not (Test-Path -LiteralPath $zipPath -PathType Leaf)) {
     throw 'ZIP creation did not produce an archive.'
 }

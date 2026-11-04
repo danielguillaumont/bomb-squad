@@ -478,6 +478,33 @@ public sealed partial class MainPage : Page
         UpdateSourceLocationHint();
     }
 
+    private static async Task WriteVerifiedReportAsync(
+        StorageFile selectedFile, string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            throw new InvalidDataException("The serialized report is empty.");
+        }
+
+        using (System.Text.Json.JsonDocument.Parse(json))
+        {
+            // Validate JSON before writing anything.
+        }
+
+        string content = json + Environment.NewLine;
+
+        await FileIO.WriteTextAsync(
+            selectedFile, content, UnicodeEncoding.Utf8);
+
+        string saved = await FileIO.ReadTextAsync(
+            selectedFile, UnicodeEncoding.Utf8);
+
+        if (!string.Equals(saved, content, StringComparison.Ordinal))
+        {
+            throw new IOException(
+                "The saved report did not match the serialized JSON.");
+        }
+    }
     private async void ExportReport_Click(object sender, RoutedEventArgs e)
     {
         if (_isAnalyzing || (_currentBatch is null &&
@@ -499,9 +526,11 @@ public sealed partial class MainPage : Page
             var picker = new FileSavePicker
             {
                 SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                SuggestedFileName = batch is null
+                SuggestedFileName = (batch is null
                     ? Path.GetFileNameWithoutExtension(sourceIdentifier) + "-bomb-squad-report"
-                    : "bomb-squad-batch-report"
+                    : "bomb-squad-batch-report") + "-" +
+                    DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" +
+                    Guid.NewGuid().ToString("N")[..8]
             };
             picker.FileTypeChoices.Add("JSON report", new List<string> { ".json" });
             InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
@@ -517,8 +546,7 @@ public sealed partial class MainPage : Page
             string report = batch is not null
                 ? BatchJsonAnalysisReportWriter.Serialize(batch)
                 : JsonAnalysisReportWriter.Serialize(sourceIdentifier, result!);
-            await FileIO.WriteTextAsync(
-                selectedFile, report + Environment.NewLine, UnicodeEncoding.Utf8);
+            await WriteVerifiedReportAsync(selectedFile, report);
 
             ExportStatusText.Text = $"Report saved: {selectedFile.Name}. Report may contain source excerpts and file paths.";
             ExportStatusText.Visibility = Visibility.Visible;

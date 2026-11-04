@@ -66,6 +66,13 @@ if ($expectedFiles.Count -lt 100 -or
     throw 'Distribution manifest file count is inconsistent.'
 }
 
+# Reject ambiguous or undeclared ZIP entries BEFORE the existing extraction and hash checks.
+$entryPreflight = Join-Path $PSScriptRoot 'Test-v09-ArchiveEntryPreflight.ps1'
+if (-not (Test-Path -LiteralPath $entryPreflight -PathType Leaf)) {
+    throw 'v0.9 ZIP entry preflight missing. Refusing extraction.'
+}
+& $entryPreflight -ZipPath $zipPath -ManifestPath $manifestPath
+
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
