@@ -37,12 +37,32 @@ function Add-ZipEntry {
 }
 
 function Assert-Blocked {
-    param([string]$Label, [string]$ArchivePath, [string]$ManifestPath)
-    $blocked = $false
-    try { & $validator -ZipPath $ArchivePath -ManifestPath $ManifestPath | Out-Null }
-    catch { $blocked = $true }
-    if (-not $blocked) { throw "FAILED: Preflight allowed $Label" }
-    Write-Host "PASS: rejected $Label"
+    param(
+        [string]$Label,
+        [string]$ArchivePath,
+        [string]$ManifestPath,
+        [string]$ExpectedMessage
+    )
+
+    $actualMessage = $null
+
+    try {
+        & $validator -ZipPath $ArchivePath -ManifestPath $ManifestPath |
+            Out-Null
+    }
+    catch {
+        $actualMessage = $_.Exception.Message
+    }
+
+    if ($null -eq $actualMessage) {
+        throw "FAILED: Preflight allowed $Label"
+    }
+
+    if (-not $actualMessage.Contains($ExpectedMessage)) {
+        throw "FAILED: Wrong rejection for $Label. Expected '$ExpectedMessage'; received '$actualMessage'"
+    }
+
+    Write-Host "PASS: rejected $Label for expected reason."
 }
 
 try {
@@ -101,17 +121,17 @@ try {
     $extra = Join-Path $root 'extra.zip'
     Copy-Item -LiteralPath $good -Destination $extra
     Add-ZipEntry -ArchivePath $extra -EntryName 'unlisted.txt'
-    Assert-Blocked -Label 'undeclared ZIP file' -ArchivePath $extra -ManifestPath $json
+    Assert-Blocked -Label 'undeclared ZIP file' -ArchivePath $extra -ManifestPath $json -ExpectedMessage 'Unexpected ZIP file absent from manifest'
 
     $traversal = Join-Path $root 'traversal.zip'
     Copy-Item -LiteralPath $good -Destination $traversal
     Add-ZipEntry -ArchivePath $traversal -EntryName '../outside.txt'
-    Assert-Blocked -Label 'path traversal ZIP entry' -ArchivePath $traversal -ManifestPath $json
+    Assert-Blocked -Label 'path traversal ZIP entry' -ArchivePath $traversal -ManifestPath $json -ExpectedMessage 'Unsafe or Windows-ambiguous archive path'
 
     $collision = Join-Path $root 'collision.zip'
     Copy-Item -LiteralPath $good -Destination $collision
     Add-ZipEntry -ArchivePath $collision -EntryName 'A.TXT'
-    Assert-Blocked -Label 'case-colliding ZIP entries' -ArchivePath $collision -ManifestPath $json
+    Assert-Blocked -Label 'case-colliding ZIP entries' -ArchivePath $collision -ManifestPath $json -ExpectedMessage 'Duplicate or case-colliding ZIP entry'
 
     $badSize = Join-Path $root 'size.json'
     $manifest.files[0].sizeBytes = [long]$manifest.files[0].sizeBytes + 1
@@ -120,7 +140,7 @@ try {
         $badSize, (ConvertTo-Json -InputObject $manifest -Depth 8),
         [System.Text.UTF8Encoding]::new($false)
     )
-    Assert-Blocked -Label 'manifest length mismatch' -ArchivePath $good -ManifestPath $badSize
+    Assert-Blocked -Label 'manifest length mismatch' -ArchivePath $good -ManifestPath $badSize -ExpectedMessage 'ZIP entry size differs from manifest'
 
     Write-Host 'PASS: All five synthetic ZIP entry preflight scenarios.' -ForegroundColor Green
 }
