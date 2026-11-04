@@ -42,7 +42,7 @@ These are regression gates and do not certify the application as safe, complete 
 ## Remaining v0.9 work (do not mark done yet)
 
 1. **Slice 1** — Run all v0.8 plus new release-gate tests on Windows, build Desktop, and review results. Commit only after success; confirm hosted CI.
-2. **Slice 2** — Audit CLI and WinUI error handling and practical smoke-test scenarios. Make only verified, targeted fixes and add corresponding tests.
+2. **Slice 2** — Validate downloadable ZIP handling with pre-extraction archive safety checks and synthetic regression cases; follow with targeted CLI/WinUI smoke-test scenarios. Do not claim fresh-machine compatibility based on hosted CI.
 3. **Slice 3** — Validate the actual downloadable preview on a fresh, non-administrative Windows x64 machine without the development SDK. If unavailable, mark the gate **BLOCKED/DEFERRED** rather than passing it. Verify launch, brand assets, sample, paste, file, batch, JSON export, comparison and relaunch.
 4. **Slice 4** — Verify release documentation, version identifiers, warnings/limitations, distribution artifact and GitHub CI. Complete v0.9 checklist and merge a reviewed PR.
 

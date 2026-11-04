@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - feat/v08-windows-distribution
+      - feat/v09-release-candidate
   pull_request:
     branches:
       - main
@@ -49,6 +50,10 @@ jobs:
         run: |
           dotnet test BombSquad.slnx -c Release --no-restore
           if ($LASTEXITCODE -ne 0) { throw 'Release tests failed.' }
+
+      - name: Check archive entry safety regression cases
+        shell: powershell
+        run: .\scripts\Test-v09-ArchiveEntryPreflight.Tests.ps1
 
       - name: Build and verify preview distribution
         id: package
