@@ -1,7 +1,7 @@
 # BOMB SQUAD v0.9 — release candidate gates
 
-**Baseline:** v0.8 merged `main` at `f2cb3df` (PRs #9 and #10).  
-**Feature branch:** `feat/v09-release-candidate`.  
+**Baseline:** v0.8 merged `main` at `f2cb3df` (PRs #9 and #10).
+**Feature branch:** `feat/v09-release-candidate`.
 **Scope of Slice 1:** Integration-test and document existing behavior; do not modify the parser, rule engine, CLI, WinUI, or distribution pipeline.
 
 ## Evidence carried forward from v0.8
