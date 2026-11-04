@@ -266,3 +266,26 @@ Slice 5 closeout checklist:
 - [ ] PR against `main` opened, reviewed, merged, and local `main` synchronized.
 
 Important limits: comparison uses matching report paths and exact evidence; it does not track renamed files or infer that disappeared patterns were remediated. Parser/input failures and incompatible engine/rule-set metadata are indeterminate. The original PowerShell source is never executed or reopened during comparison. GUI interactions are verified manually, not by headless CI.
+
+## v0.8 - Self-contained Windows distribution preview (closeout in progress)
+
+Branch: `feat/v08-windows-distribution` (v0.7 merged at `3fb41f3`). No signed installer or public GitHub Release has been issued.
+
+- Slice 1 (`1a8952d`): self-contained unpackaged win-x64 publish and restored physical shield/window branding assets.
+- Slice 2 (`6d01422`): pinned Windows dependencies, six project lock files, and verified locked NuGet restores.
+- Slice 3 (`82b5cd3`): preview ZIP, JSON SHA-256 manifest and checksum file; 558/558 files verified after extraction.
+- Slice 4 (`4f5cee5`): Windows Distribution Preview CI built and verified the ZIP, uploaded a temporary GitHub artifact; its downloaded copy passed 558/558 file checks.
+- The GitHub-built EXE launched on the development Windows machine, with icons and built-in sample showing 6 commands, 6 findings and 0 syntax diagnostics. This is a developer-machine test, not a clean-machine acceptance result.
+- Latest previously verified automated baseline: 303 passing tests. Rerun the tests and desktop build after closeout edits before claiming final results.
+
+**Not tested / deferred:** Windows 11 clean-machine launch without developer tools. The intended VirtualBox VM was not provisioned because free host memory was insufficient. The app is unsigned and has no signed installer. No public Release has been published. File hashes verify integrity against the accompanying manifest, not publisher identity. No PowerShell source inspected by BOMB SQUAD is executed.
+
+Remaining closeout gates:
+
+- [ ] Update and manually verify the WinUI version label as `v0.8 development`.
+- [ ] Use `actions/upload-artifact@v6` and verify GitHub workflow execution without the former Node.js 20 upload-artifact warning.
+- [ ] Verify 303 or more Release tests (zero failures/skips), Desktop Debug build, and distribution packaging/integrity.
+- [ ] PR against `main` reviewed, Windows CI and distribution workflows green, merged, and local `main` synchronized.
+- [ ] Preserve clean-machine compatibility testing and signing/installer decision as pre-v1.0 release gates.
+
+See `docs/v08-closeout-checklist.md`.
