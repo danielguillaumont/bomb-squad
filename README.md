@@ -1,346 +1,234 @@
 # BOMB SQUAD
 
-**Know what a script could change before I run it.**
+**Know what a PowerShell script might change before you run it.**
 
-BOMB SQUAD is an offline-first, read-only PowerShell Change & Risk Inspector built with C# and .NET 10.
+[![Windows CI](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-ci.yml/badge.svg)](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-ci.yml)
+[![Windows Distribution Preview](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml/badge.svg)](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml)
+![Status](https://img.shields.io/badge/status-v0.8%20development%20preview-64748b)
+![Platform](https://img.shields.io/badge/platform-Windows%20x64-2563eb)
 
-I built it around a simple problem: PowerShell scripts can modify files, security settings, registry values, accounts, and system services. Before running an unfamiliar script, I want to understand the changes it might attempt.
+**BOMB SQUAD** is an offline-first, read-only **PowerShell Change & Risk Inspector** built with **C# / .NET 10**, the PowerShell **Abstract Syntax Tree (AST)**, and **WinUI 3**. It helps security-minded developers, administrators, and reviewers understand potentially consequential operations in a script *before* deciding whether to run it.
 
-BOMB SQUAD statically analyzes PowerShell source code, identifies supported potentially consequential operations, and explains the findings with source locations, evidence, uncertainty, and recommended review steps.
+It identifies selected patterns involving files, Defender settings, registry values, local identities, services and scheduled tasks, and dynamic execution. Each finding includes source evidence, location, potential effects, limitations, and a suggested review step.
 
-**The inspected PowerShell script is never executed.**
+> **Safety boundary:** BOMB SQUAD parses inspected PowerShell as text. **It never executes the script being inspected.** Findings are indicators for human review, not confirmation of execution, and **no findings does not mean safe**.
 
-## What works today
+## Project status
 
-The current v0.8 development preview includes:
+| Area | v0.8 status |
+| --- | --- |
+| Static PowerShell inspection | Implemented — six detection rule families |
+| Windows desktop | Native WinUI 3 development preview |
+| CLI and structured JSON | Implemented, with optional CI exit-code gates |
+| Multi-file inspection | Implemented for explicitly selected `.ps1` files |
+| Baseline comparison | Implemented for two saved batch JSON snapshots |
+| Pasted PowerShell snippets | Implemented with bounded, in-memory input |
+| Automated regression suite | **303 tests passing** at v0.8 closeout |
+| Windows build and distribution CI | Passing; preview ZIP and checksums generated and verified |
+| Public signed release / installer | **Not yet available** |
+| Clean-machine compatibility | **Not yet verified**; required before v1.0 |
 
-- PowerShell parsing using the PowerShell Abstract Syntax Tree (AST).
-- Six rule families for selected potentially consequential operations.
-- Analysis of real `.ps1` files without executing them.
-- Source line, column, and character-offset tracking.
-- Parser diagnostics and explicit handling of malformed scripts.
-- Evidence-backed findings with uncertainty and limitations.
-- Structured JSON report export for individual scripts and multi-file batches.
-- Optional CI/CD exit codes for automated review gates.
-- Automated tests covering detection, integration, CLI behavior, desktop support code, and non-execution.
-- A native Windows desktop application built with WinUI 3 and Windows App SDK.
-- A file picker, findings review, source-line navigation, and a dedicated read-only source workspace.
-- A native JSON Save dialog using the same report serializer as the CLI.
-- Windows GitHub Actions jobs for CLI/tests and desktop compilation.
-- Two-snapshot baseline comparison for previously exported batch JSON reports in CLI and WinUI.
-- Comparison JSON export with newly, still, and no-longer-detected findings and incomplete-coverage status.
+**v0.8 is merged into `main`** through [PR #9](https://github.com/danielguillaumont/bomb-squad/pull/9). The current distribution is an **unsigned development preview**, not a production installer or published GitHub Release.
 
-The CLI and desktop application share the same static analysis and report-comparison engines. The current **v0.8 development preview** is unsigned and not a public GitHub Release. The latest previously verified baseline included **303 passing automated tests**; clean-machine compatibility has not been tested. The distribution ZIP and its integrity manifest were verified on the development machine and in GitHub Actions.
+## What you can do
 
-## What's new in v0.7
+### Inspect before execution
 
-v0.7 focuses on the original v1 inspection journey and honest uncertainty reporting, not additional detection families.
+- Open a local `.ps1` file or paste a PowerShell snippet directly into the desktop app.
+- Parse source into PowerShell AST command nodes without executing it.
+- Review evidence-backed findings with source line and column navigation.
+- Inspect syntax diagnostics. When parsing fails, detection rules are skipped instead of presenting an unreliable clean result.
+- See explicit uncertainty notes for function definitions, command shadowing, and unresolved external or qualified command targets.
 
-- **Paste PowerShell snippet** accepts UTF-8 text up to 1 MiB for read-only AST inspection without writing a `.ps1` file.
-- Function-body findings explain that defining a function does not invoke it. Built-in-specific matches are conservatively withheld when source-defined function names collide; lexical scope and runtime binding are **not** resolved.
-- Incomplete PowerShell source produces parser diagnostics and skips all detection rules rather than implying clearance.
-- Recognizable external and module/path-qualified command names produce unresolved-target review notes; this is not runtime command discovery.
-- Added acceptance-gate and regression tests in `docs/v07-acceptance-audit.md`, plus a v0.7 manual closeout checklist.
+### Inspect multiple scripts
 
-The analyzer never executes the supplied source. Zero findings does not establish safety. The app remains a development preview; clean-machine distribution is planned for v0.8.
+- Select several `.ps1` files and inspect them independently.
+- Continue analysis of other files when an individual script has a parser error.
+- Review each file's findings and diagnostics, then export one combined batch JSON report.
+- Only explicitly selected files are read; directories are not recursively scanned.
 
-## What's new in v0.4
+### Compare two inspections
 
-The v0.4 development work improves the Windows desktop inspection experience:
+- Compare previously saved **baseline** and **current** batch JSON reports — the original `.ps1` files are not reopened.
+- Distinguish **newly detected**, **still detected**, and **no longer detected** pattern matches.
+- Identify incomplete or indeterminate comparisons instead of silently treating missing coverage as improvement.
+- Export comparison JSON or use `--fail-on-new` in a CI workflow.
 
-- Interactive parser diagnostics with multiple syntax errors listed separately.
-- Source navigation to the relevant line and column for findings and parser diagnostics.
-- Unified BOMB SQUAD branding across the desktop application and Windows icons.
-- Keyboard shortcuts for common inspection and navigation actions.
-- Responsive layouts for wide and narrow application windows.
-- Improved footer readability and reporting feedback.
+### Build and review locally
 
-The desktop remains a development preview, not a signed or packaged release. All PowerShell inspection remains static and read-only. Supplied scripts are never executed.
+- Use a native Windows UI for interactive examination, or the CLI for repeatable checks and automation.
+- Export machine-readable reports with explicit parse status, evidence, limitations, and non-execution metadata.
+- Run without cloud accounts, AI APIs, or network-based script execution.
 
-## What's new in v0.5
+## Quick start (from source)
 
-v0.5 introduces multi-file PowerShell inspection while preserving the existing offline-first, read-only static analysis model.
-
-- Batch inspection of multiple explicitly selected `.ps1` files.
-- Independent parsing, findings, and diagnostics for each file.
-- Batch-level statistics for files, commands, findings, and errors.
-- Continued processing of other files when one contains syntax errors.
-- Multi-file CLI inspection and combined JSON report export.
-- Desktop batch file selection and switching between individual results.
-- Batch JSON export containing results for every selected file.
-- Expanded automated regression coverage.
-
-Batch inspection reads only explicitly selected files. It does not recursively scan folders or execute submitted PowerShell.
-
-The desktop remains a development preview, not a signed or packaged application.
-
-## What's new in v0.6
-
-v0.6 adds **baseline comparison** of two previously exported v0.5-compatible batch JSON reports. The comparison feature never opens, parses, or executes the `.ps1` paths described by those reports.
-
-- New `--compare <baseline.json> <current.json>` CLI mode, with optional `--json <new-report.json>` export.
-- Optional `--fail-on-new` CI gate: `0` when the comparison is complete and no new findings are detected, `1` for one or more new matches, `2` for invalid inputs/export errors, and `3` for incomplete comparison coverage. Without the flag, a completed comparison may exit `0` despite new findings or incomplete coverage.
-- Desktop **Compare inspection reports** workspace for selecting two batch JSON snapshots, viewing per-file status and exact finding evidence, and exporting a comparison report.
-- Finding changes are classified as **newly detected**, **still detected**, or **no longer detected**. Occurrences are matched by rule ID and *exact source evidence*; moving unchanged evidence to another line does not count as new.
-- Parser failures, input failures, and engine/rule-set mismatches yield **indeterminate**, rather than falsely reporting resolved findings. Files appearing in only one snapshot are explicitly unmatched.
-
-**Interpretation matters:** these are static pattern matches, not runtime facts. A no-longer-detected pattern is **not** proof that code or a system is safe. Exact-evidence edits may look like both new and removed matches. Full report paths are used as file identities, so renamed/moved scripts are not tracked. Reports can contain sensitive paths and source excerpts.
-
-### Compare two saved batch reports from the CLI
-
-First save a baseline batch report, then save a current report after the source changes. Use unique output filenames: the CLI deliberately does not overwrite existing report files.
+**Prerequisites:** .NET 10 SDK. The desktop app additionally requires Windows with the WinUI 3 / Windows App SDK development prerequisites. Windows 11 is the development environment used for local verification.
 
 ```powershell
-$cli = ".\src\BombSquad.Cli\BombSquad.Cli.csproj"
-$script = ".\samples\example.ps1"
-
-# Capture the baseline at its original point in time.
-dotnet run --project $cli -c Release -- --batch $script --json ".\baseline.json"
-
-# Re-inspect the same script *after* making your own source changes.
-dotnet run --project $cli -c Release -- --batch $script --json ".\current.json"
-
-# Compare saved reports without reopening either .ps1 source.
-dotnet run --project $cli -c Release -- --compare ".\baseline.json" ".\current.json" --json ".\comparison.json" --fail-on-new
-```
-
-These commands are a workflow illustration: do not run the two batch captures back-to-back unchanged if you intend to demonstrate new findings. `--fail-on-new` returning `1` or `3` is an intentional CI signal; inspect the comparison before drawing conclusions. Original PowerShell content is never executed.
-
-### Compare saved reports in the desktop app
-
-Click **Compare inspection reports**, choose the baseline (older) and current (newer) batch JSON snapshots, and inspect the summary, per-file coverage, changed findings, and exact evidence. **Export comparison** uses the native Windows Save dialog. **Back to inspection** returns to the normal source examination workspace. The comparison operates on the saved JSON only.
-
-## Quick start
-
-Requirements:
-
-- .NET 10 SDK
-- Windows with the Windows App SDK development/build prerequisites for the desktop application (Windows 11 is the verified development environment).
-
-Clone the repository and build the solution:
-
-```powershell
+# Clone the project.
 git clone https://github.com/danielguillaumont/bomb-squad.git
 cd bomb-squad
 
+# Build and test the CLI / analysis solution.
 dotnet build .\BombSquad.slnx -c Release
-```
+dotnet test .\BombSquad.slnx -c Release --no-build
 
-Run the built-in demonstration:
-
-```powershell
+# Run the built-in CLI demonstration.
 dotnet run --project .\src\BombSquad.Cli\BombSquad.Cli.csproj -c Release
-```
 
-Inspect the included PowerShell sample:
-
-```powershell
+# Inspect the included PowerShell sample as TEXT — not by executing it.
 dotnet run --project .\src\BombSquad.Cli\BombSquad.Cli.csproj -c Release -- --file ".\samples\example.ps1"
 ```
 
-The sample demonstrates all six implemented detection families. Its example commands are inside a non-executing conditional block.
+The sample illustrates the six implemented detection families. To inspect your own `.ps1`, replace the sample path with an explicitly chosen script path.
 
-To inspect your own script, replace the sample path with a `.ps1` file path.
+### Launch the desktop development preview
 
-## Windows desktop preview (v0.6)
-
-The native WinUI 3 desktop application is built separately from `BombSquad.slnx`. On Windows, build and launch it with:
+The desktop project is built separately from `BombSquad.slnx`:
 
 ```powershell
 dotnet build .\src\BombSquad.Desktop\BombSquad.Desktop.csproj -c Debug
 dotnet run --project .\src\BombSquad.Desktop\BombSquad.Desktop.csproj -c Debug
 ```
 
-Use **Open .ps1 file** to choose a local PowerShell script for read-only AST inspection. **Try sample** loads the included six-family demonstration. The review workspace displays findings, supporting evidence, potential effects, limitations, and source locations. **Inspect source** opens a dedicated, line-numbered source viewer focused on the selected finding; **Back to findings** returns to the review workspace.
+Use **Open .ps1 file**, **Paste PowerShell snippet**, **Open batch of .ps1 files**, or **Compare inspection reports**. **Try sample** opens an included demonstration. The evidence view explains potential effects and limits; **View source** provides read-only navigation. JSON export uses native Windows Save dialogs.
 
-Use **Export report** to save the current analysis as JSON through the native Windows Save dialog. The desktop uses the shared JSON schema; Windows asks for confirmation before an existing file is replaced. Cancelling an Open or Save dialog leaves the current analysis intact.
-
-Valid scripts with zero supported matches explicitly say **no matching findings**, not *safe*. For malformed scripts, the interface shows parser diagnostics and identifies that the detection rules were skipped. The inspected `.ps1` source is **never executed**.
-
-At this stage the repository does not provide a signed installer or a verified clean-machine distribution package. Desktop compilation is checked in Windows CI; GUI interactions were verified locally.
-
-### Multi-file desktop inspection
-
-Use **Open batch of .ps1 files** to select multiple local PowerShell scripts.
-
-The **Batch inspection** panel displays overall results. Use **File to examine** to switch between individual scripts, findings, parser diagnostics, and source evidence.
-
-Use **Export batch JSON** to save one report containing all selected files.
-
-Scripts containing syntax errors are identified separately. Detection rules are skipped for those scripts, while other valid files can still be inspected. Submitted PowerShell is never executed.
+Pasted snippets are limited to **1 MiB of UTF-8 text**. They are analyzed locally without creating or running a `.ps1` file; source evidence may be included if you explicitly export a report.
 
 ## Detection coverage
 
-BOMB SQUAD currently implements six rule IDs:
+The current rule set is intentionally **limited and explainable**, not a full PowerShell behavioral model.
 
-| Rule | Family | Example |
-|---|---|---|
-| BS-FS-001 | Filesystem | `Remove-Item` |
-| BS-SS-001 | Security Settings | `Set-MpPreference` |
-| BS-RG-001 | Registry | `Set-ItemProperty` targeting a literal registry path |
-| BS-ID-001 | Local Identity | `Add-LocalGroupMember` |
-| BS-TS-001 | Tasks and Services | `Register-ScheduledTask`, `New-Service`, `Set-Service` |
-| BS-DE-001 | Dynamic Execution | `Invoke-Expression`, `iex`, expression-based invocation |
+| Rule ID | Family | Example pattern |
+| --- | --- | --- |
+| `BS-FS-001` | Filesystem | `Remove-Item` |
+| `BS-SS-001` | Security settings | `Set-MpPreference` |
+| `BS-RG-001` | Registry | `Set-ItemProperty` with a literal registry path |
+| `BS-ID-001` | Local identity | `Add-LocalGroupMember` |
+| `BS-TS-001` | Tasks and services | `Register-ScheduledTask`, `New-Service`, `Set-Service` |
+| `BS-DE-001` | Dynamic execution | `Invoke-Expression`, `iex`, expression-based invocation |
 
-These are selected patterns, not complete coverage of PowerShell behavior.
+A matched command **might** perform a consequential operation if invoked in a particular environment. BOMB SQUAD does not establish runtime control flow, parameter binding, target providers, dynamic values, external executable behavior, or all effects of custom functions. Function definitions are not proof of invocation; unresolved targets and shadowed command names need separate review.
 
-Findings describe **potential operations**, not confirmed actions. Command aliases, shadowing, dynamic values, target providers, parameter binding, and runtime control flow are not fully resolved.
+## CLI workflows
 
-A finding may appear inside an inactive conditional or function because the current engine does not evaluate whether that code will execute.
-
-## JSON reports
-
-Export a structured analysis report:
+### Export a single-file report
 
 ```powershell
-$report = Join-Path $env:TEMP (
-    "bomb-squad-" +
-    [guid]::NewGuid().ToString("N") +
-    ".json"
-)
+$cli = ".\src\BombSquad.Cli\BombSquad.Cli.csproj"
 
-dotnet run --project .\src\BombSquad.Cli\BombSquad.Cli.csproj -c Release -- --file ".\samples\example.ps1" --json $report
+# Pick an output filename that does not already exist.
+dotnet run --project $cli -c Release -- --file ".\samples\example.ps1" --json ".\inspection.json"
 ```
 
-Reports include:
+The CLI deliberately refuses to overwrite existing JSON report files. Reports can contain sensitive source excerpts and absolute local paths; review them before sharing.
 
-- Source file and analysis versions
-- Parse status and diagnostic information
-- Rule IDs, finding families, and review levels
-- Exact source locations and supporting evidence
-- Potential effects and suggested review steps
-- Unresolved constructs and analysis limitations
-- An explicit statement that the source was not executed
-
-The CLI refuses to overwrite existing report files. In the desktop app, the native Save dialog requests confirmation before replacing an existing file.
-
-Reports may contain excerpts and absolute paths from the inspected script. Treat them as potentially sensitive and share them deliberately.
-
-## CI/CD integration
-
-Use `--fail-on-findings` to make BOMB SQUAD return a nonzero exit code when an implemented rule reports a finding.
+### Inspect multiple files
 
 ```powershell
-dotnet run --project .\src\BombSquad.Cli\BombSquad.Cli.csproj -c Release -- --file ".\samples\example.ps1" --fail-on-findings
+dotnet run --project $cli -c Release -- --batch ".\samples\example.ps1" ".\path\to\another.ps1" --json ".\batch.json"
 ```
 
-JSON export can be combined with the same flag.
+Replace the second placeholder with an **existing** `.ps1` path on your machine. File identities and coverage are recorded independently; inspecting a batch does not scan a whole directory.
 
-| Exit code | Meaning |
-|---|---|
-| 0 | Analysis completed without findings from implemented rules |
-| 1 | One or more findings require review |
-| 2 | Invalid input, arguments, or report error |
-| 3 | Parser errors prevented rule evaluation |
+### Compare baseline and current batch reports
 
-These codes apply when `--fail-on-findings` is enabled. Without the flag, completed analysis can return 0 even when findings or parser diagnostics exist.
+```powershell
+# First generate baseline.json and current.json at DIFFERENT points in time.
+# Then compare the saved snapshots (original PowerShell is not reopened).
+dotnet run --project $cli -c Release -- --compare ".\baseline.json" ".\current.json" --json ".\comparison.json" --fail-on-new
+```
 
-Exit code 0 does not certify that a script is safe.
+A comparison matches **rule ID plus exact source evidence**, not line numbers. Edits to evidence can appear as a removed and a new match, and moved/renamed file paths are not linked automatically. Parser failures, missing coverage, or incompatible report versions can make a comparison indeterminate.
+
+### Optional automated review gates
+
+| CLI flag | Exit code | Meaning |
+| --- | --- | --- |
+| `--fail-on-findings` | `0` / `1` | Completed with no supported matches / at least one match |
+| `--fail-on-findings` | `2` / `3` | Input or report error / parser errors prevented rule evaluation |
+| `--fail-on-new` | `0` / `1` | Complete comparison with no new matches / new matches detected |
+| `--fail-on-new` | `2` / `3` | Input or export error / incomplete comparison coverage |
+
+These values describe the **strict-mode flags**. Without them, a completed inspection or comparison may exit `0` even with findings. **Exit code `0` never certifies that the script is safe.**
+
+## Windows x64 distribution preview (v0.8)
+
+v0.8 establishes a **reproducible preview packaging pipeline** for a self-contained, unpackaged Windows x64 application:
+
+- Locked NuGet dependency restores and pinned Windows dependencies.
+- A publish probe that validates required physical branding assets.
+- A preview ZIP with a file-by-file SHA-256 integrity manifest and `SHA256SUMS.txt`.
+- An independent extraction and verification script.
+- GitHub Actions automation that publishes an **expiring workflow artifact**, not a public installer.
+
+At closeout, the development and GitHub build validation covered **558 published files**. The ZIP was verified, and the extracted application was launched and sampled on the developer's Windows PC.
+
+**Not yet verified:** a clean Windows x64 installation with no SDK or development tools, code signing, installer behavior, and production release suitability. Integrity checks do not prove publisher authenticity. **Do not treat the ZIP as a signed or production-ready release.**
+
+For exact preview instructions, see [ZIP distribution](docs/v08-zip-distribution.md), [Windows CI and clean-machine QA](docs/v08-ci-and-clean-machine-test.md), and the [v0.8 closeout checklist](docs/v08-closeout-checklist.md). The workflow is under [GitHub Actions](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml).
 
 ## Architecture
 
-Parsing, detection, and reporting are shared between both frontends. Neither frontend executes imported PowerShell source.
-
 ```text
-PowerShell source (.ps1 or built-in sample)
-                  |
-                  v
-        BombSquad.Analysis
-          PowerShell AST
-          + diagnostics
-                  |
-                  v
-          BombSquad.Rules
-                  |
-                  v
-       Evidence-backed findings
-              /       \
-             v         v
-     BombSquad.Cli   BombSquad.Desktop (WinUI 3)
-       CLI output    Findings + Source Focus
-       exit codes    Native Open/Save dialogs
-             \         /
-              v       v
-     Shared JSON report serializer
+                PowerShell source / pasted snippet
+                               |
+                               v
+                   PowerShell AST parser
+                     + syntax diagnostics
+                               |
+                               v
+                Shared analysis + rule engine
+                       (six families)
+                               |
+                               v
+                Evidence-backed findings
+                        /           \
+                       v             v
+              CLI / automation   WinUI 3 desktop
+                        \           /
+                         v         v
+                   Shared JSON reporting
+                               |
+                  Saved batch report snapshots
+                               |
+                               v
+                   Baseline comparison
+                    (CLI + WinUI)
 ```
-
-### Projects
 
 | Project | Responsibility |
-|---|---|
-| BombSquad.Core | Shared models, findings, source spans, and contracts |
-| BombSquad.Analysis | AST parser, analysis orchestration, safe source loading, line mapping, and shared JSON serialization |
-| BombSquad.Rules | Six supported detection rule families and rule evaluation |
-| BombSquad.Cli | Console inspection, exit codes, and CLI JSON export |
-| BombSquad.Desktop | Native WinUI 3 interface, file selection, Source Focus, and Save dialog |
-| BombSquad.Tests | Unit, integration, static-only safety, file handling, CLI, and report regression tests |
+| --- | --- |
+| `BombSquad.Core` | Shared models, evidence spans, diagnostics, and contracts |
+| `BombSquad.Analysis` | AST parsing, safe input handling, orchestration, reports, comparison |
+| `BombSquad.Rules` | Supported static rule families |
+| `BombSquad.Cli` | Console workflows, JSON output, optional CI exit codes |
+| `BombSquad.Desktop` | Native WinUI 3 examination workspace, file pickers, source navigation |
+| `BombSquad.Tests` | Unit, integration, regression, safety and acceptance testing |
 
-`BombSquad.slnx` contains the original five non-desktop projects; the WinUI desktop project is built separately and has its own GitHub Actions job.
+## Quality and security boundaries
 
-## Testing
+At v0.8 closeout:
 
-Build and run the complete automated test suite:
+- **303 automated tests** passed on the merged codebase.
+- The .NET 10 test/CLI and WinUI desktop builds passed.
+- Windows packaging, ZIP integrity, and workflow artifact checks passed.
+- GUI workflows were exercised on the development host; full clean-machine validation is still outstanding.
 
-```powershell
-dotnet build .\BombSquad.slnx -c Release
-dotnet test .\BombSquad.slnx -c Release --no-build
-```
+BOMB SQUAD is **not** an antivirus engine, execution sandbox, malware verdict system, comprehensive PowerShell analyzer, or substitute for manual review. Static findings describe candidate operations; they do not prove that a command will execute or that a target machine will be changed. No matching rules is **not a safety verdict**.
 
-The **246 automated tests verified in Slice 4**, plus four new Slice 5 regression tests pending verification, cover positive detections, nonmatching commands, parser errors, file decoding and limits, source line mapping, report generation, CLI input validation, and checks that inspected PowerShell source does not execute.
+## Roadmap to v1.0
 
-Build the desktop separately with the Debug command in the Windows desktop section. `.github/workflows/windows-ci.yml` has separate jobs for the CLI/test solution and WinUI desktop compilation. Windows CI also passed on the v0.6 feature branch at Slice 4 (run #53), including the .NET 10 build/test and WinUI desktop compilation jobs. These checks do not verify interactive GUI functionality.
+| Milestone | Outcome | Status |
+| --- | --- | --- |
+| v0.1–v0.4 | Parser, six detection families, WinUI desktop, diagnostics, evidence navigation | Complete |
+| v0.5 | Batch inspection of selected scripts | Complete |
+| v0.6 | Baseline JSON comparison in CLI and desktop | Complete |
+| v0.7 | Pasted inspection, uncertainty handling, acceptance checks | Complete |
+| **v0.8** | **Windows preview ZIP, dependency locking, build/distribution CI** | **Complete — merged via PR #9** |
+| v0.9 | Release-candidate QA, clean-machine validation, accessibility and packaging decisions | Planned |
+| v1.0 | Final user documentation, release validation, version/tag, signed installer decision | Planned |
 
-## Safety and limitations
+The v1.0 scope prioritizes **reliability and honest reporting** over claiming comprehensive PowerShell coverage. For engineering notes, see [development progress](docs/progress.md), [v0.7 acceptance audit](docs/v07-acceptance-audit.md), and architecture decisions in [`docs/adr`](docs/adr).
 
-BOMB SQUAD is a static inspector, not a PowerShell execution environment.
-
-Core design principles:
-
-1. Parse source text; never execute imported scripts.
-2. Explain potential behavior without claiming runtime certainty.
-3. Preserve evidence, source locations, and known limitations.
-4. Keep the analysis engine separate from the user interface.
-5. Keep analysis local without requiring accounts or AI APIs.
-
-The current version has a partial rule set. It does not resolve every dynamic command, evaluate runtime conditions, or prove what a script will do on a particular system.
-
-**No findings does not mean a script is safe.**
-
-BOMB SQUAD is not an antivirus engine, malware sandbox, universal safety checker, or replacement for professional code review.
-
-## v0.8 Windows distribution preview (closeout in progress)
-
-The v0.8 branch adds a **self-contained, unpackaged Windows x64 development preview**, not a signed installer or a public GitHub Release.
-
-- The Windows publish probe checks the published executable and physical shield/window branding assets.
-- Windows dependency versions are pinned, and six project-level NuGet lock files support locked restores. The .NET SDK version itself is not pinned to an exact patch.
-- A ZIP distribution script generates the preview application, a JSON per-file SHA-256 manifest, and `SHA256SUMS.txt`; a separate verifier extracts and validates all files.
-- GitHub Actions builds, packages, verifies, and uploads an expiring workflow artifact. This is a preview build artifact, **not** a production release.
-- The downloaded GitHub-built artifact passed 558/558 file checks. Its EXE launched on the developer's Windows PC; **Try sample** showed 6 commands, 6 findings, and 0 parser errors.
-
-**Important:** Fresh Windows x64 testing **without** the .NET SDK or developer tools is **NOT TESTED / DEFERRED** because there was insufficient free RAM for the proposed test VM. This preview is unsigned; integrity checks alone do not establish publisher authenticity or clean-machine compatibility. Inspecting PowerShell source remains read-only and does not execute that source. Before a public v1.0 release, test on a clean Windows environment and make an explicit signing/installer decision. See [`docs/v08-closeout-checklist.md`](docs/v08-closeout-checklist.md).
-
-## Roadmap
-
-- [x] v0.1 - PowerShell AST parsing foundation
-- [x] v0.2 - Six detection families, real file inspection, JSON reporting, and CI-friendly exit codes (merged to `main`)
-- [x] v0.3 implementation - Native WinUI 3 preview, Precision Desk, Source Focus, file picker, and JSON export
-- [x] v0.3 verification - 176 local tests and both hosted Windows CI jobs passed
-- [x] v0.3 closeout - Final documentation and PR #4 merged into `main` at `65b6673`
-- [x] v0.4 development - Interactive parser diagnostics, source navigation, Windows branding, keyboard shortcuts, and responsive desktop layout
-- [x] v0.4 local verification - 180 automated tests passing; desktop scenarios manually tested
-- [x] v0.4 merge - PR #5 merged into main
-- [x] v0.5 implementation - Batch analysis, multi-file CLI, desktop file switching, and batch JSON export
-- [x] v0.5 verification - 210 tests passing, Windows CI green, and desktop batch scenarios tested
-- [x] v0.5 merge - PR #6 merged into `main` (`7e1d2e9`)
-- [x] v0.6 implementation - Batch JSON baseline comparison in shared engine, CLI, and WinUI desktop
-- [x] v0.6 Slice 4 verification - 246 tests passing, hosted Windows CI #53 green, and desktop comparison/export tested
-- [ ] v0.6 closeout - Final regression checks, documentation, and pull request into `main`
-- [ ] Future - Accessibility audit, additional detection hardening, and expanded testing
-- [ ] Future - Signed installer, clean-machine testing, and release distribution
-
-See [development progress](docs/progress.md) and the architecture decision records in [docs/adr](docs/adr).
-
-## Technology
-
-C# | .NET 10 | PowerShell AST | WinUI 3 | Windows App SDK | xUnit | Git | GitHub Actions
+**Stack:** C# · .NET 10 · PowerShell AST · WinUI 3 · Windows App SDK · xUnit · GitHub Actions
