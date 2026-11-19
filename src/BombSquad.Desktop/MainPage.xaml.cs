@@ -300,8 +300,8 @@ public sealed partial class MainPage : Page
         DiagnosticCountText.Text = "\u2014";
         SourceNameText.Text = "No source analyzed";
         DetailsTitleText.Text = "Select a finding";
-        LocationText.Text = "No evidence selected";
-        EvidenceText.Text = "Choose a PowerShell script to inspect its source.";
+        LocationText.Text = "Open a script or try the sample to begin";
+        EvidenceText.Text = "Findings will display the exact matched source here. Inspected PowerShell is never executed.";
         PotentialEffectText.Text = "No analysis available.";
         LimitationsText.Text = "Static analysis does not establish runtime effects.";
         NextStepText.Text = "Inspect the source and its context before running it.";
