@@ -1,11 +1,13 @@
-name: Windows Distribution RC1
+name: Windows Distribution v1.0.0
 
-# Release-candidate artifact only. This workflow does not create a GitHub Release.
+# Produces a verified archive for the public v1.0.0 release; uploading/publishing is manual.
 on:
   push:
     branches:
       - main
-      - feat/v10-release-engineering
+      - release/v1.0.0
+    tags:
+      - 'v1.0.0'
   pull_request:
     branches:
       - main
@@ -54,15 +56,15 @@ jobs:
         shell: powershell
         run: .\scripts\Test-v09-ArchiveEntryPreflight.Tests.ps1
 
-      - name: Build and verify v1.0 RC1 distribution
+      - name: Build and verify v1.0.0 distribution
         id: package
         shell: powershell
         run: .\scripts\Run-v10-DistributionCI.ps1
 
-      - name: Upload RC1 ZIP, manifest and checksums
+      - name: Upload v1.0.0 ZIP, manifest and checksums
         uses: actions/upload-artifact@v6
         with:
-          name: BOMB-SQUAD-v1.0.0-rc.1-win-x64-${{ github.sha }}
+          name: BOMB-SQUAD-v1.0.0-win-x64-${{ github.sha }}
           path: ${{ steps.package.outputs.artifact_dir }}/
           if-no-files-found: error
           retention-days: 14

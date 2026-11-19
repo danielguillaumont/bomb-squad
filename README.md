@@ -4,7 +4,7 @@
 
 A local, read-only PowerShell change inspector for Windows. **BOMB SQUAD** uses the PowerShell **Abstract Syntax Tree (AST)** to flag selected commands that could modify a system, then shows the exact source, potential effect, and limitations. **It never executes the inspected script.**
 
-[![Windows CI](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-ci.yml/badge.svg)](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-ci.yml) [![Windows distribution](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml/badge.svg)](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml) ![Platform](https://img.shields.io/badge/platform-Windows%20x64-465b65) ![Build](https://img.shields.io/badge/build-v1.0%20RC1-c36a54)
+[![Windows CI](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-ci.yml/badge.svg)](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-ci.yml) [![Windows distribution](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml/badge.svg)](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml) ![Platform](https://img.shields.io/badge/platform-Windows%20x64-465b65) ![Build](https://img.shields.io/badge/release-v1.0.0-465b65)
 
 ![Bomb Squad inspection results](docs/assets/bomb-squad-inspection.png)
 
@@ -33,7 +33,7 @@ A script can contain commands that delete files, change Defender settings, modif
 
 ## Try it
 
-**Windows x64:** The current release-candidate package is published as a [GitHub Actions distribution artifact](https://github.com/danielguillaumont/bomb-squad/actions/workflows/windows-distribution.yml) (sign-in may be required). It is an **unsigned ZIP**, not an installer or a published v1.0.0 GitHub Release. Extract the actual distribution ZIP and launch `BombSquad.Desktop.exe` from the extracted application folder. Select **Try sample** to explore the six findings without supplying your own script.
+**Windows x64:** Download `BOMB-SQUAD-v1.0.0-win-x64.zip` from [GitHub Releases](https://github.com/danielguillaumont/bomb-squad/releases/tag/v1.0.0). Extract the **entire ZIP** and run `BombSquad.Desktop.exe` from the extracted folder. This is an **unsigned, self-contained ZIP**, not an installer; Windows may show a publisher/SmartScreen warning. Select **Try sample** to explore the six example findings without opening your own script.
 
 **Build from source** (Windows, .NET 10 SDK and WinUI development prerequisites):
 

@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-BOMB SQUAD v1.0.0 RC1 - CI orchestration - distribution CI orchestrator.
+BOMB SQUAD v1.0.0 - CI orchestration - distribution CI orchestrator.
 Uses the existing self-contained publish, ZIP bundler and per-file verifier.
 Runs locally for diagnostics or on the hosted Windows Actions runner.
 Never executes inspected PowerShell source, signs binaries, or creates a release.
@@ -24,7 +24,7 @@ $bundleScript = Join-Path $PSScriptRoot 'Build-v10-DistributionZip.ps1'
 $verifyScript = Join-Path $PSScriptRoot 'Verify-v10-DistributionZip.ps1'
 foreach ($path in @($publishScript, $bundleScript, $verifyScript)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        throw "Required v1.0 RC1 script not found: $path"
+        throw "Required v1.0.0 script not found: $path"
     }
 }
 
@@ -49,7 +49,7 @@ if (-not (Test-Path -LiteralPath $summary -PathType Leaf)) {
     throw 'Publish summary missing from this run.'
 }
 
-Write-Host "`n=== CREATE RELEASE CANDIDATE ZIP AND INTEGRITY MANIFEST ===" -ForegroundColor Cyan
+Write-Host "`n=== CREATE RELEASE ZIP AND INTEGRITY MANIFEST ===" -ForegroundColor Cyan
 & $bundleScript -PublishDirectory $publish
 
 $newBundles = @(Get-ChildItem -LiteralPath $temp -Directory -Filter 'BombSquad-v10-ZipProbe-*' |
@@ -62,7 +62,7 @@ $bundle = $newBundles[0].FullName
 Write-Host "`n=== EXTRACT AND VERIFY DISTRIBUTION ===" -ForegroundColor Cyan
 & $verifyScript -BundleDirectory $bundle
 
-$baseName = 'BOMB-SQUAD-v1.0.0-rc.1-win-x64'
+$baseName = 'BOMB-SQUAD-v1.0.0-win-x64'
 $expected = @(
     ($baseName + '.zip')
     ($baseName + '.manifest.json')
@@ -88,8 +88,8 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($head)) {
 if ([string]$manifest.sourceCommit -ne $head.Trim()) {
     throw 'Manifest commit does not match checked-out source.'
 }
-if ($manifest.cleanMachineVerified -ne $false -or $manifest.publicRelease -ne $false) {
-    throw 'ReleaseCandidate manifest must not claim release or clean-machine verification.'
+if ($manifest.cleanMachineVerified -ne $false -or $manifest.publicRelease -ne $true) {
+    throw 'Release manifest must not claim release or clean-machine verification.'
 }
 if ([int]$manifest.publishFileCount -lt 100) {
     throw 'Distribution manifest reports too few files.'
@@ -104,8 +104,8 @@ if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
     )
 }
 
-Write-Host "`nPASS: v1.0 RC1 DISTRIBUTION CI PIPELINE VERIFIED." -ForegroundColor Green
+Write-Host "`nPASS: v1.0.0 DISTRIBUTION CI PIPELINE VERIFIED." -ForegroundColor Green
 Write-Host "Commit: $($head.Trim())"
 Write-Host "Files in ZIP manifest: $($manifest.publishFileCount)"
 Write-Host "CI artifact directory: $bundle"
-Write-Host 'ReleaseCandidate only. Windows application launch and clean-machine setup need separate manual QA.'
+Write-Host 'Release only. Windows application launch and clean-machine setup need separate manual QA.'
