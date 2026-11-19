@@ -1,12 +1,11 @@
-name: Windows Distribution Preview
+name: Windows Distribution RC1
 
-# Preview artifact only. This workflow does not create a GitHub Release.
+# Release-candidate artifact only. This workflow does not create a GitHub Release.
 on:
   push:
     branches:
       - main
-      - feat/v08-windows-distribution
-      - feat/v09-release-candidate
+      - feat/v10-release-engineering
   pull_request:
     branches:
       - main
@@ -55,15 +54,15 @@ jobs:
         shell: powershell
         run: .\scripts\Test-v09-ArchiveEntryPreflight.Tests.ps1
 
-      - name: Build and verify preview distribution
+      - name: Build and verify v1.0 RC1 distribution
         id: package
         shell: powershell
-        run: .\scripts\Run-v08-DistributionCI.ps1
+        run: .\scripts\Run-v10-DistributionCI.ps1
 
-      - name: Upload preview ZIP, manifest and checksums
+      - name: Upload RC1 ZIP, manifest and checksums
         uses: actions/upload-artifact@v6
         with:
-          name: BOMB-SQUAD-v0.8-preview-win-x64-${{ github.sha }}
+          name: BOMB-SQUAD-v1.0.0-rc.1-win-x64-${{ github.sha }}
           path: ${{ steps.package.outputs.artifact_dir }}/
           if-no-files-found: error
           retention-days: 14
