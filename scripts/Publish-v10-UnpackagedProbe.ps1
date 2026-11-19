@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-BOMB SQUAD v1.0.0 RC1 - publish
+BOMB SQUAD v1.0.0 - publish
 Non-destructive, local Windows x64 UNPACKAGED publish probe.
 Uses Microsoft-documented WindowsPackageType=None and WindowsAppSDKSelfContained=true.
 Does not run inspected PowerShell source or install/register an application.
@@ -22,9 +22,9 @@ if (-not (Test-Path -LiteralPath $project -PathType Leaf)) {
 }
 
 $projectText = [System.IO.File]::ReadAllText($project)
-if ($projectText -notmatch '<Version>1\.0\.0-rc\.1</Version>' -or
+if ($projectText -notmatch '<Version>1\.0\.0</Version>' -or
     $projectText -notmatch '<FileVersion>1\.0\.0\.0</FileVersion>') {
-    throw 'Desktop project version is not v1.0.0 RC1. Stop.'
+    throw 'Desktop project version is not v1.0.0. Stop.'
 }
 
 # A unique temp directory prevents overwriting user files and keeps publish output
@@ -35,7 +35,7 @@ $probeRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
 $publishDir = Join-Path $probeRoot 'publish'
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 
-Write-Host "`nBOMB SQUAD v1.0 RC1 - unpackaged x64 publish probe" -ForegroundColor Cyan
+Write-Host "`nBOMB SQUAD v1.0.0 - unpackaged x64 publish probe" -ForegroundColor Cyan
 Write-Host 'Scope: local Release publish only; NOT a verified installer or public release.'
 Write-Host "Source project: $project"
 Write-Host "Publish output: $publishDir"
@@ -114,7 +114,7 @@ catch {
 
 $metadataPath = Join-Path $probeRoot 'publish-probe-summary.txt'
 $summary = @(
-    'BOMB SQUAD - v1.0.0 RC1 LOCAL UNPACKAGED PUBLISH PROBE',
+    'BOMB SQUAD - v1.0.0 LOCAL UNPACKAGED PUBLISH PROBE',
     'This is not a signed or clean-machine-verified release.',
     'Target: win-x64',
     'Configuration: Release',

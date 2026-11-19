@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-BOMB SQUAD v1.0.0 RC1 - bundle and verify - Verify a locally built release-candidate ZIP.
+BOMB SQUAD v1.0.0 - bundle and verify - Verify a locally built release ZIP.
 Checks SHA256SUMS, validates the manifest, extracts to a NEW temp folder,
 then verifies every extracted file against its SHA-256 and length.
 Does not execute the published app or any PowerShell being analyzed.
@@ -19,7 +19,7 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
 }
 
 $bundle = (Resolve-Path -LiteralPath $BundleDirectory).Path
-$baseName = 'BOMB-SQUAD-v1.0.0-rc.1-win-x64'
+$baseName = 'BOMB-SQUAD-v1.0.0-win-x64'
 $zipName = $baseName + '.zip'
 $manifestName = $baseName + '.manifest.json'
 $zipPath = Join-Path $bundle $zipName
@@ -50,15 +50,15 @@ if ($checksumLines.Count -ne 2) {
 try { $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json }
 catch { throw "Cannot parse distribution manifest: $($_.Exception.Message)" }
 if ($manifest.schemaVersion -ne '1.0' -or
-    $manifest.version -ne '1.0.0-rc.1' -or
+    $manifest.version -ne '1.0.0' -or
     $manifest.target -ne 'win-x64' -or
     $manifest.distribution -ne 'unpackaged-self-contained' -or
-    $manifest.publicRelease -ne $false -or
+    $manifest.publicRelease -ne $true -or
     $manifest.cleanMachineVerified -ne $false -or
     $manifest.archive.fileName -ne $zipName -or
     $manifest.archive.sha256 -ne $zipHash -or
     [long]$manifest.archive.sizeBytes -ne (Get-Item -LiteralPath $zipPath).Length) {
-    throw 'Distribution manifest metadata does not match the local release-candidate archive.'
+    throw 'Distribution manifest metadata does not match the local release archive.'
 }
 if ([string]$manifest.sourceCommit -notmatch '^[a-fA-F0-9]{40}$') {
     throw 'Distribution manifest source commit must be a full Git SHA.'

@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-BOMB SQUAD v1.0.0 RC1 - bundle and verify - Local release-candidate distribution bundle.
+BOMB SQUAD v1.0.0 - bundle and verify - Local release distribution bundle.
 Takes a successful UNPACKAGED publish probe folder and creates a portable ZIP,
 a per-file SHA-256 manifest, and SHA256SUMS.txt. No source is executed.
 No GitHub Release is created. No source files are modified.
@@ -29,8 +29,13 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Could not query Git branch. Stop.'
 }
 $branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
-$isFeature = $branch -in @('feat/v10-release-engineering')
+$isFeature = $branch -eq 'release/v1.0.0'
 $isMain = $branch -eq 'main'
+$isTagBuild = (
+    [string]::IsNullOrWhiteSpace($branch) -and
+    $env:GITHUB_ACTIONS -eq 'true' -and
+    $env:GITHUB_REF -eq 'refs/tags/v1.0.0'
+)
 $isPullRequest = (
     [string]::IsNullOrWhiteSpace($branch) -and
     $env:GITHUB_ACTIONS -eq 'true' -and
@@ -38,7 +43,7 @@ $isPullRequest = (
     $env:GITHUB_BASE_REF -eq 'main' -and
     (-not [string]::IsNullOrWhiteSpace($env:GITHUB_HEAD_REF))
 )
-if (-not ($isFeature -or $isMain -or $isPullRequest)) {
+if (-not ($isFeature -or $isMain -or $isPullRequest -or $isTagBuild)) {
     throw "Unsupported distribution checkout (branch='$branch'; event='$env:GITHUB_EVENT_NAME'). Stop."
 }
 if ($isPullRequest) {
@@ -64,15 +69,15 @@ $publish = ([string]$publishResolved.Path).TrimEnd([char]'\')
 $probeRoot = Split-Path -Parent $publish
 if ((Split-Path -Leaf $publish) -ne 'publish' -or
     (Split-Path -Leaf $probeRoot) -notlike 'BombSquad-v10-PublishProbe-*') {
-    throw 'Use the publish folder inside a BOMB SQUAD v1.0 RC1 PublishProbe directory.'
+    throw 'Use the publish folder inside a BOMB SQUAD v1.0.0 PublishProbe directory.'
 }
 $summaryPath = Join-Path $probeRoot 'publish-probe-summary.txt'
 if (-not (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
     throw 'Missing successful publish-probe summary. Stop.'
 }
 $summary = [System.IO.File]::ReadAllText($summaryPath)
-if ($summary -notmatch 'BOMB SQUAD - v1.0.0 RC1 LOCAL UNPACKAGED PUBLISH PROBE') {
-    throw 'Publish summary is not from the v1.0 RC1 probe.'
+if ($summary -notmatch 'BOMB SQUAD - v1.0.0 LOCAL UNPACKAGED PUBLISH PROBE') {
+    throw 'Publish summary is not from the v1.0.0 probe.'
 }
 foreach ($entry in @(
     "PublishFolder: $publish",
@@ -131,7 +136,7 @@ $bundle = Join-Path ([System.IO.Path]::GetTempPath()) (
     'BombSquad-v10-ZipProbe-' + [guid]::NewGuid().ToString('N')
 )
 New-Item -ItemType Directory -Path $bundle -Force | Out-Null
-$baseName = 'BOMB-SQUAD-v1.0.0-rc.1-win-x64'
+$baseName = 'BOMB-SQUAD-v1.0.0-win-x64'
 $zipName = $baseName + '.zip'
 $manifestName = $baseName + '.manifest.json'
 $zipPath = Join-Path $bundle $zipName
@@ -140,7 +145,7 @@ $checksumsPath = Join-Path $bundle 'SHA256SUMS.txt'
 
 Write-Host "`n=== CREATE WINDOWS ZIP ===" -ForegroundColor Cyan
 Write-Host "Source publish folder: $publish"
-Write-Host "ReleaseCandidate output folder: $bundle"
+Write-Host "Release output folder: $bundle"
 Write-Host "Published files: $($files.Count)"
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -172,10 +177,10 @@ $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerIn
 $manifest = [ordered]@{
     schemaVersion = '1.0'
     product = 'BOMB SQUAD'
-    version = '1.0.0-rc.1'
+    version = '1.0.0'
     target = 'win-x64'
     distribution = 'unpackaged-self-contained'
-    publicRelease = $false
+    publicRelease = $true
     cleanMachineVerified = $false
     sourceCommit = $commit
     createdUtc = [DateTime]::UtcNow.ToString('o')
@@ -188,8 +193,8 @@ $manifest = [ordered]@{
     }
     files = $entries.ToArray()
     limitations = @(
-        'Unsigned local release-candidate only; not a GitHub Release or installer.',
-        'Clean-machine installation and launch have not been verified.',
+        'Unsigned ZIP; published as a GitHub Release only after the matching tagged build is uploaded.',
+        'Clean-machine installation and launch have not been verified; no broad compatibility claim is made.',
         'The complete ZIP must be extracted; do not run the EXE from inside the ZIP.',
         'SHA-256 verifies integrity against this manifest, not publisher identity.'
     )
@@ -208,7 +213,7 @@ $lines = @(
     [System.Text.UTF8Encoding]::new($false)
 )
 
-Write-Host "`nPASS: RELEASE CANDIDATE DISTRIBUTION BUNDLE CREATED." -ForegroundColor Green
+Write-Host "`nPASS: RELEASE DISTRIBUTION BUNDLE CREATED." -ForegroundColor Green
 Write-Host "Bundle directory: $bundle"
 Write-Host "ZIP: $zipPath"
 Write-Host "Manifest: $manifestPath"
@@ -217,4 +222,4 @@ Write-Host "ZIP SHA-256: $zipHash"
 Write-Host ('Uncompressed: {0:N1} MiB' -f ($totalBytes / 1MB))
 Write-Host ('ZIP size: {0:N1} MiB' -f ($zipInfo.Length / 1MB))
 Write-Host 'NEXT: Run Verify-v10-DistributionZip.ps1 against this bundle.'
-Write-Host 'Do not upload or publish this release-candidate as a release yet.'
+Write-Host 'Do not upload or publish this release as a release yet.'

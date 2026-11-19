@@ -1,44 +1,37 @@
-# v1.0 Release Contract (V10-B1)
+# BOMB SQUAD v1.0.0 — Release notes and scope
 
-**Status:** release candidate (`1.0.0-rc.1`), **not** a public or signed v1.0 release.
+**Release:** v1.0.0, Windows x64, self-contained unpackaged ZIP (unsigned).
 
-## Product scope
+Bomb Squad is a local read-only PowerShell static inspector. It parses scripts without executing them and presents *potential* system changes for human review. It does not decide whether scripts are safe or malicious.
 
-BOMB SQUAD is an offline-first, read-only PowerShell static inspector for Windows x64. It parses source without executing inspected PowerShell. Findings are conditional review leads, not malware verdicts, execution proof, or a declaration that unmatched scripts are safe.
+## Included in v1.0
 
-Supported workflows at this checkpoint: selected `.ps1` inspection, bounded pasted snippets, explicit multi-file inspection, saved batch report comparison, CLI automation, and JSON export. Detection coverage is intentionally limited to six documented rule families.
+- WinUI desktop, source-location evidence viewer, diagnostics, pasted snippets, explicit file batches and saved batch-report comparison.
+- CLI inspection, JSON reports and optional CI exit-code gates.
+- Six documented detection families: filesystem, security settings, registry, identity, tasks/services and dynamic execution.
+- Automated regression tests and repeatable Windows x64 distribution generation, ZIP entry preflight, per-file SHA-256 verification and GitHub Actions validation.
 
-## Version namespaces
+## Version and compatibility
 
-- **Desktop/product prerelease:** `1.0.0-rc.1` (`v1.0.0 RC1` in the UI).
-- **WinUI assembly/file version:** `1.0.0.0`; the product still has prerelease status, regardless of numeric Windows file metadata.
-- **Engine/rule-set identifiers:** `0.2.0-dev` remain unchanged for report compatibility. They are not the desktop product version. Any future change requires explicit compatibility analysis and regression tests.
-- **Distribution (V10-B2):** separate v1.0 RC1 publish/bundle/verify scripts produce `BOMB-SQUAD-v1.0.0-rc.1-win-x64.zip`, its manifest, and `SHA256SUMS.txt`. Legacy v0.8 scripts are retained for historical reference. CI artifacts are provisional, not public GitHub Releases.
+- **Product, ZIP and release tag:** `1.0.0` / `v1.0.0`.
+- **Assembly/file version:** `1.0.0.0`.
+- **Engine and rule-set identifiers:** remain `0.2.0-dev` for existing report comparison compatibility. These are not the product version.
+- Historic `v08` scripts and prior development documents are retained as historical references.
 
-## Non-negotiable v1.0 gates
+## Packaging and release verification
 
-1. Release builds, automated tests, targeted CLI scenarios, and WinUI smoke tests pass on the tagged source.
-2. Published Windows x64 bundle is self-contained; all packaged files, branding assets, manifest and SHA-256 values verify after fresh extraction.
-3. An actual **non-administrative clean Windows x64 environment without developer tools** can extract and launch the published app and complete a sample inspection; record Windows version and prerequisites. If not done, disclose this explicitly and do not claim clean-machine compatibility.
-4. Document Windows SmartScreen warnings / unsigned publisher identity accurately. SHA-256 is integrity evidence, **not** code signing or trusted publisher authentication.
-5. UI labels, packaged binary version, ZIP filename, manifest, CI artifact and GitHub release/tag refer to the same release. The final `v1.0.0` tag is created **only after** replacing RC metadata and rerunning the gates.
-6. README, release notes, screenshots and setup instructions reflect observed, validated behavior. Review JSON before sharing: reports may include sensitive paths or excerpts.
-
-## Deliberately excluded
-
-No automatic remediation, inspected-script execution, antivirus certification, full behavioral interpretation, broad directory traversal, cloud transmission, signed installer claims, or silent auto-update is implied by v1.0.
-
-## Immediate follow-up
-
-**V10-B2:** migrate the existing `v08` publish/ZIP/verification/CI scripts together, update naming and version checks coherently, preserve ZIP entry preflight and per-file SHA-256 verification, and exercise local and hosted end-to-end packaging. Keep generated binaries and archives outside the source repository.
-
-
-## V10-B2: RC1 distribution commands
-
-Run from the repository root on Windows after closing the desktop application:
+From the repo root on Windows, close any running Bomb Squad window and run:
 
 ```powershell
+dotnet test .\BombSquad.slnx -c Release
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-v09-ArchiveEntryPreflight.Tests.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Run-v10-DistributionCI.ps1
 ```
 
-The orchestrator publishes a self-contained unpackaged Windows x64 folder in a unique temporary directory, packages it as `BOMB-SQUAD-v1.0.0-rc.1-win-x64.zip`, and verifies its SHA-256 sums, archive-entry safety, manifest and every extracted file. It prints the bundle and extracted executable paths. Do **not** upload or tag that artifact as a public release until clean-machine and launch checks have been recorded. The workflow's uploaded artifact is an unsigned CI candidate, not a signed installer. Old v0.8 scripts have not been removed.
+The CI script publishes a multi-file, self-contained unpackaged `win-x64` app, builds `BOMB-SQUAD-v1.0.0-win-x64.zip`, produces a JSON integrity manifest plus `SHA256SUMS.txt`, and verifies the ZIP's files after safe extraction. The manifest records the exact source commit. **For the public release, build from the final `v1.0.0` tag (the same commit as `main` at tagging), and use the matching tag-run artifact.** Do not upload an artifact from an earlier PR merge or release branch to the public release.
+
+## Boundaries
+
+The ZIP is **unsigned**, and SHA-256 integrity verification is not publisher authentication. The app has been launched locally from an extracted archive; separate clean-machine testing was not performed, so broad fresh-machine compatibility is not claimed. A full extraction is required; this is not an installer.
+
+There is no inspected-script execution, automatic remediation, malware certification, runtime control-flow proof, exhaustive alias/provider resolution, cloud upload or automatic update. **No findings does not mean safe.** Exported reports may include sensitive source excerpts or paths; review before sharing.
