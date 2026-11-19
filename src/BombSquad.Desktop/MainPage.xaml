@@ -203,9 +203,9 @@
         <ScrollViewer x:Name="ReviewWorkspaceScrollViewer" Grid.Row="1"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
-            <StackPanel x:Name="WorkspaceStack" Padding="30,24,30,28" Spacing="17">
+            <StackPanel x:Name="WorkspaceStack" Padding="30,18,30,24" Spacing="12">
 
-                <Grid x:Name="IntroGrid" ColumnSpacing="24" RowSpacing="13">
+                <Grid x:Name="IntroGrid" ColumnSpacing="24" RowSpacing="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -290,7 +290,7 @@
                 </Grid>
 
                 <!-- Compact secondary workflow toolbar; every action remains read-only. -->
-                <StackPanel Spacing="7">
+                <StackPanel Spacing="0">
                     <Grid x:Name="SecondaryActionsGrid" ColumnSpacing="10" RowSpacing="10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -330,8 +330,6 @@
                                 FontSize="13" FontWeight="SemiBold" Padding="15,10"
                                 ToolTipService.ToolTip="Compare saved JSON reports without opening or running source scripts"/>
                     </Grid>
-                    <TextBlock Text="Inspect a pasted snippet, selected files, or saved batch reports — locally and without executing PowerShell."
-                               FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <Border x:Name="PasteInputPanel" Visibility="Collapsed"
@@ -376,7 +374,7 @@
                 </Border>
                 <!-- Real source state; no simulated uploaded file or fake picker. -->
                 <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
-                        BorderThickness="1" CornerRadius="7" Padding="16,13">
+                        BorderThickness="1" CornerRadius="7" Padding="16,10">
                     <Grid ColumnSpacing="14">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -425,7 +423,7 @@
                 </Border>
 
                 <!-- One consolidated instrument strip; no dashboard metric cards. -->
-                <Border Background="#253138" CornerRadius="7" Padding="21,17">
+                <Border Background="#253138" CornerRadius="7" Padding="21,12">
                     <Grid x:Name="MetricsGrid" ColumnSpacing="17">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
