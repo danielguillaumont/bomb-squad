@@ -508,7 +508,7 @@
                                                FontSize="22" FontWeight="SemiBold"
                                                Foreground="#223036"/>
                                 </StackPanel>
-                                <TextBlock Grid.Column="1" Text="SELECT TO EXAMINE"
+                                <TextBlock Grid.Column="1" Text="SELECT A FINDING"
                                            FontFamily="Segoe UI" FontSize="12"
                                            Foreground="#8A9691" VerticalAlignment="Bottom"/>
                             </Grid>
@@ -542,8 +542,15 @@
                                                            FontFamily="Segoe UI" FontSize="15"
                                                            FontWeight="SemiBold" Foreground="#233137"
                                                            TextWrapping="Wrap"/>
-                                                <TextBlock Text="{Binding Family}"
-                                                           FontSize="12" Foreground="#737F7A"/>
+                                                <StackPanel Orientation="Horizontal" Spacing="9">
+                                                    <TextBlock Text="{Binding Family}"
+                                                               FontSize="12" Foreground="#737F7A"/>
+                                                    <TextBlock Text="·" FontSize="12" Foreground="#A0AAA5"/>
+                                                    <TextBlock Text="Line" FontSize="12" Foreground="#737F7A"/>
+                                                    <TextBlock Text="{Binding SourceSpan.StartLine}"
+                                                               FontFamily="Consolas" FontSize="12"
+                                                               Foreground="#53615C"/>
+                                                </StackPanel>
                                             </StackPanel>
                                             <TextBlock Grid.Column="2" Text="›"
                                                        FontSize="24" Foreground="#84918D"
@@ -646,7 +653,7 @@
                                                FontWeight="SemiBold" Foreground="#202B30"
                                                TextWrapping="Wrap"/>
                                     <TextBlock x:Name="LocationText"
-                                               Text="No evidence selected"
+                                               Text="Open a script or try the sample to begin"
                                                FontFamily="Consolas" FontSize="12"
                                                Foreground="#64716F" TextWrapping="Wrap"/>
                                     <TextBlock x:Name="EvidenceLabelText" Text="Original source" Style="{StaticResource DetailLabel}"
@@ -659,7 +666,7 @@
                                                        FontFamily="Consolas" FontSize="11"
                                                        Foreground="#B9CBC7"/>
                                             <TextBlock x:Name="EvidenceText"
-                                                       Text="Run the sample inspection to view source evidence."
+                                                       Text="Findings will display the exact matched source here. Inspected PowerShell is never executed."
                                                        FontFamily="Consolas" FontSize="12"
                                                        Foreground="#FCFDFC" TextWrapping="Wrap"/>
                                         </StackPanel>
