@@ -104,6 +104,24 @@
                     </VisualState.StateTriggers>
                 </VisualState>
             </VisualStateGroup>
+            <VisualStateGroup x:Name="SecondaryActionWidthStates">
+                <VisualState x:Name="StackedSecondaryActions">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="OpenBatchButton.(Grid.Row)" Value="1"/>
+                        <Setter Target="OpenBatchButton.(Grid.Column)" Value="0"/>
+                        <Setter Target="OpenComparisonWorkspaceButton.(Grid.Row)" Value="2"/>
+                        <Setter Target="OpenComparisonWorkspaceButton.(Grid.Column)" Value="0"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="InlineSecondaryActions">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="700"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
             <VisualStateGroup x:Name="ChromeWidthStates">
                 <VisualState x:Name="CompactChrome">
                     <VisualState.StateTriggers>
@@ -271,18 +289,48 @@
                     </Grid>
                 </Grid>
 
-                <!-- Explicit, bounded paste flow; source is never executed or saved automatically. -->
+                <!-- Compact secondary workflow toolbar; every action remains read-only. -->
                 <StackPanel Spacing="7">
-                    <Button x:Name="OpenPasteButton"
-                            Content="Paste PowerShell snippet"
-                            Click="OpenPaste_Click"
-                            HorizontalAlignment="Left"
-                            AutomationProperties.Name="Open the local PowerShell paste inspector"
-                            Background="#FFFFFF" Foreground="#253138"
-                            BorderBrush="#CDD8D1" BorderThickness="1"
-                            CornerRadius="5" FontFamily="Segoe UI"
-                            FontSize="13" FontWeight="SemiBold" Padding="15,10"/>
-                    <TextBlock Text="Paste a command or snippet. Inspect it locally without creating or running a .ps1 file."
+                    <Grid x:Name="SecondaryActionsGrid" ColumnSpacing="10" RowSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Button x:Name="OpenPasteButton" Grid.Column="0"
+                                Content="Paste snippet" Click="OpenPaste_Click"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="Open the local PowerShell paste inspector"
+                                Background="#FFFFFF" Foreground="#253138"
+                                BorderBrush="#CDD8D1" BorderThickness="1"
+                                CornerRadius="5" FontFamily="Segoe UI"
+                                FontSize="13" FontWeight="SemiBold" Padding="15,10"
+                                ToolTipService.ToolTip="Inspect pasted PowerShell in memory without executing it"/>
+                        <Button x:Name="OpenBatchButton" Grid.Column="1"
+                                Content="Open batch" Click="OpenBatch_Click"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="Choose up to 50 PowerShell files for batch inspection"
+                                Background="#FFFFFF" Foreground="#253138"
+                                BorderBrush="#CDD8D1" BorderThickness="1"
+                                CornerRadius="5" FontFamily="Segoe UI"
+                                FontSize="13" FontWeight="SemiBold" Padding="15,10"
+                                ToolTipService.ToolTip="Choose up to 50 individual .ps1 files; no script execution"/>
+                        <Button x:Name="OpenComparisonWorkspaceButton" Grid.Column="2"
+                                Content="Compare reports" Click="OpenComparisonWorkspace_Click"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="Compare two saved batch JSON inspection reports"
+                                Background="#EDF1EF" Foreground="#253138"
+                                BorderBrush="#CBD9D2" BorderThickness="1"
+                                CornerRadius="5" FontFamily="Segoe UI"
+                                FontSize="13" FontWeight="SemiBold" Padding="15,10"
+                                ToolTipService.ToolTip="Compare saved JSON reports without opening or running source scripts"/>
+                    </Grid>
+                    <TextBlock Text="Inspect a pasted snippet, selected files, or saved batch reports — locally and without executing PowerShell."
                                FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
                 </StackPanel>
 
@@ -326,37 +374,6 @@
                                    Foreground="#687671" FontSize="12" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
-                <!-- Native multi-file picker; no recursive directory scanning. -->
-                <StackPanel Spacing="7">
-                    <Button x:Name="OpenBatchButton"
-                            Content="Open batch of .ps1 files"
-                            Click="OpenBatch_Click"
-                            HorizontalAlignment="Left"
-                            AutomationProperties.Name="Choose up to 50 PowerShell files for batch inspection"
-                            Background="#FFFFFF" Foreground="#253138"
-                            BorderBrush="#CDD8D1" BorderThickness="1"
-                            CornerRadius="5" FontFamily="Segoe UI"
-                            FontSize="13" FontWeight="SemiBold" Padding="15,10"
-                            ToolTipService.ToolTip="Select up to 50 individual .ps1 files; none will be executed"/>
-                    <TextBlock Text="Batch inspection reads only selected files. No folders are scanned and no PowerShell runs."
-                               FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
-                </StackPanel>
-
-                <!-- Comparison reads saved batch JSON reports, never original scripts. -->
-                <StackPanel Spacing="7">
-                    <Button x:Name="OpenComparisonWorkspaceButton"
-                            Content="Compare inspection reports"
-                            Click="OpenComparisonWorkspace_Click"
-                            HorizontalAlignment="Left"
-                            AutomationProperties.Name="Compare two saved batch JSON inspection reports"
-                            Background="#EDF1EF" Foreground="#253138"
-                            BorderBrush="#CBD9D2" BorderThickness="1"
-                            CornerRadius="5" FontFamily="Segoe UI"
-                            FontSize="13" FontWeight="SemiBold" Padding="15,10"/>
-                    <TextBlock Text="Compare two existing batch JSON snapshots. No original PowerShell files are opened."
-                               FontSize="12" Foreground="#687671" TextWrapping="Wrap"/>
-                </StackPanel>
-
                 <!-- Real source state; no simulated uploaded file or fake picker. -->
                 <Border Background="#FFFFFF" BorderBrush="#DCE2DD"
                         BorderThickness="1" CornerRadius="7" Padding="16,13">
