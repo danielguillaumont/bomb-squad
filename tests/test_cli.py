@@ -77,3 +77,7 @@ def test_decode_keeps_bytes_meaning():
     assert decode("Get-Date\r\n".encode("utf-16"))[0] == "Get-Date\r\n"
     assert decode(b"\xef\xbb\xbfls")[1] == "utf-8-sig"
     assert decode(b"caf\xe9")[1] == "cp1252"
+    # A UTF-16 BOM on bytes that are not UTF-16 (seen in a test file of a popular
+    # package) is read with replacement characters instead of stopping the scan.
+    text, encoding = decode(b"\xff\xfea\x00b\x00\n")
+    assert encoding == "utf-16" and text.startswith("ab")
