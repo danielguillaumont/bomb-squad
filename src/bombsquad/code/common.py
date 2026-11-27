@@ -194,6 +194,16 @@ def hidden_characters(text: str, positions: Positions) -> list[CodeHit]:
 
 
 _PADDING = re.compile(r"[ \t]{100,}(?=\S)")
+_WORD = re.compile(r"[A-Za-z_$][\w$]*")
+_OPERATOR = re.compile(r"[(){}\[\]=;|&<>`$]")
+
+
+def _could_run(tail: str) -> bool:
+    """Text after padding that could be a statement or command: two words, or a word and an
+    operator. A lone word or punctuation, such as a docstring wrapped after a run of spaces
+    or a caret line under an error message, cannot run on its own."""
+    words = _WORD.findall(tail)
+    return len(words) >= 2 or bool(words and _OPERATOR.search(tail))
 
 
 def _previous_indent(text: str, positions: Positions, line_no: int) -> int:
@@ -217,6 +227,8 @@ def whitespace_padding(text: str, positions: Positions) -> list[CodeHit]:
         hidden_start = match.end()
         line_end = text.find("\n", hidden_start)
         line_end = len(text) if line_end < 0 else line_end
+        if not _could_run(text[hidden_start:line_end]):
+            continue
         hits.append(CodeHit(
             "BS-OB-001", positions.region(hidden_start, line_end),
             clip(text[hidden_start:line_end]),

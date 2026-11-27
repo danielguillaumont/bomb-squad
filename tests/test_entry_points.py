@@ -387,6 +387,20 @@ def test_deep_indentation_that_grows_step_by_step_is_not_padding(tmp_path):
     assert ids_at(report, "jump.py") == {"BS-OB-001"}
 
 
+def test_padding_before_text_that_cannot_run_is_not_reported(tmp_path):
+    # As in a wrapped docstring and an error snapshot under a test, both from popular
+    # packages; hidden code after the same padding is still reported.
+    docstring = ('def f():\n    """Designation of what errors, if an' + " " * 300 + 'y,\n'
+                 '    should be retried."""\n')
+    snapshot = "  |  wheels = [{ name = 'x' }]\n  |" + " " * 150 + "^^^^^^^^\n"
+    hidden = "x = 1" + " " * 150 + "exec(data)\n"
+    root = build(tmp_path, {"doc.py": docstring, "snap.rs": snapshot, "hidden.py": hidden})
+    report = scan([root / "doc.py", root / "snap.rs", root / "hidden.py"])
+    assert ids_at(report, "doc.py") == set()
+    assert ids_at(report, "snap.rs") == set()
+    assert "BS-OB-001" in ids_at(report, "hidden.py")
+
+
 def test_in_tree_build_backend(tmp_path):
     root = build(tmp_path, {
         "pyproject.toml": (
