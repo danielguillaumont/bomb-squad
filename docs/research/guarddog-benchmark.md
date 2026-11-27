@@ -66,7 +66,7 @@ Both tools score higher on npm here than in the development sample (Bomb Squad 5
   - **onnxruntime** (PyPI), BS-OB-001: an ASCII diagram in a docstring, with an arrow head and a bar 113 spaces in. The narrowed rule still counts these as code, because they are a word and an operator.
   - **ansible-core** (PyPI), BS-EX-001: Bomb Squad took `ansible/modules/setup.py`, Ansible's fact-gathering module, for a build script. Neither pip nor `python setup.py` runs it, so this is a fault in Bomb Squad, not only a noisy rule.
 
-  These were found after the held-out run. Fixing them would make this sample in-sample too, so a later measure needs a new sample.
+  These were found after the held-out run. The ansible-core fault was fixed afterwards: in a package, a `setup.py` below the project root is now reported at info. The figures above are from before the fix, and the fix makes this sample in-sample for it, so a later measure needs a new sample.
 
 ## Development sample
 

@@ -89,12 +89,42 @@ def npm_package(path: Path, shown: str, text: str, found: Discovery,
                 "command expansion in binding.gyp"), entry))
 
 
+PROJECT_FILES = ("pyproject.toml", "setup.py", "setup.cfg", "PKG-INFO")
+NESTED_SETUP = "setup.py below a project root"
+
+
+def _below_project_root(path: Path, roots: list[Path]) -> bool:
+    """Whether a folder above this file's own, up to the scanned root, is a Python project
+    or wheel root. pip runs the setup.py of the root it installs, so in a published package
+    one further down, such as Ansible's `ansible/modules/setup.py`, does not run. The file's
+    own folder never counts, so a package cannot hide its real setup.py this way."""
+    resolved = path.resolve()
+    inside = [r for r in roots if resolved.is_relative_to(r)]
+    if not inside:
+        return False
+    root = max(inside, key=lambda r: len(r.parts))
+    for folder in resolved.parents[1:]:
+        if not folder.is_relative_to(root):
+            break
+        if any((folder / name).is_file() for name in PROJECT_FILES):
+            return True
+        try:
+            if any(d.is_dir() and d.name.endswith(".dist-info") for d in folder.iterdir()):
+                return True
+        except OSError:
+            pass
+    return False
+
+
 def python_file(path: Path, shown: str, text: str, found: Discovery) -> None:
     name = path.name.lower()
     positions = Positions(text)
     first = positions.line_region(1)
     if name == "setup.py":
-        entry = EntryPoint("python", "setup.py", "pip install from source, or python setup.py",
+        nested = _below_project_root(path, found.roots)
+        entry = EntryPoint("python", NESTED_SETUP if nested else "setup.py",
+                           "pip install of its folder, or python setup.py there" if nested
+                           else "pip install from source, or python setup.py",
                            shown, first, "setup.py")
         found.entry_points.append(entry)
         entry.targets.append(shown)
