@@ -1,0 +1,37 @@
+[project]
+name = "bombsquad"
+version = "2.0.0.dev0"
+description = "Find what runs before anyone chooses to run it: pre-execution review for third-party code."
+readme = "README.md"
+authors = [
+    { name = "danielguillaumont", email = "181521129+danielguillaumont@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/danielguillaumont/bomb-squad"
+
+[project.scripts]
+bombsquad = "bombsquad.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "ruff>=0.14",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["SIM102"]  # dispatch on a tool or cmdlet name, then check its arguments
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
