@@ -200,6 +200,8 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 Released after Phase 4: the scanner, the diff engine, the pull-request gate, and measured accuracy against GuardDog.
 
+Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions), the Phase 3 exit (a week of hand-reviewed dependency pull requests, and Exploit Atlas), and the benchmark's time split.
+
 ## Phase 5: Detonation (v2.1)
 
 - `bombsquad detonate npm:<pkg>@<version>` installs the package in a throwaway rootless container with no host mounts. Python packages are also imported once, so `.pth` files run.
