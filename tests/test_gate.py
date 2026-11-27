@@ -232,7 +232,28 @@ def test_nothing_new(tmp_path):
     assert report.repository.added_files == []
     text = render_markdown(report)
     assert text.startswith(COMMENT_MARKER)
-    assert "Nothing new reported" in text and "No new findings does not mean safe." in text
+    assert "No new entry points, findings or signals." in text
+    assert "0 new or changed entry points, 0 new findings" in text
+    assert "No new findings does not mean safe." in text
+
+
+def test_headline_names_entry_points_that_have_no_findings(tmp_path):
+    quiet = """
+        on: pull_request
+        permissions: {}
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - run: echo hello
+        """
+    base = project(tmp_path, None)
+    head = project(tmp_path, None, {".github/workflows/build.yml": quiet}, name="head")
+    report = gate(base, head, registry_with_demo(), NOW)
+    assert report.highest_level() is None
+    text = render_markdown(report)
+    assert "New entry points, with no findings or signals." in text
+    assert "1 new or changed entry point," in text
 
 
 def test_folders_must_be_separate(tmp_path):

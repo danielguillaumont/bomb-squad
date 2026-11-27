@@ -188,6 +188,10 @@ def _diff_lines(diff: DiffReport, indent: str = "") -> list[str]:
     return out
 
 
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}{'' if n == 1 else 's'}"
+
+
 def render_markdown(report: GateReport) -> str:
     repo = report.repository
     highest = report.highest_level()
@@ -195,11 +199,17 @@ def render_markdown(report: GateReport) -> str:
     failed = [d for d in report.dependencies if d.error]
     entries = len(repo.added_entries) + len(repo.changed_entries)
     out = [COMMENT_MARKER, "### Bomb Squad: what this pull request newly runs", ""]
-    summary = (f"**Highest level: {highest.value}.** " if highest else "**Nothing new "
-               "reported.** ")
-    summary += (f"Repository: {entries} new or changed entry points, "
-                f"{len(repo.added_findings)} new findings. Dependencies: {len(reviewed)} "
-                "new versions reviewed")
+    dependency_entries = sum(len(d.report.added_entries) + len(d.report.changed_entries)
+                             for d in reviewed if d.report)
+    if highest:
+        summary = f"**Highest level: {highest.value}.** "
+    elif entries or dependency_entries:
+        summary = "**New entry points, with no findings or signals.** "
+    else:
+        summary = "**No new entry points, findings or signals.** "
+    summary += (f"Repository: {_count(entries, 'new or changed entry point')}, "
+                f"{_count(len(repo.added_findings), 'new finding')}. Dependencies: "
+                f"{_count(len(reviewed), 'new version')} reviewed")
     if failed:
         summary += f", {len(failed)} could not be"
     if report.not_reviewed:
