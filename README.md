@@ -65,7 +65,20 @@ demo-package/package.json
 - `-EncodedCommand`, `-Command` text and base64 literals, decoded and analysed;
 - names assembled from string literals, aliases, native tools, and en and em dashes in place of `-`.
 
-Every finding carries its source location, the evidence, how it was reached and what the analysis could not see. Accuracy has not been measured yet. The benchmark against GuardDog is [Phase 4](docs/roadmap.md#phase-4-benchmark-against-guarddog), and until it runs this README states no detection rates. **No findings does not mean safe.**
+Every finding carries its source location, the evidence, how it was reached and what the analysis could not see. **No findings does not mean safe.**
+
+## How accurate it is
+
+Measured against GuardDog 3.2.0 on the same packages, in one run on 2026-11-27. The packages were 200 npm and 200 PyPI samples from the DataDog malicious-software-packages-dataset at commit `72c723be5470` (2026-11-05), and 200 npm and 195 PyPI releases of popular packages. Bomb Squad's figures are at a review or high finding; GuardDog's are at its `suspicious` or `high_risk` label.
+
+| | Malicious found, Bomb Squad | Malicious found, GuardDog | Popular releases flagged, Bomb Squad | Popular releases flagged, GuardDog |
+|---|---|---|---|---|
+| npm | 45.0% (90/200) | 66.0% (132/200) | 1.5% (3/200) | 2.0% (4/200) |
+| PyPI | 65.5% (131/200) | 91.0% (182/200) | 11.8% (23/195) | 15.9% (31/195) |
+
+GuardDog finds more. Bomb Squad looks only at what runs on install and the code it reaches. It flags none of the 84 npm and 24 PyPI samples where it found no install-time entry point, such as payloads that run on import or require. On npm samples with an install-time entry point, it finds 79.0% (90/114) to GuardDog's 73.7% (84/114). 64 of the PyPI samples share one pattern that both tools catch. Without them, the PyPI figures are 49.3% (67/136) for Bomb Squad and 86.8% (118/136) for GuardDog.
+
+These figures are in-sample: Bomb Squad's rules changed after earlier runs on the same samples, and the dataset was mostly found by GuardDog. There is no after-cutoff measure yet. The [write-up](docs/research/guarddog-benchmark.md) has the full tables, where Bomb Squad loses, and the pins.
 
 ## Use it
 
