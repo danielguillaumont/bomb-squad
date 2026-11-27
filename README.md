@@ -85,7 +85,7 @@ These figures are in-sample: Bomb Squad's rules changed after earlier runs on th
 Requires Python 3.12. PowerShell files and command lines also need PowerShell: PowerShell 7 (`pwsh`) on any OS, or Windows PowerShell 5.1.
 
 ```powershell
-uv tool install git+https://github.com/danielguillaumont/bomb-squad@v2.0.0
+uv tool install git+https://github.com/danielguillaumont/bomb-squad@v2.0.1
 bombsquad scan .\some-package               # files or directories
 Get-Clipboard | bombsquad scan -             # check a pasted command before running it
 bombsquad scan .\unpacked-pkg --package      # as a published package: workflows and hooks in it are info
@@ -96,7 +96,7 @@ bombsquad diff npm:some-package@1.4.2..1.4.3 --source --record tags.json
 bombsquad diff old.tgz new.tgz                 # two local folders or archives
 ```
 
-Output is text, JSON or SARIF 2.1.0 (for GitHub code scanning). `--fail-on high|review|info` sets a non-zero exit code for CI.
+Output is text, JSON or SARIF 2.1.0 (for GitHub code scanning). JSON and SARIF are UTF-8 in a file (`-o`) and ASCII with escapes on standard output, so they stay valid when piped on Windows. `--fail-on high|review|info` sets a non-zero exit code for CI.
 
 `bombsquad diff` downloads both versions from npm or PyPI, checks each against the registry's hash, unpacks them without running anything, and scans both. It reports new and changed entry points, new findings, code files that gained a minified line, and publish signals: a different publisher or maintainers, provenance that went missing, a changed repository, and how recently the new version was published. With `--source` it also compares the new version with its GitHub repository at the release tag, listing files only in the package or changed from the source, and with `--record` it keeps each tag's commit so a tag that later moves is reported.
 
