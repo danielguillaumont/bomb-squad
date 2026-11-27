@@ -293,8 +293,14 @@ Detection rates come only from the benchmark below. Every figure states its coun
   - GuardDog 3.2.0, with its dependencies as of 2026-11-20, at three thresholds: its risk label `high_risk`, its label `suspicious` or `high_risk`, and any matched rule (the criterion of its exit code). GuardDog 3 labels a package from a 0–10 risk score that pairs capabilities with threat indicators.
   - GuardDog is given the folder, so its registry-metadata rules do not run. Bomb Squad's `scan` reads no registry metadata either.
   - Each tool runs in its own process with a 300-second limit. A timeout or crash counts as an error for that tool and is reported, not counted as a miss or a pass.
+  - **Detonation**, only when the workflow's `detonate` input is `benign` or `all` (`run --detonate`), is scored on the packages it ran on.
+    - Inputs: benign releases are fetched again as the registry serves them, with the sdist preferred. A PyPI sample installs the archive it holds, or its folder packed as an sdist. An npm sample installs from its folder.
+    - Limits: 60 seconds each, two at a time.
+    - It flags a package when package code read or sent a fake credential, or wrote somewhere that persists. A second detector counts anything observed. A third flags what either Bomb Squad at review or high, or detonation, flags.
+    - Its gaps are compared with all of Bomb Squad's rule IDs for that package, including findings at info that installing does not run, so they are never overstated.
+    - Scores give the median and total seconds per package, and how many runs failed or timed out.
 - **Scores:** recall on malicious packages, false positives per 1,000 benign releases, and precision on this mix, per ecosystem and split. Recall is also broken down by the kind of entry point Bomb Squad found, with the same counts for GuardDog. Every rate is given with its numerator and denominator.
   - Precision depends on the ratio of malicious to benign packages here, which is not the ratio in the wild.
   - Most of the dataset was found by GuardDog, which favours it.
 - **Named incidents:** `python -m benchmark incidents` takes each version an OpenSSF malicious-packages report confirms for ChainDrop and `agent-framework`. Where the dataset commit has its sample, it compares the sample with the highest stable release published before it, from the registry, as `bombsquad diff` compares an update, in package mode. Only artifacts of the same kind are compared (npm tarball, sdist, wheel). It reports new and changed entry points and new findings at high and review. A version the dataset does not have is reported as missing, not as a miss.
-- **What is kept:** the uploaded results hold package names, versions, rule IDs, levels and timings, and for named incidents the kinds and paths of entry points. Evidence and sample content are not kept.
+- **What is kept:** the uploaded results hold package names, versions, rule IDs, levels and timings, detonation categories and counts (not DNS names, commands or sent bytes), and for named incidents the kinds and paths of entry points. Evidence and sample content are not kept.

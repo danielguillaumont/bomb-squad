@@ -225,7 +225,9 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
 
 **Built:** `bombsquad detonate`, with the sandbox, the sink, the fake credentials, the strace recorder and the comparison with the static scan ([methodology](methodology.md#detonation)). CI runs harmless stand-in packages in real containers.
 
-**Not yet:** detonation in the benchmark, its dependencies, HTTPS content, and eBPF.
+**Built, not yet run:** detonation in the benchmark, behind the workflow's `detonate` input (`none` by default, `benign`, or `all`).
+
+**Not yet:** the benchmark run with detonation, installing dependencies, HTTPS content, and eBPF.
 
 **Exit:** a benchmark re-run shows whether detonation adds recall, and at what cost per package.
 

@@ -5,6 +5,7 @@ counts they come from."""
 from __future__ import annotations
 
 import json
+import statistics
 from pathlib import Path
 
 DETECTORS = (
@@ -13,6 +14,12 @@ DETECTORS = (
     ("guarddog", "high_risk", "GuardDog, high risk"),
     ("guarddog", "suspicious", "GuardDog, suspicious or high risk"),
     ("guarddog", "any", "GuardDog, any rule (its exit code)"),
+)
+# Scored only in runs that detonated: what package code was seen doing in the sandbox.
+DETONATION_DETECTORS = (
+    ("detonation", "flagged", "Detonation, a fake credential read or sent, or persistence"),
+    ("detonation", "any", "Detonation, anything observed"),
+    ("combined", "review", "Bomb Squad review or high, or detonation flagged"),
 )
 GUARDDOG_LABELS = {"high_risk": {"high_risk"}, "suspicious": {"suspicious", "high_risk"}}
 SPLITS = ("retrospective", "after-cutoff")
@@ -32,11 +39,23 @@ def load(path: Path) -> tuple[dict, list[dict]]:
     return meta, rows
 
 
+def detonated(row: dict) -> bool:
+    return isinstance(row.get("detonation"), dict)
+
+
 def flagged(row: dict, tool: str, threshold: str) -> bool | None:
     """True or False, or None when the tool failed on this package."""
+    if tool == "combined":
+        static, dynamic = flagged(row, "bombsquad", threshold), flagged(row, "detonation",
+                                                                        "flagged")
+        if static or dynamic:
+            return True
+        return None if static is None or dynamic is None else False
     result = row.get(tool) or {}
     if result.get("error"):
         return None
+    if tool == "detonation":
+        return bool(result.get("flagged") if threshold == "flagged" else result.get("seen"))
     if tool == "guarddog":
         if threshold == "any":
             return result.get("issues", 0) > 0
@@ -55,6 +74,9 @@ def _rate(numerator: int, denominator: int) -> dict:
 
 
 def _confusion(malicious: list[dict], benign: list[dict], tool: str, threshold: str) -> dict:
+    if tool in ("detonation", "combined"):  # only the packages this run detonated
+        malicious = [r for r in malicious if detonated(r)]
+        benign = [r for r in benign if detonated(r)]
     hits = [flagged(r, tool, threshold) for r in malicious]
     alarms = [flagged(r, tool, threshold) for r in benign]
     tp, fn = hits.count(True), hits.count(False)
@@ -66,6 +88,19 @@ def _confusion(malicious: list[dict], benign: list[dict], tool: str, threshold: 
         "precision": _rate(tp, tp + fp),
         "errors": {"malicious": hits.count(None), "benign": alarms.count(None)},
     }
+
+
+def detectors(meta: dict) -> tuple:
+    return DETECTORS + (DETONATION_DETECTORS if meta.get("detonate", "none") != "none" else ())
+
+
+def _cost(rows: list[dict]) -> dict:
+    done = [r["detonation"] for r in rows if detonated(r)]
+    seconds = [d["seconds"] for d in done if isinstance(d.get("seconds"), int | float)]
+    return {"packages": len(done), "errors": sum(1 for d in done if d.get("error")),
+            "timed_out": sum(1 for d in done if d.get("timed_out")),
+            "median_seconds": round(statistics.median(seconds), 1) if seconds else None,
+            "total_seconds": round(sum(seconds), 1)}
 
 
 def score(meta: dict, rows: list[dict]) -> dict:
@@ -80,7 +115,7 @@ def score(meta: dict, rows: list[dict]) -> dict:
         for split in SPLITS:
             malicious = [r for r in usable if r["set"] == "malicious"
                          and r["ecosystem"] == ecosystem and split in r.get("splits", [])]
-            for tool, threshold, label in DETECTORS:
+            for tool, threshold, label in detectors(meta):
                 out["results"].append({"ecosystem": ecosystem, "split": split, "tool": tool,
                                        "threshold": threshold, "label": label,
                                        **_confusion(malicious, benign, tool, threshold)})
@@ -96,12 +131,19 @@ def score(meta: dict, rows: list[dict]) -> dict:
             for surface in surfaces:
                 groups.setdefault(surface, []).append(r)
         for surface, members in sorted(groups.items()):
-            for tool, threshold, label in DETECTORS:
-                hits = [flagged(r, tool, threshold) for r in members]
+            for tool, threshold, label in detectors(meta):
+                scored = ([r for r in members if detonated(r)]
+                          if tool in ("detonation", "combined") else members)
+                hits = [flagged(r, tool, threshold) for r in scored]
                 out.setdefault("surfaces", []).append({
                     "ecosystem": ecosystem, "surface": surface, "tool": tool,
                     "threshold": threshold, "label": label,
                     "recall": _rate(hits.count(True), hits.count(True) + hits.count(False))})
+    if meta.get("detonate", "none") != "none":
+        out["detonation_cost"] = [
+            {"ecosystem": e, "set": kind,
+             **_cost([r for r in usable if r["ecosystem"] == e and r["set"] == kind])}
+            for e in ("npm", "pypi") for kind in ("malicious", "benign")]
     return out
 
 
@@ -139,6 +181,14 @@ def markdown(scores: dict) -> str:
     for r in scores.get("surfaces", []):
         lines.append(f"| {r['ecosystem']} | {r['surface']} | {r['label']} | "
                      f"{_cell(r['recall'])} |")
+    if scores.get("detonation_cost"):
+        lines += ["", "### Detonation cost", "",
+                  "| Ecosystem | Set | Detonated | Errors | Timed out | Median seconds | "
+                  "Total seconds |", "|---|---|---|---|---|---|---|"]
+        for c in scores["detonation_cost"]:
+            median = "n/a" if c["median_seconds"] is None else c["median_seconds"]
+            lines.append(f"| {c['ecosystem']} | {c['set']} | {c['packages']} | {c['errors']} | "
+                         f"{c['timed_out']} | {median} | {c['total_seconds']} |")
     lines += ["", "Precision depends on the mix of malicious and benign packages here, which "
               "is not the mix in the wild; false positives per 1,000 benign releases do not. "
               "Most samples in the DataDog dataset were found by GuardDog, which favours it. "

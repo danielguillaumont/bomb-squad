@@ -23,6 +23,13 @@ on:
           Selections of earlier runs to leave out, as SEED:COUNT pairs separated by commas
           (2026:200,2026:5 for a held-out sample). Exact only on the same dataset commit.
         default: ""
+      detonate:
+        description: >-
+          Also detonate packages in the sandbox: none, benign (the popular releases only), or
+          all (the malicious samples too). See docs/methodology.md#detonation.
+        type: choice
+        options: [none, benign, all]
+        default: none
 
 permissions:
   contents: read
@@ -135,11 +142,16 @@ jobs:
           BENIGN_PER_ECOSYSTEM: ${{ inputs.benign-per-ecosystem }}
           SEED: ${{ inputs.seed }}
           LEAVE_OUT: ${{ inputs.leave-out }}
+          DETONATE: ${{ inputs.detonate }}
         run: |
           set -euo pipefail
+          if ! [[ "$DETONATE" =~ ^(none|benign|all)$ ]]; then
+            echo "::error::detonate must be none, benign or all"
+            exit 2
+          fi
           leave_out=()
           for pair in ${LEAVE_OUT//,/ }; do leave_out+=(--exclude-selection "$pair"); done
-          uv run --locked python -m benchmark run --selected data/selected.json \
+          uv run --locked python -m benchmark run --detonate "$DETONATE" --selected data/selected.json \
             --seed "$SEED" "${leave_out[@]}" \
             --dataset data/dataset --dataset-commit "$DATASET_COMMIT" \
             --dataset-date "$DATASET_DATE" --guarddog guarddog \
