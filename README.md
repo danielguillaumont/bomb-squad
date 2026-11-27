@@ -85,7 +85,7 @@ These figures are in-sample: Bomb Squad's rules changed after earlier runs on th
 Requires Python 3.12. PowerShell files and command lines also need PowerShell: PowerShell 7 (`pwsh`) on any OS, or Windows PowerShell 5.1.
 
 ```powershell
-uv tool install git+https://github.com/danielguillaumont/bomb-squad
+uv tool install git+https://github.com/danielguillaumont/bomb-squad@v2.0.0
 bombsquad scan .\some-package               # files or directories
 Get-Clipboard | bombsquad scan -             # check a pasted command before running it
 bombsquad scan .\unpacked-pkg --package      # as a published package: workflows and hooks in it are info
