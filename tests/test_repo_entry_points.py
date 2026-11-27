@@ -667,3 +667,19 @@ def test_scalar_map_for_literal_blocks():
     scalar = y.ScalarMap.build(Positions(text), node)
     assert scalar.offset() == (1, 2)
     assert scalar.region(node.value.index("two"), node.value.index("two") + 3).line == 4
+
+
+def test_javascript_action_in_a_subfolder_runs_code_elsewhere_in_the_repository(tmp_path):
+    (tmp_path / "upload").mkdir()
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "upload/action.yml").write_text(
+        "name: upload\nruns:\n  using: node24\n  main: ../lib/upload.js\n", encoding="utf-8")
+    (tmp_path / "lib/upload.js").write_text("console.log(process.env.GITHUB_TOKEN);\n",
+                                            encoding="utf-8")
+    report = scan([tmp_path])
+    [entry] = report.entry_points
+    assert [t.endswith("lib/upload.js") for t in entry.targets] == [True]
+    assert {f.rule.id for f in report.findings} == {"BS-CR-001"}
+    outside = tmp_path / "upload"
+    report = scan([outside])  # only the action's folder: lib/ is outside what was given
+    assert report.entry_points[0].targets == []

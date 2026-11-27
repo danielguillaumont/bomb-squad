@@ -168,7 +168,7 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 - Runs on Bomb Squad and on Exploit Atlas.
 
 **Built:**
-- `bombsquad gate BASE HEAD` compares the pull request's base and head as `bombsquad diff` compares two versions. It then reviews each dependency version that the head's `package-lock.json`, `npm-shrinkwrap.json`, `uv.lock`, `poetry.lock` or pinned `requirements*.txt` newly pins, against the version it replaces. Direct dependencies come first, up to 25.
+- `bombsquad gate BASE HEAD` compares the pull request's base and head as `bombsquad diff` compares two versions. It then reviews each dependency version that the head's `package-lock.json`, `npm-shrinkwrap.json`, `uv.lock`, `poetry.lock` or pinned `requirements*.txt` newly pins, against the version it replaces. Direct dependencies come first, up to 25. Changed action references (`uses: owner/repo@sha`) are reviewed the same way: the action's repository is compared at both commits, keeping what the used action reaches.
 - `action.yml` is a composite Action that writes Markdown, JSON and SARIF.
 - `.github/workflows/gate.yml` runs it on this repository's pull requests. The job that runs it has read-only contents. A separate job, with only `pull-requests: write`, posts or updates one comment from the report and runs nothing from the pull request.
 - Dependabot opens weekly update pull requests for actions and `uv.lock`, after a seven-day cooldown.

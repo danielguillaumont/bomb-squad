@@ -307,3 +307,64 @@ def test_cli_gate_writes_every_format(tmp_path, capsys):
     sarif = json.loads((out / "gate.sarif").read_text(encoding="utf-8"))
     assert {r["ruleId"] for r in sarif["runs"][0]["results"]} >= {"BS-GHA-002"}
     assert main(["gate", str(base), str(base)]) == 2
+
+
+# Actions ------------------------------------------------------------------------------------
+
+def uses_workflow(*refs: str) -> str:
+    steps = "\n".join(f"          - uses: {ref}" for ref in refs)
+    return ("on: push\npermissions: {}\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+            f"    steps:\n{steps}\n  reuse:\n    uses: org/flows/.github/workflows/x.yml@v1\n")
+
+
+def test_action_references(tmp_path):
+    from bombsquad.actionrefs import action_changes, read_refs
+
+    old_sha, new_sha = "a" * 40, "b" * 40
+    base = write(tmp_path / "base", {".github/workflows/ci.yml": uses_workflow(
+        f"org/tool/sub@{old_sha}", "actions/checkout@v4", "./local", "docker://alpine:3")})
+    head = write(tmp_path / "head", {
+        ".github/workflows/ci.yml": uses_workflow(
+            f"org/tool/sub@{new_sha}", "actions/checkout@v4", "${{ matrix.action }}@v1"),
+        "deep/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: org/new@v2\n",
+        "docs/workflows/not-a-workflow.yml": uses_workflow("org/ignored@v1")})
+    refs, notes = read_refs(head)
+    assert sorted((r.path, r.action, r.ref) for r in refs) == [
+        (".github/workflows/ci.yml", "actions/checkout", "v4"),
+        (".github/workflows/ci.yml", "org/flows/.github/workflows/x.yml", "v1"),
+        (".github/workflows/ci.yml", "org/tool/sub", new_sha),
+        ("deep/action.yml", "org/new", "v2")]
+    assert notes == []
+    found = action_changes(read_refs(base)[0], refs)
+    assert [(c.name, c.old, c.new) for c in found] == [
+        ("org/new", None, "v2"), ("org/tool/sub", old_sha, new_sha)]
+
+
+def test_updated_action_that_now_sends_the_environment(tmp_path):
+    old_sha, new_sha = "a" * 40, "b" * 40
+    action = "name: t\nruns:\n  using: node24\n  main: ../lib/run.js\n"
+    old_repo = {"sub/action.yml": action, "lib/run.js": "console.log('hi');\n"}
+    new_repo = {"sub/action.yml": action, "lib/run.js": STEALER,
+                "tools/dev.js": STEALER,  # in the repository, but the action never runs it
+                ".github/workflows/own-ci.yml": WORKFLOW}
+    registry = Registry()
+    for sha, files in ((old_sha, old_repo), (new_sha, new_repo)):
+        registry.urls[f"https://codeload.github.com/org/tool/tar.gz/{sha}"] = tarball(
+            files, prefix=f"tool-{sha}/")
+    base = write(tmp_path / "base", {".github/workflows/ci.yml": uses_workflow(
+        f"org/tool/sub@{old_sha}")})
+    head = write(tmp_path / "head", {".github/workflows/ci.yml": uses_workflow(
+        f"org/tool/sub@{new_sha}")})
+    report = gate(base, head, registry, NOW)
+    reviews = {d.change.name: d for d in report.dependencies}
+    review = reviews["org/tool/sub"]
+    assert review.error is None
+    assert review.report.added_entries == []  # the repository's own CI is left out
+    assert {f.path for f in review.report.added_findings} == {"lib/run.js"}
+    # GitHub Actions entry points are left out of BS-EX-001, so these stay at review.
+    assert {f.rule.id for f in review.report.added_findings} == {"BS-ENV-001", "BS-NET-003"}
+    assert review.report.highest_level() is Level.REVIEW
+    assert list(reviews) == ["org/tool/sub"]  # the unchanged reusable workflow is not fetched
+    text = render_markdown(report)
+    assert "`aaaaaaaaaaaa` → `bbbbbbbbbbbb`" in text
+    assert f"https://github.com/org/tool/compare/{old_sha}...{new_sha}" in text

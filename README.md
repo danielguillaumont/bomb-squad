@@ -88,7 +88,7 @@ Output is text, JSON or SARIF 2.1.0 (for GitHub code scanning). `--fail-on high|
 
 ### In pull requests
 
-`bombsquad gate` reports what a pull request newly runs: new entry points and findings in the repository, and what each dependency version its lockfiles newly pin gains from the registry. As a GitHub Action:
+`bombsquad gate` reports what a pull request newly runs: new entry points and findings in the repository, what each dependency version its lockfiles newly pin gains from the registry, and what each updated action gains between its old and new commit. As a GitHub Action:
 
 ```yaml
 on: pull_request
