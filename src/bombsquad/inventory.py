@@ -1,7 +1,7 @@
 """Find what runs without anyone choosing to run it.
 
-npm and Python entry points are read here; workflows, editor tasks, dev containers and
-git hooks in `bombsquad.repo`.
+npm and Python entry points are read here; workflows, editor tasks, dev containers, git
+hooks and agent files in `bombsquad.repo`.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 from bombsquad.code.common import CodeHit, Snippet
 from bombsquad.discovery import Discovery, Target, find_targets
 from bombsquad.model import EntryPoint, Region
-from bombsquad.repo import editors, githooks, workflows
+from bombsquad.repo import agents, editors, githooks, workflows
 from bombsquad.textpos import Positions
 
 NPM_INSTALL = "npm install, including when installed as a dependency"
@@ -186,6 +186,8 @@ def surface(path: Path) -> str | None:
         return "lefthook"
     if name in githooks.PRE_COMMIT_NAMES:
         return "pre-commit"
+    if agents.classify(path) is not None:
+        return "agent"
     return None
 
 
@@ -209,6 +211,8 @@ def discover(path: Path, shown: str, text: str, found: Discovery, display) -> No
         githooks.lefthook(path, shown, text, found, display)
     elif kind == "pre-commit":
         githooks.pre_commit(path, shown, text, found, display)
+    elif kind == "agent":
+        agents.discover(path, shown, text, found, display)
     elif path.name.lower() == "package.json":
         npm_package(path, shown, text, found, display)
     else:

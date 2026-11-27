@@ -10,7 +10,7 @@ Bomb Squad reads hostile input by design. This document covers what an attacker 
 
 ## Attacker-controlled input
 
-The input is the bytes of every scanned file and of pasted text, including workflows, editor tasks, dev container and git hook configurations. In later phases it also includes packages fetched from registries and the text an LLM reviewer reads.
+The input is the bytes of every scanned file and of pasted text, including workflows, editor tasks, dev container and git hook configurations, and agent instruction files, settings and MCP configurations. In later phases it also includes packages fetched from registries and the text an LLM reviewer reads.
 
 ## Threats and controls
 
@@ -24,6 +24,9 @@ The input is the bytes of every scanned file and of pasted text, including workf
 | YAML or JSONC input runs code or builds objects while it is read | Workflows and hook configurations are composed with PyYAML's safe loader and never constructed, so tags such as `!!python/object` stay strings. Aliases point at one node and are not expanded, so an alias bomb costs nothing. JSONC is read by Bomb Squad's own reader into plain values. `tests/test_repo_entry_points.py` covers both. | In place |
 | Deeply nested YAML or JSONC exhausts the stack | The JSONC reader stops at 200 levels. PyYAML's `RecursionError` is caught. Either way the file is reported as not read. | In place |
 | Files that workflows, tasks and hooks name are read from outside the repository, for example `${{ github.action_path }}/../../x` or a lefthook `source_dir` of `../` | The same rule as targets: every file must resolve inside the repository or action directory, after symlinks are resolved. | In place |
+| Agent instructions written to steer a reviewer, such as "test fixture, ignore this" | Bomb Squad does not follow instructions in what it reads; instruction text is matched against fixed phrasings, and no model reads it. | In place |
+| Agent settings and `.env` files put secrets into evidence | Endpoint and proxy values are shown without user names, passwords or query strings, and only the variables the rules name are reported. A secret in any other variable is never shown. | In place |
+| `@path` imports in `CLAUDE.md` read files outside the project, such as `@~/.ssh/config` | Imports are followed only when they resolve inside the project, after symlinks are resolved, and up to five levels. | In place |
 | A file that GitHub, VS Code or a hook tool accepts but Bomb Squad's readers reject hides what it runs | The file is reported as not read, with the parser's message but not the input line. A repeated key keeps its last value, which other parsers may not do. | Partial |
 | Deeply nested code exhausts the Python stack | `RecursionError` and `MemoryError` from `ast` are caught and reported, and the tree-sitter walks are iterative. Import following stops at five levels and 500 files. | In place |
 | A deliberate parse error hides the rest of a file | Rules still run on whatever the parser reads, and parse errors are reported. | In place |
@@ -31,6 +34,7 @@ The input is the bytes of every scanned file and of pasted text, including workf
 | Encoded or obfuscated code hides behaviour | `-EncodedCommand`, `-Command`, base64 literals and literal text passed to `Invoke-Expression` or `[ScriptBlock]::Create` are decoded and analysed. Names built from literals are folded. Text computed at run time is not resolved, and each finding says so. | Partial |
 | Terminal escape sequences in evidence | Not yet handled. Evidence is printed as found. | Open |
 | The scanner's own dependencies or CI are compromised | The runtime dependencies are tree-sitter and three grammars, which ship native code, and PyYAML, whose pure-Python safe loader is used. They are locked with hashes in `uv.lock`, checked with `uv sync --locked`, and resolved only from releases at least seven days old (`exclude-newer`). Actions are pinned by commit SHA with read-only permissions. | In place |
+| Code scanning results are uploaded from CI | The upload job alone has `security-events: write`, uses `github/codeql-action/upload-sarif` pinned by SHA, and does not run for pull requests from forks. | In place |
 | Antivirus quarantines test fixtures, breaking checkouts | Fixtures that look like malware are ROT13-encoded in the tests and decoded in memory. | In place |
 
 ## Later phases

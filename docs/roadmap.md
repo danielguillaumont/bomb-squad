@@ -62,7 +62,7 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 | GitHub Actions | push, PR, schedule | `.github/workflows/*`, composite `action.yml` | 1b ✅ |
 | Editors | folder open, container start | `.vscode/tasks.json` (`runOn: folderOpen`), `.devcontainer/*` lifecycle commands | 1b ✅ |
 | Git hooks | commit, push | `.husky/`, `lefthook.yml`, `.pre-commit-config.yaml` | 1b ✅ |
-| AI agents | agent start, tool call | `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json` hooks, `.cursor/rules`, `.github/copilot-instructions.md`, MCP configs, `SKILL.md`, agent `.env` files | 1c |
+| AI agents | agent start, tool call | `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json` hooks, `.cursor/rules`, `.github/copilot-instructions.md`, MCP configs, `SKILL.md`, agent `.env` files | 1c ✅ |
 
 ### 1a: npm, Python and the code they run ✅
 
@@ -101,15 +101,28 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 **Exit met:** `tests/test_repo_entry_points.py` has fixtures modelled on GhostAction, ChainDrop and PolinRider, the pull-request trust-boundary cases, and each git hook tool, plus negatives (base-branch `pull_request_target`, values passed through `env:`, header-only deploy tokens, tasks that do not run on open, data-only file arguments). This repository's own workflows produce no findings.
 
-### 1c: agent files and code scanning
+### 1c: agent files and code scanning ✅
 
-- Agent-file rules look for:
-  - instructions to run commands, fetch URLs, read secrets or skip confirmations;
-  - hidden Unicode;
-  - MCP servers launched through `npx` or `uvx` without a pinned version;
-  - deprecated reference MCP servers;
-  - hooks that run shell commands.
-- SARIF upload to GitHub code scanning from this repo's CI.
+- **Entry points:**
+  - agent instruction files: `AGENTS.md`, `CLAUDE.md` (with its `@` imports), `GEMINI.md`, Copilot instructions, prompts and agents, Cursor, Windsurf, Cline, Roo Code and Kiro rules, Claude Code commands, subagents and rules, and `SKILL.md`;
+  - Claude Code, Cursor and Gemini CLI hooks, Claude Code status lines and credential helpers, plugin hooks, and Codex `notify`;
+  - MCP servers in the Claude Code, Cursor, VS Code, Gemini CLI, Codex, opencode, Amazon Q, Roo Code, Kiro and Claude Desktop configurations.
+- **Instruction rules** match fixed phrasings clause by clause, and skip clauses that negate them:
+  - skipping confirmation, including flags such as `--dangerously-skip-permissions` (BS-AG-001);
+  - hiding actions from the user or ignoring other instructions (BS-AG-002);
+  - reading credentials (BS-AG-003);
+  - fetching from or sending to a URL (BS-AG-004).
+
+  Matches inside HTML comments or invisible Unicode tag characters are reported as high. Code blocks and inline commands go through the 1a analysis at their exact line, and correlation (BS-EX-001) covers instructions to read credentials and send them out.
+- **Configuration rules:**
+  - commands run on agent events, and `` !`command` `` in commands and skills (BS-AG-005);
+  - approvals granted in advance, such as `bypassPermissions`, `enableAllProjectMcpServers` and `chat.tools.autoApprove` (BS-AG-006);
+  - agent API traffic sent to another host, or TLS checks turned off (BS-AG-007);
+  - code loaded through `NODE_OPTIONS`, `LD_PRELOAD` and similar variables, in settings, MCP server environments and `.env` files (BS-AG-008);
+  - MCP servers launched without a pinned version (BS-MCP-001);
+  - the archived reference servers listed in modelcontextprotocol/servers-archived (BS-MCP-002).
+- **Code scanning:** CI scans this repository and uploads the SARIF to GitHub code scanning from a job that alone has `security-events: write`.
+- **Also:** `dict(os.environ)`, `os.environ.copy()` and `{**os.environ}` count as collecting the environment when they are serialised. PowerShell embedded in a workflow, task or agent file is noted as not analysed when no PowerShell is installed, instead of failing the scan.
 
 **Exit (Phase 1):** each surface in the table has fixture tests modelled on a public write-up, and SARIF from this repo loads in GitHub code scanning.
 

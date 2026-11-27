@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from bombsquad.code.common import CodeHit, Snippet
-from bombsquad.discovery import Discovery, find_targets
+from bombsquad.discovery import Discovery, find_targets, quote_word
 from bombsquad.model import EntryPoint, Region
 from bombsquad.repo import jsonc
 from bombsquad.sources import InputError, read_source
@@ -38,12 +38,6 @@ def _read(shown: str, text: str, found: Discovery, what: str) -> jsonc.Node | No
     return node if isinstance(node.value, dict) else None
 
 
-def _quote(word: str) -> str:
-    if word and not re.search(r"[\s\"'$`\\]", word):
-        return word
-    return '"' + re.sub(r'(["\\$`])', r"\\\1", word) + '"'
-
-
 def _piece(node: jsonc.Node | None) -> str | None:
     """A task command or argument: a string, or {"value": ..., "quoting": ...}."""
     if node is None:
@@ -63,13 +57,13 @@ def _command_line(command: jsonc.Node | None, args: jsonc.Node | None) -> str | 
         return None
     if command.items():
         words = [p for p in (_piece(n) for n in command.items()) if p is not None]
-        head = " ".join(_quote(w) for w in words)
+        head = " ".join(quote_word(w) for w in words)
     else:
         head = _piece(command)
     if head is None:
         return None
     tail = [p for p in (_piece(n) for n in (args.items() if args else [])) if p is not None]
-    return " ".join([head, *(_quote(t) for t in tail)])
+    return " ".join([head, *(quote_word(t) for t in tail)])
 
 
 class _Editor:
@@ -260,7 +254,7 @@ def _lifecycle_commands(node: jsonc.Node) -> list[tuple[str | None, str, jsonc.N
         if value.text() is not None:
             return value.text()
         words = [n.text() for n in value.items() if n.text() is not None]
-        return " ".join(_quote(w) for w in words) if words else None
+        return " ".join(quote_word(w) for w in words) if words else None
 
     if isinstance(node.value, dict):
         out = []

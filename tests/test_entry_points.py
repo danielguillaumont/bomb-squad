@@ -216,6 +216,19 @@ def test_setup_py_subprocess_is_info(tmp_path):
     assert ids_at(report, "setup.py") == {"BS-PRC-001"}
 
 
+def test_copies_of_the_environment_count_only_when_serialised(tmp_path):
+    root = build(tmp_path, {"setup.py": (
+        "import json, os, subprocess\n"
+        "env = os.environ.copy()\n"
+        "subprocess.run(['make'], env=dict(os.environ, CC='gcc'))\n"
+        "print(json.dumps(dict(os.environ)))\n"
+        "print(str({**os.environ}))\n"
+    )})
+    report = scan([root])
+    lines = sorted(f.region.line for f in report.findings if f.rule.id == "BS-ENV-001")
+    assert lines == [4, 5]  # json.dumps and str; the copies on lines 2 and 3 are quiet
+
+
 def test_conftest_with_code_hidden_after_whitespace(tmp_path):
     hidden = "def test_ok():\n    assert True" + " " * 150 + "; import os\n"
     root = build(tmp_path, {"tests/conftest.py": hidden})

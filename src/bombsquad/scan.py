@@ -27,6 +27,7 @@ from bombsquad.discovery import LANGUAGE_BY_SUFFIX, Discovery
 from bombsquad.inventory import discover, is_detected
 from bombsquad.model import EntryPoint, FileResult, Finding, Region, ScanReport
 from bombsquad.powershell.analyze import Source, analyze_tagged
+from bombsquad.powershell.parser import ParserUnavailable
 from bombsquad.sources import (
     POWERSHELL_SUFFIXES,
     InputError,
@@ -45,13 +46,14 @@ JS_RESOLVE_SUFFIXES = (".js", ".cjs", ".mjs", ".ts", ".mts", ".cts", ".jsx", ".t
 # Files whose text is checked for hidden characters and whitespace padding.
 TEXT_SUFFIXES = frozenset({
     *LANGUAGE_BY_SUFFIX, ".psd1", ".json", ".jsonc", ".toml", ".yml", ".yaml", ".cfg", ".ini",
-    ".pth", ".gyp", ".md", ".txt", ".zsh", ".fish", ".cmd", ".bat", ".rb", ".go", ".rs",
+    ".pth", ".gyp", ".md", ".mdc", ".txt", ".zsh", ".fish", ".cmd", ".bat", ".rb", ".go", ".rs",
     ".java", ".kt", ".cs", ".php", ".lua", ".vue", ".svelte", ".html", ".css",
 })
-TEXT_NAMES = frozenset({"makefile", "dockerfile", "justfile", ".npmrc", ".yarnrc"})
+TEXT_NAMES = frozenset({"makefile", "dockerfile", "justfile", ".npmrc", ".yarnrc", ".cursorrules",
+                        ".windsurfrules", ".clinerules"})
 
-SECRET_RULES = frozenset({"BS-CR-001", "BS-ENV-001"})
-NETWORK_RULES = frozenset({"BS-NET-001", "BS-NET-002", "BS-NET-003"})
+SECRET_RULES = frozenset({"BS-CR-001", "BS-ENV-001", "BS-AG-003"})
+NETWORK_RULES = frozenset({"BS-NET-001", "BS-NET-002", "BS-NET-003", "BS-AG-004"})
 
 
 @dataclass
@@ -387,15 +389,25 @@ class _Scan:
             self.powershell.append(Source(STDIN_PATH, stdin_text, tag=()))
 
         parser_info: dict | None = None
+        ps_findings: list = []
         if self.powershell:
-            parser_info, ps_findings = analyze_tagged(self.powershell, self.results)
+            try:
+                parser_info, ps_findings = analyze_tagged(self.powershell, self.results)
+            except ParserUnavailable as exc:
+                # A PowerShell file that was asked for still needs a parser. PowerShell
+                # embedded in a workflow, task or agent file is noted instead.
+                if any(s.anchor is None for s in self.powershell):
+                    raise
+                for s in self.powershell:
+                    self.result(s.path, "unknown").notes.append(
+                        f"PowerShell embedded at line {s.anchor.line} was not analysed: {exc}")
             for finding, entries in ps_findings:
                 entries = tuple(entries or ())
                 first = entries[0].describe() if entries else None
                 if first and entries[0].path != finding.path and finding.via[:1] != [first]:
                     finding.via.insert(0, first)
                 self.tagged.append(_Tagged(finding, entries, finding.path))
-            if parser_info.get("edition") == "Desktop":
+            if parser_info and parser_info.get("edition") == "Desktop":
                 for r in self.results.values():
                     if r.parse_errors:
                         r.notes.append(

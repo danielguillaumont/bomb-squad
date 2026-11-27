@@ -54,7 +54,7 @@ class _Reader:
         text, n = self.text, len(self.text)
         while self.i < n:
             ch = text[self.i]
-            if ch in " \t\r\n﻿":
+            if ch in " \t\r\n\ufeff":
                 self.i += 1
             elif text.startswith("//", self.i):
                 end = text.find("\n", self.i)

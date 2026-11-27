@@ -3,6 +3,7 @@ run, and findings about the entry points themselves."""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -45,6 +46,17 @@ class Discovery:
         return token
 
 
+def quote_word(word: str) -> str:
+    """A word as a POSIX shell would need it written to keep it one word."""
+    if word and not re.search(r"[\s\"'$`\\;&|<>()*?#~]", word):
+        return word
+    return '"' + re.sub(r'(["\\$`])', r"\\\1", word) + '"'
+
+
+def shell_join(words: list[str]) -> str:
+    return " ".join(quote_word(w) for w in words)
+
+
 def target_path(base: Path, word: str) -> Path | None:
     """A file named on a command line, if it exists inside `base`."""
     word = word.strip("'\"").rstrip(";&|)").lstrip("(")
@@ -71,7 +83,7 @@ CODE_OPTIONS = frozenset({"-e", "--eval", "-p", "--print", "-c", "-m", "-command
 ENV_RUNNERS = frozenset({"uv", "poetry", "pipenv", "pdm", "hatch", "rye"})
 
 
-def _program(word: str) -> str:
+def program_name(word: str) -> str:
     return word.replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
 
 
@@ -80,7 +92,7 @@ def run_files(words: list[str], depth: int = 0) -> list[str]:
     given to an interpreter. Files only passed as data (`cat x.sh`) are not counted."""
     if not words or depth > 3:
         return []
-    name = _program(words[0])
+    name = program_name(words[0])
     rest = words[1:]
     if name in ENV_RUNNERS and rest[:1] == ["run"] or name in ("npx", "pnpx", "bunx"):
         rest = rest[1:] if rest[:1] == ["run"] else rest

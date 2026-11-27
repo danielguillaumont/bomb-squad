@@ -22,7 +22,7 @@ DECODE_CALLS = (
     "binascii.", "lzma.decompress", "bz2.decompress", "gzip.decompress", "pickle.loads",
 )
 ENV_SERIALIZERS = frozenset({"json.dumps", "str", "repr", "print", "pprint.pprint",
-                             "pprint.pformat"})
+                             "pprint.pformat", "urllib.parse.urlencode", "pickle.dumps"})
 
 
 @dataclass
@@ -63,7 +63,21 @@ class _Analysis(ast.NodeVisitor):
         return ".".join([head, *reversed(parts)])
 
     def is_environ(self, node: ast.AST) -> bool:
-        return self.dotted(node) == "os.environ"
+        """os.environ, or a whole copy of it: dict(os.environ), os.environ.copy(),
+        {**os.environ}. Copies alone are not reported (they are how a child process gets
+        its environment); they count only where os.environ itself would."""
+        if self.dotted(node) == "os.environ":
+            return True
+        if isinstance(node, ast.Call):
+            if self.dotted(node.func) in ("dict", "list", "sorted") and node.args and (
+                    self.dotted(node.args[0]) == "os.environ"):
+                return True
+            return isinstance(node.func, ast.Attribute) and node.func.attr == "copy" and (
+                self.dotted(node.func.value) == "os.environ")
+        return isinstance(node, ast.Dict) and any(
+            k is None and self.dotted(v) == "os.environ" for k, v in zip(node.keys,
+                                                                       node.values,
+                                                                       strict=True))
 
     # Imports -----------------------------------------------------------------------------
 
