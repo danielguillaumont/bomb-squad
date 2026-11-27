@@ -10,7 +10,7 @@ Bomb Squad reads hostile input by design. This document covers what an attacker 
 
 ## Attacker-controlled input
 
-The input is the bytes of every scanned file and of pasted text, including workflows, editor tasks, dev container and git hook configurations, and agent instruction files, settings and MCP configurations. In later phases it also includes packages fetched from registries and the text an LLM reviewer reads.
+The input is the bytes of every scanned file and of pasted text, including workflows, editor tasks, dev container and git hook configurations, and agent instruction files, settings and MCP configurations. It also includes package archives and registry metadata fetched by `bombsquad diff`, and in later phases the text an LLM reviewer reads.
 
 ## Threats and controls
 
@@ -34,6 +34,11 @@ The input is the bytes of every scanned file and of pasted text, including workf
 | Encoded or obfuscated code hides behaviour | `-EncodedCommand`, `-Command`, base64 literals and literal text passed to `Invoke-Expression` or `[ScriptBlock]::Create` are decoded and analysed. Names built from literals are folded. Text computed at run time is not resolved, and each finding says so. | Partial |
 | Terminal escape sequences in evidence | Not yet handled. Evidence is printed as found. | Open |
 | The scanner's own dependencies or CI are compromised | The runtime dependencies are tree-sitter and three grammars, which ship native code, and PyYAML, whose pure-Python safe loader is used. They are locked with hashes in `uv.lock`, checked with `uv sync --locked`, and resolved only from releases at least seven days old (`exclude-newer`). Actions are pinned by commit SHA with read-only permissions. | In place |
+| A registry response or redirect points the fetcher somewhere else | Only HTTPS requests to `registry.npmjs.org`, `pypi.org` and `files.pythonhosted.org` are made, and every redirect is checked against the same list. Metadata is capped at 200 MB and artifacts at 100 MB. | In place |
+| A tampered or substituted artifact is analysed as the real one | Each artifact's SHA-512 or SHA-256 must match the registry's before it is opened. A SHA-1-only npm version is noted. This proves the bytes are what the registry serves, not that the registry or the publisher is honest. | In place |
+| An archive writes outside its folder or overwrites files (tar slip, zip slip, links) | Members are written one by one, never with `extractall`. Links and special files are skipped. Absolute paths, `..`, drive letters, reserved names and case clashes are skipped. Every target is resolved and checked to be inside the folder. | In place |
+| A decompression bomb exhausts disk or memory | Unpacking stops at 20,000 members or 500 MB of decompressed bytes, counted while reading. | In place |
+| Unpacked malware on a development machine | Archives are unpacked to a temporary folder that is deleted afterwards, and never run. Antivirus may still quarantine files there. Benchmarks over malware datasets run only on Linux CI. | Partial |
 | Code scanning results are uploaded from CI | The upload job alone has `security-events: write`, uses `github/codeql-action/upload-sarif` pinned by SHA, and does not run for pull requests from forks. | In place |
 | Antivirus quarantines test fixtures, breaking checkouts | Fixtures that look like malware are ROT13-encoded in the tests and decoded in memory. | In place |
 

@@ -1,4 +1,4 @@
-"""Command line: `bombsquad scan` and `bombsquad rules`."""
+"""Command line: `bombsquad scan`, `bombsquad diff` and `bombsquad rules`."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from bombsquad.powershell.parser import ParserFailed, ParserUnavailable
 from bombsquad.sarif import to_sarif
 from bombsquad.scan import scan
 from bombsquad.sources import InputError, decode
-from bombsquad.text_report import render
+from bombsquad.text_report import render, render_diff
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -39,6 +39,17 @@ def _parser() -> argparse.ArgumentParser:
         help="exit with status 1 when a finding at this level or above is reported",
     )
 
+    diff_cmd = sub.add_parser(
+        "diff", help="what a new version gains: npm:<name>@<old>..<new>, "
+                     "pypi:<name>@<old>..<new>, or two folders or archives")
+    diff_cmd.add_argument("subject", nargs="+", metavar="SPEC_OR_PATHS")
+    diff_cmd.add_argument("--format", choices=("text", "json"), default="text")
+    diff_cmd.add_argument("--output", "-o", type=Path, help="write the report to this file")
+    diff_cmd.add_argument(
+        "--fail-on", choices=("high", "review", "info", "never"), default="never",
+        help="exit with status 1 when a new finding or signal is at this level or above",
+    )
+
     sub.add_parser("rules", help="list the rules")
     return parser
 
@@ -60,6 +71,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{rule.id:<11} {rule.level.value:<6} {rule.family:<18} {rule.title}")
         return EXIT_OK
 
+    if args.command == "diff":
+        return _diff(args)
+
     paths = [Path(p) for p in args.paths if p != "-"]
     stdin_text = decode(sys.stdin.buffer.read())[0] if "-" in args.paths else None
     try:
@@ -78,5 +92,32 @@ def main(argv: list[str] | None = None) -> int:
     if args.fail_on != "never":
         threshold = Level(args.fail_on).rank
         if any(f.level.rank >= threshold for f in report.findings):
+            return EXIT_FINDINGS
+    return EXIT_OK
+
+
+def _diff(args) -> int:
+    from bombsquad.archive import ArchiveError
+    from bombsquad.diff import diff_paths, diff_registry
+    from bombsquad.registry import FetchError
+
+    try:
+        if len(args.subject) == 1:
+            report = diff_registry(args.subject[0])
+        elif len(args.subject) == 2:
+            report = diff_paths(Path(args.subject[0]), Path(args.subject[1]))
+        else:
+            raise ValueError("give one npm:/pypi: spec, or an old and a new path")
+    except (ValueError, OSError, FetchError, ArchiveError, InputError, ParserFailed,
+            ParserUnavailable) as exc:
+        print(f"bombsquad: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if args.format == "json":
+        _write(json.dumps(report.to_dict(), indent=2, ensure_ascii=False) + "\n", args.output)
+    else:
+        _write(render_diff(report), args.output)
+    if args.fail_on != "never":
+        highest = report.highest_level()
+        if highest is not None and highest.rank >= Level(args.fail_on).rank:
             return EXIT_FINDINGS
     return EXIT_OK

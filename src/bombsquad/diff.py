@@ -1,0 +1,322 @@
+"""What a new version gains: entry points, findings and files that are new or changed since
+the previous version, and the registry's publish signals for both.
+
+Both versions are scanned the same way as `bombsquad scan`. Findings are matched by rule,
+file and evidence rather than line, so code that only moved is not reported again.
+"""
+
+from __future__ import annotations
+
+import os
+import tempfile
+from collections import Counter
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+
+from bombsquad import __version__
+from bombsquad.archive import unpack
+from bombsquad.discovery import LANGUAGE_BY_SUFFIX
+from bombsquad.model import EntryPoint, Finding, Level, ScanReport
+from bombsquad.registry import Fetch, Release, download, http_get, npm_releases, pypi_releases
+from bombsquad.scan import scan
+from bombsquad.sources import MAX_FILE_BYTES, SKIPPED_DIRS, display_path
+
+LONG_LINE = 1000  # characters; minified bundles and packed payloads run far longer
+RECENT_DAYS = 7  # the same cooldown this project applies to its own dependencies
+ARCHIVE_SUFFIXES = (".tgz", ".tar.gz", ".tar", ".tar.bz2", ".whl", ".zip")
+
+DIFF_LIMITATIONS = (
+    "Static analysis only: neither version was installed, built or run.",
+    "Changes are what the new version could do that the old one could not, not proof that it "
+    "would. No new findings does not mean safe.",
+    "Code fetched or decoded only at run time, and payloads gated on time or environment, "
+    "are not seen.",
+    "Registry times are publish times, not when any change was made.",
+)
+
+
+@dataclass
+class Side:
+    label: str
+    report: ScanReport
+    files: dict[str, tuple[int, int]]  # relative path -> (bytes, longest line)
+    release: Release | None = None
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Signal:
+    id: str
+    level: Level
+    detail: str
+
+    def to_dict(self) -> dict:
+        return {"signal": self.id, "level": self.level.value, "detail": self.detail}
+
+
+@dataclass
+class DiffReport:
+    subject: str
+    old: Side
+    new: Side
+    signals: list[Signal]
+    added_entries: list[EntryPoint]
+    removed_entries: list[EntryPoint]
+    changed_entries: list[tuple[EntryPoint, EntryPoint]]
+    added_findings: list[Finding]
+    removed_findings: list[Finding]
+    added_files: list[str]
+    removed_files: list[str]
+    grew: list[tuple[str, str]]  # (path, what changed)
+
+    def highest_level(self) -> Level | None:
+        levels = [f.level for f in self.added_findings] + [s.level for s in self.signals]
+        return max(levels, key=lambda level: level.rank) if levels else None
+
+    def to_dict(self) -> dict:
+        def side(s: Side) -> dict:
+            r = s.release
+            return {
+                "label": s.label,
+                "version": r.version if r else None,
+                "published": r.published.isoformat() if r and r.published else None,
+                "publisher": r.publisher if r else None,
+                "maintainers": r.maintainers if r else None,
+                "provenance": r.provenance if r else None,
+                "artifacts": [{"kind": a.kind, "filename": a.filename, "algorithm": a.algorithm,
+                               "digest": a.digest, "provenance": a.provenance}
+                              for a in r.artifacts] if r else [],
+                "entry_points": len(s.report.entry_points),
+                "findings": len(s.report.findings),
+                "files": len(s.files),
+                "notes": [*(r.notes if r else []), *s.notes],
+            }
+        return {
+            "schema_version": 1,
+            "kind": "diff",
+            "tool": {"name": "bombsquad", "version": __version__},
+            "subject": self.subject,
+            "limitations": list(DIFF_LIMITATIONS),
+            "old": side(self.old),
+            "new": side(self.new),
+            "signals": [s.to_dict() for s in self.signals],
+            "entry_points": {
+                "added": [e.to_dict() for e in self.added_entries],
+                "removed": [e.to_dict() for e in self.removed_entries],
+                "changed": [{"old": a.to_dict(), "new": b.to_dict()}
+                            for a, b in self.changed_entries],
+            },
+            "findings": {"added": [f.to_dict() for f in self.added_findings],
+                         "removed": [f.to_dict() for f in self.removed_findings]},
+            "files": {"added": self.added_files, "removed": self.removed_files,
+                      "grew": [{"path": p, "detail": d} for p, d in self.grew]},
+        }
+
+
+# Scanning one side -------------------------------------------------------------------------
+
+def _relative(report: ScanReport, root: Path) -> None:
+    """Show paths relative to the package root, so both versions line up."""
+    prefix = display_path(root).rstrip("/") + "/"
+
+    def rel(path: str) -> str:
+        return path[len(prefix):] if path.startswith(prefix) else path
+
+    for f in report.findings:
+        f.path = rel(f.path)
+        f.via = [step.replace(prefix, "") for step in f.via]
+    for e in report.entry_points:
+        e.path = rel(e.path)
+        e.targets = [rel(t) for t in e.targets]
+    for r in report.files:
+        r.path = rel(r.path)
+
+
+def _inventory(root: Path) -> dict[str, tuple[int, int]]:
+    files: dict[str, tuple[int, int]] = {}
+    for folder, dirs, names in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in SKIPPED_DIRS - {"node_modules"})
+        for name in names:
+            path = Path(folder, name)
+            if path.is_symlink():
+                continue
+            size = path.stat().st_size
+            longest = 0
+            if size <= MAX_FILE_BYTES:
+                data = path.read_bytes()
+                if b"\x00" not in data[:8192]:
+                    longest = max((len(line) for line in data.split(b"\n")), default=0)
+            files[path.relative_to(root).as_posix()] = (size, longest)
+    return files
+
+
+def scan_side(label: str, root: Path, release: Release | None = None,
+              notes: list[str] | None = None) -> Side:
+    report = scan([root])
+    _relative(report, root)
+    return Side(label, report, _inventory(root), release, list(notes or []))
+
+
+# Comparing -----------------------------------------------------------------------------------
+
+def _finding_key(f: Finding) -> tuple[str, str, str]:
+    return f.rule.id, f.path, " ".join(f.evidence.split())
+
+
+def _entry_key(e: EntryPoint) -> tuple[str, str, str]:
+    return e.surface, e.kind, e.path
+
+
+def compare(subject: str, old: Side, new: Side, now: datetime | None = None) -> DiffReport:
+    old_entries = {_entry_key(e): e for e in old.report.entry_points}
+    new_entries = {_entry_key(e): e for e in new.report.entry_points}
+    added_entries = [e for k, e in new_entries.items() if k not in old_entries]
+    removed_entries = [e for k, e in old_entries.items() if k not in new_entries]
+    changed_entries = [(old_entries[k], e) for k, e in new_entries.items()
+                       if k in old_entries and " ".join(old_entries[k].runs.split()) != " ".join(
+                           e.runs.split())]
+
+    remaining = Counter(_finding_key(f) for f in old.report.findings)
+    added_findings = []
+    for f in new.report.findings:
+        key = _finding_key(f)
+        if remaining[key]:
+            remaining[key] -= 1
+        else:
+            added_findings.append(f)
+    still = Counter(_finding_key(f) for f in new.report.findings)
+    removed_findings = []
+    for f in old.report.findings:
+        key = _finding_key(f)
+        if still[key]:
+            still[key] -= 1
+        else:
+            removed_findings.append(f)
+    added_findings.sort(key=lambda f: (-f.level.rank, f.path, f.region.line, f.rule.id))
+
+    added_files = sorted(set(new.files) - set(old.files))
+    removed_files = sorted(set(old.files) - set(new.files))
+    grew = []
+    for path, (size, longest) in sorted(new.files.items()):
+        before = old.files.get(path)
+        if longest < LONG_LINE or Path(path).suffix.lower() not in LANGUAGE_BY_SUFFIX:
+            continue
+        if before is None:
+            grew.append((path, f"new file with a {longest:,}-character line ({size:,} bytes)"))
+        elif before[1] < LONG_LINE:
+            grew.append((path, f"now has a {longest:,}-character line; it grew from "
+                               f"{before[0]:,} to {size:,} bytes"))
+    return DiffReport(subject, old, new, signals(old.release, new.release, now),
+                      added_entries, removed_entries, changed_entries, added_findings,
+                      removed_findings, added_files, removed_files, grew)
+
+
+def signals(old: Release | None, new: Release | None, now: datetime | None = None
+            ) -> list[Signal]:
+    if old is None or new is None:
+        return []
+    out: list[Signal] = []
+    if old.publisher and new.publisher and old.publisher != new.publisher:
+        out.append(Signal("publisher-changed", Level.REVIEW,
+                          f"{old.version} was published by {old.publisher}, {new.version} by "
+                          f"{new.publisher}"))
+    if old.maintainers is not None and new.maintainers is not None:
+        joined = sorted(set(new.maintainers) - set(old.maintainers))
+        left = sorted(set(old.maintainers) - set(new.maintainers))
+        if joined or left:
+            parts = ([f"added {', '.join(joined)}"] if joined else []) + (
+                [f"removed {', '.join(left)}"] if left else [])
+            out.append(Signal("maintainers-changed", Level.REVIEW, "; ".join(parts)))
+    if old.provenance is True and new.provenance is False:
+        out.append(Signal("provenance-missing", Level.REVIEW,
+                          f"{old.version} has provenance attestations and {new.version} does "
+                          "not. Provenance shows where a package was built, not that its code "
+                          "is benign; losing it means the new version was built some other "
+                          "way."))
+    if old.repository and new.repository and old.repository != new.repository:
+        out.append(Signal("repository-changed", Level.REVIEW,
+                          f"the declared repository changed from {old.repository} to "
+                          f"{new.repository}"))
+    if new.published is not None:
+        moment = now or datetime.now(UTC)
+        published = new.published if new.published.tzinfo else new.published.replace(
+            tzinfo=UTC)
+        age = moment - published
+        days = age.total_seconds() / 86400
+        when = published.strftime("%Y-%m-%d %H:%M UTC")
+        if days < RECENT_DAYS:
+            hours = max(0, int(age.total_seconds() // 3600))
+            out.append(Signal("recent-release", Level.REVIEW,
+                              f"{new.version} was published {when}, {hours} hours before this "
+                              f"scan, inside the {RECENT_DAYS}-day cooldown this project uses "
+                              "for its own dependencies"))
+        else:
+            out.append(Signal("release-age", Level.INFO,
+                              f"{new.version} was published {when}, {int(days)} days before "
+                              "this scan"))
+    return out
+
+
+# Registries and local paths -----------------------------------------------------------------
+
+def parse_spec(spec: str) -> tuple[str, str, str, str]:
+    """`npm:<name>@<old>..<new>` or `pypi:<name>@<old>..<new>`."""
+    ecosystem, sep, rest = spec.partition(":")
+    name, at, versions = rest.rpartition("@")
+    old, dots, new = versions.partition("..")
+    if not sep or ecosystem not in ("npm", "pypi") or not at or not name or not dots or not (
+            old and new):
+        raise ValueError(f"expected npm:<name>@<old>..<new> or pypi:<name>@<old>..<new>, got "
+                         f"{spec!r}")
+    return ecosystem, name, old, new
+
+
+def diff_registry(spec: str, fetch: Fetch = http_get, now: datetime | None = None
+                  ) -> DiffReport:
+    ecosystem, name, old_version, new_version = parse_spec(spec)
+    lookup = npm_releases if ecosystem == "npm" else pypi_releases
+    old_release, new_release = lookup(name, [old_version, new_version], fetch)
+    with tempfile.TemporaryDirectory(prefix="bombsquad-",
+                                     ignore_cleanup_errors=True) as work:
+        sides = []
+        for label, release in (("old", old_release), ("new", new_release)):
+            folder = Path(work, label)
+            folder.mkdir()
+            notes: list[str] = []
+            for artifact in release.artifacts:
+                data = download(artifact, fetch)  # checked against the registry's hash
+                kind = artifact.kind.replace(" ", "-")
+                raw = folder / f".{kind}"
+                raw.mkdir()
+                unpacked, skipped = unpack(data, artifact.filename, raw)
+                # sdists wrap their files in name-version/; a fixed folder name lets the
+                # two versions' paths line up.
+                unpacked.rename(folder / kind)
+                if raw.exists():
+                    raw.rmdir()
+                notes += [f"{artifact.filename}: {n}" for n in skipped]
+            root = folder / release.artifacts[0].kind.replace(" ", "-") if len(
+                release.artifacts) == 1 else folder
+            sides.append(scan_side(f"{name}@{release.version}" if ecosystem == "npm" else
+                                   f"{name} {release.version}", root, release, notes))
+        return compare(f"{ecosystem}:{name}", sides[0], sides[1], now)
+
+
+def diff_paths(old: Path, new: Path) -> DiffReport:
+    """Compare two local folders or archives."""
+    with tempfile.TemporaryDirectory(prefix="bombsquad-",
+                                     ignore_cleanup_errors=True) as work:
+        sides = []
+        for label, path in (("old", old), ("new", new)):
+            notes: list[str] = []
+            if path.is_file() and path.name.lower().endswith(ARCHIVE_SUFFIXES):
+                target = Path(work, label)
+                target.mkdir()
+                root, notes = unpack(path.read_bytes(), path.name, target)
+            elif path.is_dir():
+                root = path
+            else:
+                raise FileNotFoundError(f"not a folder or package archive: {path}")
+            sides.append(scan_side(path.name, root, None, notes))
+        return compare("", sides[0], sides[1])

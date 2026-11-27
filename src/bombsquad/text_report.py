@@ -65,3 +65,87 @@ def render(report: ScanReport) -> str:
     out.append(summary + ".")
     out.extend(REPORT_LIMITATIONS)
     return "\n".join(out) + "\n"
+
+
+def render_diff(diff) -> str:
+    """A `bombsquad diff` report: what the new version gains, then what it lost."""
+    from bombsquad.diff import DIFF_LIMITATIONS
+
+    out = [f"{diff.subject}: {diff.old.label} -> {diff.new.label}"
+           if diff.subject else f"{diff.old.label} -> {diff.new.label}", ""]
+    for side in (diff.old, diff.new):
+        release = side.release
+        if release is None:
+            continue
+        line = f"  {side.label}"
+        if release.published:
+            line += f"  published {release.published.strftime('%Y-%m-%d %H:%M UTC')}"
+        if release.publisher:
+            line += f" by {release.publisher}"
+        provenance = {True: "yes", False: "no", None: "unknown"}[release.provenance]
+        out.append(line + f"  provenance: {provenance}")
+        for artifact in release.artifacts:
+            out.append(f"      {artifact.filename}  {artifact.algorithm} {artifact.digest[:16]}… "
+                       "matches the registry")
+    if diff.old.release:
+        out.append("")
+
+    if diff.signals:
+        out.append("Publish signals")
+        for s in diff.signals:
+            out.append(f"  {s.level.value:<6}  {s.id}: {s.detail}")
+        out.append("")
+
+    if diff.added_entries or diff.changed_entries:
+        out.append("New or changed entry points")
+        for e in diff.added_entries:
+            out.append(f"  new      {e.path}:{e.region.line}  {e.kind}")
+            out.append(f"      runs on: {e.trigger}")
+            out.append(f"      runs: {_first_line(e.runs)}")
+            for target in e.targets:
+                if target != e.path:
+                    out.append(f"      reaches: {target}")
+        for old, new in diff.changed_entries:
+            out.append(f"  changed  {new.path}:{new.region.line}  {new.kind}")
+            out.append(f"      was: {_first_line(old.runs)}")
+            out.append(f"      now: {_first_line(new.runs)}")
+        out.append("")
+
+    if diff.added_findings:
+        out.append(f"New findings ({len(diff.added_findings)})")
+        for f in diff.added_findings:
+            out.append(f"  {f.path}:{f.region.line}:{f.region.column}  {f.level.value:<6}  "
+                       f"{f.rule.id}  {f.rule.title}")
+            out.append(f"      {_first_line(f.evidence)}")
+            for step in f.via:
+                out.append(f"      via: {_first_line(step)}")
+        out.append("")
+
+    if diff.grew:
+        out.append("Files with a new minified or packed line")
+        for path, detail in diff.grew:
+            out.append(f"  {path}  {detail}")
+        out.append("")
+
+    if diff.added_files or diff.removed_files:
+        out.append(f"Files: {len(diff.added_files)} added, {len(diff.removed_files)} removed")
+        for path in diff.added_files[:20]:
+            out.append(f"  + {path}")
+        if len(diff.added_files) > 20:
+            out.append(f"  … and {len(diff.added_files) - 20} more")
+        out.append("")
+
+    gone = len(diff.removed_findings) + len(diff.removed_entries)
+    if gone:
+        out.append(f"No longer present: {len(diff.removed_entries)} entry points, "
+                   f"{len(diff.removed_findings)} findings.")
+        out.append("")
+    for side in (diff.old, diff.new):
+        for note in [*(side.release.notes if side.release else []), *side.notes]:
+            out.append(f"note ({side.label}): {note}")
+    summary = (f"{len(diff.added_entries)} new and {len(diff.changed_entries)} changed entry "
+               f"points, {len(diff.added_findings)} new findings, {len(diff.signals)} publish "
+               "signals.")
+    out.append(summary)
+    out.extend(DIFF_LIMITATIONS)
+    return "\n".join(out) + "\n"

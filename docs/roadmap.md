@@ -124,18 +124,31 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 - **Code scanning:** CI scans this repository and uploads the SARIF to GitHub code scanning from a job that alone has `security-events: write`.
 - **Also:** `dict(os.environ)`, `os.environ.copy()` and `{**os.environ}` count as collecting the environment when they are serialised. PowerShell embedded in a workflow, task or agent file is noted as not analysed when no PowerShell is installed, instead of failing the scan.
 
-**Exit (Phase 1):** each surface in the table has fixture tests modelled on a public write-up, and SARIF from this repo loads in GitHub code scanning.
+**Exit (Phase 1) met:** each surface in the table has fixture tests modelled on a public write-up (`tests/test_entry_points.py`, `tests/test_repo_entry_points.py`, `tests/test_agent_entry_points.py`), and SARIF from this repository's CI loads in GitHub code scanning (first analysis on 2026-11-27, from the 1c pull request, with the six findings of `samples/example.ps1`).
 
 ## Phase 2: Version diff, what an update newly gains
 
-`bombsquad diff npm:<pkg>@<old>..<new>` (and `pypi:`) fetches both published artifacts from the registry, checks their registry hashes, and never installs them.
+`bombsquad diff npm:<pkg>@<old>..<new>` (and `pypi:`) fetches both published artifacts from the registry, checks their registry hashes, and never installs them. It ships in two steps.
 
-- **Capability diff:** new or changed entry points, new capabilities in code they reach, new obfuscation, and files that grew by a minified blob.
+### 2a: capability diff and publish signals ✅
+
+- **Fetching:** HTTPS only, to `registry.npmjs.org`, `pypi.org` and `files.pythonhosted.org`, redirects included. Each artifact is checked against the registry's SHA-512 (npm) or SHA-256 (PyPI) before it is opened. For PyPI, the sdist and one wheel are compared, because install hooks live in the first and `.pth` files in the second.
+- **Unpacking:** regular files only. Links, absolute paths, `..`, drive letters, names Windows cannot hold and case clashes are skipped and listed. Member counts and decompressed bytes are capped.
+- **Capability diff:** both versions are scanned as `bombsquad scan` would, and the report lists:
+  - new and changed entry points;
+  - new findings, matched by rule, file and evidence so moved code is not reported again;
+  - added and removed files;
+  - code files that gained a line of 1,000 characters or more.
 - **Publish signals,** dated by registry timestamps:
-  - maintainer changes;
-  - provenance or attestations present on the previous version and missing now (provenance alone is not proof: ChainDrop versions republished through a hijacked trusted-publishing workflow could carry valid provenance);
-  - release age at scan time;
-  - no matching tag or commit in the declared repository.
+  - publisher and maintainer changes (npm; PyPI does not publish uploaders);
+  - provenance attestations present on the old version and missing on the new one;
+  - a changed declared repository;
+  - release age at scan time, flagged inside a seven-day window.
+- Two local folders or archives can be compared too: `bombsquad diff old.tgz new.tgz`.
+
+### 2b: artifact against source and history
+
+- **Tags:** no matching tag or commit in the declared repository.
 - **Artifact against source:** the published package diffed against the repository at the tagged commit. Files that exist only in the artifact are listed.
 - **History:** tags that moved, and commits rewritten with the same author and date (the PolinRider pattern), checked against previously recorded SHAs.
 
