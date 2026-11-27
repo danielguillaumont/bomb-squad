@@ -1,0 +1,122 @@
+name: Benchmark
+
+# Bomb Squad and GuardDog on the same malicious and benign packages. Runs only here, on a
+# disposable Linux runner: samples are fetched and unpacked inside this job and never
+# committed. The uploaded results keep names, versions, rule IDs and levels, not samples.
+on:
+  workflow_dispatch:
+    inputs:
+      dataset-commit:
+        description: DataDog/malicious-software-packages-dataset commit to sample from
+        default: 72c723be547033c558244520524b117c8d71663b
+      per-ecosystem:
+        description: Malicious packages per ecosystem
+        default: "200"
+      benign-per-ecosystem:
+        description: Benign releases per ecosystem
+        default: "200"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark
+  cancel-in-progress: false
+
+env:
+  # Rules are frozen at this date; packages found after it are the time-split set.
+  CUTOFF: "2026-11-27"
+  GUARDDOG_VERSION: "3.2.0"
+  # GuardDog's own dependencies, resolved as they were a week before the cutoff.
+  GUARDDOG_DEPENDENCIES_AS_OF: "2026-11-20T00:00:00Z"
+
+jobs:
+  benchmark:
+    name: Benchmark against GuardDog
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      - name: Install
+        run: uv sync --locked --python 3.12
+
+      - name: Install GuardDog
+        run: |
+          uv tool install --python 3.12 --exclude-newer "$GUARDDOG_DEPENDENCIES_AS_OF" \
+            "guarddog==$GUARDDOG_VERSION"
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: List the dataset without downloading samples
+        id: dataset
+        env:
+          DATASET_COMMIT: ${{ inputs.dataset-commit }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$DATASET_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::dataset-commit must be a full commit SHA"
+            exit 2
+          fi
+          mkdir -p data
+          git init -q data/dataset
+          cd data/dataset
+          git remote add origin https://github.com/DataDog/malicious-software-packages-dataset
+          git config remote.origin.promisor true
+          git config remote.origin.partialclonefilter blob:none
+          git fetch -q --depth=1 --filter=blob:none origin "$DATASET_COMMIT"
+          git ls-tree -r --name-only FETCH_HEAD -- samples/npm samples/pypi > ../listing.txt
+          echo "date=$(git show -s --format=%cs FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+          wc -l < ../listing.txt
+
+      - name: Select samples
+        env:
+          PER_ECOSYSTEM: ${{ inputs.per-ecosystem }}
+        run: |
+          uv run --locked python -m benchmark select --listing data/listing.txt \
+            --per-ecosystem "$PER_ECOSYSTEM" --cutoff "$CUTOFF" \
+            -o data/selected.json --paths data/paths.txt
+
+      - name: Fetch the selected samples
+        run: |
+          set -euo pipefail
+          cd data/dataset
+          sed 's|^|/|' ../paths.txt | git sparse-checkout set --no-cone --stdin
+          git checkout -q FETCH_HEAD
+
+      - name: Run both tools
+        env:
+          DATASET_COMMIT: ${{ inputs.dataset-commit }}
+          DATASET_DATE: ${{ steps.dataset.outputs.date }}
+          BENIGN_PER_ECOSYSTEM: ${{ inputs.benign-per-ecosystem }}
+        run: |
+          uv run --locked python -m benchmark run --selected data/selected.json \
+            --dataset data/dataset --dataset-commit "$DATASET_COMMIT" \
+            --dataset-date "$DATASET_DATE" --guarddog guarddog \
+            --guarddog-version "$GUARDDOG_VERSION" \
+            --benign-per-ecosystem "$BENIGN_PER_ECOSYSTEM" --as-of "$DATASET_DATE" \
+            --workers 4 -o data/results.jsonl
+
+      - name: Score
+        run: |
+          uv run --locked python -m benchmark score data/results.jsonl \
+            --json data/scores.json --markdown data/scores.md
+          cat data/scores.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: benchmark-results
+          path: |
+            data/selected.json
+            data/results.jsonl
+            data/scores.json
+            data/scores.md
+          if-no-files-found: ignore
+          retention-days: 90

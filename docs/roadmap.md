@@ -186,6 +186,10 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 - Runs on Linux CI. Samples never go into Git and are never unpacked outside the benchmark job.
 - Write-up in `docs/research/`, including where Bomb Squad loses.
 
+**Built:** `benchmark/` and `.github/workflows/benchmark.yml`. The pins are: DataDog dataset commit `72c723be5470` (2026-11-05), GuardDog 3.2.0, `npm-high-impact` 1.13.0, top-pypi-packages commit `29c0d4c38c28` (2026-11-01), seed 2026 and cutoff 2026-11-27. [Methodology](methodology.md#how-the-benchmark-works) describes it.
+
+**Not yet:** the first run, the write-up, and consecutive version pairs for the diff engine. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later commit.
+
 **Exit:** the write-up is published, and every accuracy figure in the README is computed from it.
 
 ## v2.0.0

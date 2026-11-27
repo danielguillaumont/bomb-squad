@@ -81,9 +81,11 @@ class _Writer:
                 out.write(chunk)
 
 
-def unpack(data: bytes, filename: str, dest: Path) -> tuple[Path, list[str]]:
+def unpack(data: bytes, filename: str, dest: Path, password: bytes | None = None
+           ) -> tuple[Path, list[str]]:
     """Unpack into `dest`. Returns the package root (the single top folder npm tarballs
-    and sdists wrap their files in, when there is one) and notes on skipped members."""
+    and sdists wrap their files in, when there is one) and notes on skipped members.
+    `password` opens a ZIP encrypted the traditional way, as malware datasets are."""
     writer = _Writer(dest)
     lower = filename.lower()
     try:
@@ -95,7 +97,7 @@ def unpack(data: bytes, filename: str, dest: Path) -> tuple[Path, list[str]]:
                     if (info.external_attr >> 16) & 0o170000 == 0o120000:
                         writer.skip(info.filename, "it is a symbolic link")
                         continue
-                    with archive.open(info) as stream:
+                    with archive.open(info, pwd=password) as stream:
                         writer.write(info.filename, stream)
         else:
             with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as archive:
@@ -108,7 +110,10 @@ def unpack(data: bytes, filename: str, dest: Path) -> tuple[Path, list[str]]:
                     stream = archive.extractfile(member)
                     if stream is not None:
                         writer.write(member.name, stream)
-    except (tarfile.TarError, zipfile.BadZipFile, EOFError, OSError) as exc:
+    except (tarfile.TarError, zipfile.BadZipFile, EOFError, OSError, RuntimeError,
+            NotImplementedError) as exc:
+        # RuntimeError: encrypted without the right password; NotImplementedError: an
+        # encryption or compression method zipfile does not support.
         raise ArchiveError(f"{filename}: {exc}") from None
     children = list(writer.dest.iterdir())
     root = children[0] if len(children) == 1 and children[0].is_dir() else writer.dest

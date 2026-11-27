@@ -1,0 +1,100 @@
+"""Run each tool on one unpacked package, in its own process with a time limit, and keep
+only what scoring needs: whether it flagged the package, which rules, how long it took.
+
+Neither tool runs the package: Bomb Squad parses it, and GuardDog matches Semgrep and YARA
+rules against it. GuardDog is given the folder, so its local scan runs its source-code
+rules; its registry-metadata rules need package metadata and do not run.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+TIMEOUT_SECONDS = 300
+LEVELS = ("high", "review", "info")
+
+
+def _run(command: list[str], timeout: int) -> tuple[str | None, str | None, float]:
+    start = time.monotonic()
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        return None, f"timed out after {timeout} s", time.monotonic() - start
+    except OSError as exc:
+        return None, f"could not start: {exc}", time.monotonic() - start
+    elapsed = time.monotonic() - start
+    if done.returncode not in (0, 1):
+        tail = done.stderr.strip().splitlines()[-1:] or [f"exit {done.returncode}"]
+        return done.stdout, f"exit {done.returncode}: {tail[0][:300]}", elapsed
+    return done.stdout, None, elapsed
+
+
+def _json_object(text: str) -> dict:
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("no JSON object in the output")
+    value = json.loads(text[start:])
+    if not isinstance(value, dict):
+        raise ValueError("unexpected JSON")
+    return value
+
+
+def parse_bombsquad(text: str) -> dict:
+    data = _json_object(text)
+    levels = {f.get("level") for f in data.get("findings", [])}
+    return {
+        "levels": [level for level in LEVELS if level in levels],
+        "rules": sorted({f.get("rule_id") for f in data.get("findings", [])
+                         if isinstance(f.get("rule_id"), str)}),
+        "surfaces": sorted({e.get("surface") for e in data.get("entry_points", [])
+                            if isinstance(e.get("surface"), str)}),
+        "not_analysed": sum(1 for f in data.get("files", [])
+                            if f.get("status") != "analysed"),
+    }
+
+
+def parse_guarddog(text: str) -> dict:
+    data = _json_object(text)
+    results = data.get("results") if isinstance(data.get("results"), dict) else {}
+    issues = data.get("issues")
+    errors = data.get("errors") if isinstance(data.get("errors"), dict) else {}
+    return {
+        "issues": issues if isinstance(issues, int) else 0,
+        "rules": sorted(name for name, found in results.items() if found),
+        "rule_errors": sorted(errors),
+    }
+
+
+def bombsquad(root: Path, timeout: int = TIMEOUT_SECONDS) -> dict:
+    out, error, seconds = _run([sys.executable, "-m", "bombsquad", "scan", str(root),
+                                "--format", "json"], timeout)
+    result: dict = {"seconds": round(seconds, 2), "error": error}
+    if out and error is None:
+        try:
+            result.update(parse_bombsquad(out))
+        except ValueError as exc:
+            result["error"] = f"unreadable output: {exc}"
+    return result
+
+
+def guarddog(executable: str, ecosystem: str, root: Path,
+             timeout: int = TIMEOUT_SECONDS) -> dict:
+    out, error, seconds = _run([executable, ecosystem, "scan", str(root),
+                                "--output-format", "json"], timeout)
+    result: dict = {"seconds": round(seconds, 2), "error": error}
+    if out and error is None:
+        try:
+            result.update(parse_guarddog(out))
+        except ValueError as exc:
+            result["error"] = f"unreadable output: {exc}"
+    return result
+
+
+def version(executable: str) -> str | None:
+    out, error, _ = _run([executable, "--version"], 60)
+    return out.strip().splitlines()[-1] if out and not error and out.strip() else None

@@ -31,6 +31,7 @@ Set `BOMBSQUAD_POWERSHELL` to pick a specific PowerShell executable.
 | `src/bombsquad/registry.py`, `archive.py`, `diff.py`, `source.py` | `bombsquad diff`: registry metadata and hash checks, safe unpacking, the comparison, and the check against the GitHub source and tag record |
 | `src/bombsquad/lockfiles.py`, `actionrefs.py`, `gate.py`, `action.yml` | `bombsquad gate`: pinned versions from lockfiles, action references and their review, the pull request report and its comment, and the GitHub Action |
 | `src/bombsquad/sarif.py`, `text_report.py` | Output formats |
+| `benchmark/` | The accuracy benchmark against GuardDog. It runs only in `.github/workflows/benchmark.yml`, on Linux CI. |
 
 ## Samples that look like malware
 
