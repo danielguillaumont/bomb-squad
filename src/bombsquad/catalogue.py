@@ -3,5 +3,6 @@
 from bombsquad.code.rules import RULES as CODE_RULES
 from bombsquad.model import Rule
 from bombsquad.powershell.rules import RULES as POWERSHELL_RULES
+from bombsquad.repo.rules import RULES as REPO_RULES
 
-ALL_RULES: dict[str, Rule] = {**POWERSHELL_RULES, **CODE_RULES}
+ALL_RULES: dict[str, Rule] = {**POWERSHELL_RULES, **CODE_RULES, **REPO_RULES}

@@ -1,24 +1,21 @@
-"""Find what runs without anyone choosing to run it: npm and Python entry points."""
+"""Find what runs without anyone choosing to run it.
+
+npm and Python entry points are read here; workflows, editor tasks, dev containers and
+git hooks in `bombsquad.repo`.
+"""
 
 from __future__ import annotations
 
 import json
 import re
 import tomllib
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from bombsquad.code.common import CodeHit, Snippet
-from bombsquad.code.shell import split_command
+from bombsquad.discovery import Discovery, Target, find_targets
 from bombsquad.model import EntryPoint, Region
+from bombsquad.repo import editors, githooks, workflows
 from bombsquad.textpos import Positions
-
-LANGUAGE_BY_SUFFIX = {
-    ".js": "javascript", ".cjs": "javascript", ".mjs": "javascript", ".jsx": "javascript",
-    ".ts": "javascript", ".mts": "javascript", ".cts": "javascript", ".tsx": "javascript",
-    ".py": "python", ".sh": "shell", ".bash": "shell",
-    ".ps1": "powershell", ".psm1": "powershell",
-}
 
 NPM_INSTALL = "npm install, including when installed as a dependency"
 NPM_PREPARE = "npm install in this repository, or as a git dependency"
@@ -29,42 +26,11 @@ NPM_HOOKS = {
 PYTHON_START = "every Python start, once installed"
 
 
-@dataclass
-class Target:
-    path: Path
-    language: str
-    entry: EntryPoint
-
-
-@dataclass
-class Discovery:
-    entry_points: list[EntryPoint] = field(default_factory=list)
-    targets: list[Target] = field(default_factory=list)
-    snippets: list[tuple[str, Snippet, EntryPoint]] = field(default_factory=list)
-    hits: list[tuple[str, CodeHit, EntryPoint]] = field(default_factory=list)
-    notes: list[tuple[str, str]] = field(default_factory=list)
-
-
 def _key_region(text: str, positions: Positions, key: str) -> Region:
     match = re.search(rf'"{re.escape(key)}"\s*:', text)
     if not match:
         return positions.line_region(1)
     return positions.region(match.start(), match.end())
-
-
-def _target(base: Path, word: str) -> Path | None:
-    """A file named on a command line, if it exists inside the package directory."""
-    word = word.strip("'\"")
-    if not word or word.startswith("-") or "://" in word:
-        return None
-    candidate = (base / word).resolve()
-    try:
-        candidate.relative_to(base.resolve())
-    except ValueError:
-        return None  # outside the package
-    if candidate.is_file() and candidate.suffix.lower() in LANGUAGE_BY_SUFFIX:
-        return candidate
-    return None
 
 
 _RUN_SCRIPT = re.compile(
@@ -101,12 +67,7 @@ def npm_package(path: Path, shown: str, text: str, found: Discovery,
         while queue:
             name, script, script_region, origin = queue.pop(0)
             found.snippets.append((shown, Snippet("shell", script, script_region, origin), entry))
-            for word in split_command(script):
-                target = _target(base, word)
-                if target is not None:
-                    entry.targets.append(display(target))
-                    found.targets.append(Target(
-                        target, LANGUAGE_BY_SUFFIX[target.suffix.lower()], entry))
+            find_targets(found, entry, script, base, display)
             # `npm run setup` in a hook runs the setup script too.
             for called in _called_scripts(script, scripts):
                 if called not in seen and len(seen) < 10:
@@ -203,12 +164,52 @@ DETECTED_NAMES = frozenset({"package.json", "setup.py", "sitecustomize.py", "use
                             "conftest.py", "pyproject.toml"})
 
 
+def surface(path: Path) -> str | None:
+    """Which kind of entry-point file this is, from its name and where it sits."""
+    name = path.name.lower()
+    parent = path.parent.name.lower()
+    if name in DETECTED_NAMES or path.suffix.lower() == ".pth":
+        return "package"
+    if (parent == "workflows" and path.parent.parent.name.lower() == ".github"
+            and path.suffix.lower() in (".yml", ".yaml")):
+        return "workflow"
+    if name in ("action.yml", "action.yaml"):
+        return "action"
+    if name == "tasks.json" and parent == ".vscode":
+        return "tasks"
+    if name == ".devcontainer.json" or name == "devcontainer.json" and ".devcontainer" in (
+            parent, path.parent.parent.name.lower()):
+        return "devcontainer"
+    if parent == ".husky" and path.name in githooks.GIT_HOOKS:
+        return "husky"
+    if name in githooks.LEFTHOOK_NAMES:
+        return "lefthook"
+    if name in githooks.PRE_COMMIT_NAMES:
+        return "pre-commit"
+    return None
+
+
 def is_detected(path: Path) -> bool:
-    return path.name.lower() in DETECTED_NAMES or path.suffix.lower() == ".pth"
+    return surface(path) is not None
 
 
 def discover(path: Path, shown: str, text: str, found: Discovery, display) -> None:
-    if path.name.lower() == "package.json":
+    kind = surface(path)
+    if kind == "workflow":
+        workflows.workflow(path, shown, text, found, display)
+    elif kind == "action":
+        workflows.action(path, shown, text, found, display)
+    elif kind == "tasks":
+        editors.tasks_file(path, shown, text, found, display)
+    elif kind == "devcontainer":
+        editors.devcontainer_file(path, shown, text, found, display)
+    elif kind == "husky":
+        githooks.husky(path, shown, text, found)
+    elif kind == "lefthook":
+        githooks.lefthook(path, shown, text, found, display)
+    elif kind == "pre-commit":
+        githooks.pre_commit(path, shown, text, found, display)
+    elif path.name.lower() == "package.json":
         npm_package(path, shown, text, found, display)
     else:
         python_file(path, shown, text, found)

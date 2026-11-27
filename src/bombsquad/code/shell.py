@@ -15,6 +15,7 @@ import tree_sitter
 import tree_sitter_bash
 
 from bombsquad.code.common import CodeHit, Snippet, clip, credential_reference
+from bombsquad.model import Region
 from bombsquad.textpos import Positions
 
 DOWNLOADERS = frozenset({"curl", "wget", "fetch", "aria2c", "iwr", "invoke-webrequest"})
@@ -209,6 +210,40 @@ class _Analysis:
 
 def analyze_shell(text: str) -> ShellResult:
     return _Analysis(text).run()
+
+
+@dataclass
+class NetworkCommand:
+    """A command that talks to the network, with what it is given."""
+
+    name: str
+    args: list[str]
+    text: str
+    region: Region
+    stdin: str  # earlier commands in the same pipeline, and here-strings
+
+
+def network_commands(text: str) -> list[NetworkCommand]:
+    analysis = _Analysis(text)
+    out: list[NetworkCommand] = []
+    for node in _walk(analysis.tree.root_node):
+        if node.type != "command" or _name(node) not in NETWORK_TOOLS:
+            continue
+        feeds = [_text(c) for c in node.named_children
+                 if c.type in ("herestring_redirect", "heredoc_redirect", "file_redirect")]
+        parent = node.parent
+        if parent is not None and parent.type == "pipeline":
+            feeds += [_text(c) for c in parent.named_children if c.end_byte <= node.start_byte]
+        out.append(NetworkCommand(_name(node), _words(node)[1:], _text(node),
+                                  analysis.region(node), " ".join(feeds)))
+    return out
+
+
+def command_words(text: str) -> list[list[str]]:
+    """The words of every simple command in a script, after wrappers such as sudo."""
+    analysis = _Analysis(text)
+    return [words for node in _walk(analysis.tree.root_node) if node.type == "command"
+            for words in [_words(node)] if words]
 
 
 def split_command(command: str) -> list[str]:
