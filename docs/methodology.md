@@ -234,7 +234,7 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 
 - **Sandbox:**
   - Two containers share an internal Docker network with no route out: the package's container, and the sink.
-  - Nothing on the host is mounted in the package's container. It has no capabilities except the two strace needs to switch users, and `no-new-privileges`.
+  - Nothing on the host is mounted in the package's container. It has no capabilities except the three strace needs, to trace and to switch users. The package runs as an unprivileged user with none, and `no-new-privileges`.
   - Images are built from base images pinned by digest.
 - **npm:** the tarball is unpacked into `node_modules` and `npm rebuild` runs its `preinstall`, `install` and `postinstall` scripts, and node-gyp for `binding.gyp`. Its dependencies are not installed.
 - **PyPI:**
@@ -249,7 +249,7 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
   - strace, running as root, records processes, files opened and connection attempts. The package runs as an unprivileged user.
   - The sink answers every DNS A query with its own address. It records names, TCP connections on common ports, HTTP request lines, TLS server names and the first 64 KB of each connection.
   - A fake credential that appears in what the sink received counts as sent: as is, hex, URL-encoded, base64 at any alignment, or in a DNS name.
-- **Package code:** what npm's `sh -c` for a lifecycle script, pip's build-backend helper, and the import step start, and everything below them.
+- **Package code:** what npm's `sh -c` for a lifecycle script, pip's build-backend helper or its `setup.py` caller, and the import step start, and everything below them. A thread, or a fork that has not called exec, counts as the process it came from.
   - npm reading `~/.npmrc` itself is expected and not reported.
   - Compilers, linkers, `make` and `git` are listed as build tools, not as programs started.
 - **Against the static scan:** the rule IDs of the static findings that installing runs are mapped to what they predict: network, credentials read, credentials sent, programs started and persistence.

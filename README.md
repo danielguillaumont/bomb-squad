@@ -139,7 +139,7 @@ Scanning treats the input as data, never code:
 - JavaScript, TypeScript and shell are parsed with tree-sitter, and Python with the standard library's `ast`. Nothing is imported or evaluated.
 - YAML is composed into nodes with PyYAML's safe loader and never constructed into objects. VS Code's JSON with comments is read by Bomb Squad's own reader. Markdown is split into prose, code and comments without rendering it.
 - Only files inside the scanned directories are followed, and symlinked files are skipped.
-- `bombsquad detonate` is the exception, and runs a package only inside a container: no mounts, no capabilities beyond what strace needs, an unprivileged user, and a network that reaches only the sink. See the [threat model](docs/threat-model.md).
+- `bombsquad detonate` is the exception, and runs a package only inside a container: no mounts, an unprivileged user with no capabilities, and a network that reaches only the sink. See the [threat model](docs/threat-model.md).
 - `bombsquad diff` fetches only over HTTPS from the npm and PyPI hosts, and from GitHub with `--source`, refuses artifacts whose hash differs from the registry's, and unpacks only regular files that stay inside a temporary folder.
 
 See the [threat model](docs/threat-model.md) for the rest, and [methodology](docs/methodology.md) for what each rule matches and its limits.

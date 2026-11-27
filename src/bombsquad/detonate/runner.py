@@ -2,9 +2,11 @@
 
 Two containers share an internal network that has no route out: the sink, and the
 package's container, whose DNS server is the sink. The package's container has no mounts,
-no capabilities except the two strace needs to drop to the user `detonate`, and
-`no-new-privileges`. Files go in with `docker cp` and the trace comes out on standard output,
-so nothing on the host is shared with it. Docker commands are argument lists, never a shell.
+and no capabilities except the three strace needs: to trace (SYS_PTRACE) and to switch to
+the user `detonate` (SETUID, SETGID). Switching user clears them, and `no-new-privileges`
+stops the package from getting any back. Files go in with `docker cp` and the trace comes
+out on standard output, so nothing on the host is shared with it. Docker commands are
+argument lists, never a shell.
 """
 
 from __future__ import annotations
@@ -38,8 +40,9 @@ IMAGE_FILES = {
 }
 # Only these differ from Docker's defaults, and every one narrows them.
 SANDBOX_FLAGS = ("--cap-drop", "ALL", "--cap-add", "SETUID", "--cap-add", "SETGID",
-                 "--security-opt", "no-new-privileges", "--memory", "1g", "--cpus", "1",
-                 "--pids-limit", "512", "--log-opt", "max-size=64m")
+                 "--cap-add", "SYS_PTRACE", "--security-opt", "no-new-privileges",
+                 "--memory", "1g", "--cpus", "1", "--pids-limit", "512",
+                 "--log-opt", "max-size=64m")
 SINK_FLAGS = ("--cap-drop", "ALL", "--cap-add", "NET_BIND_SERVICE", "--security-opt",
               "no-new-privileges", "--read-only", "--memory", "256m", "--pids-limit", "64",
               "--log-opt", "max-size=32m")
@@ -235,6 +238,13 @@ def run_detonation(ecosystem: str, name: str, version: str, artifact_name: str,
                          "the container stopped.")
         if timed_out:
             notes.append(f"Stopped after {timeout} seconds.")
+        if not captured.getvalue().strip():
+            # Only the root side writes to the container's stderr: the stage sends the
+            # package's output to a file before any package code runs.
+            errors = run(["docker", "logs", "--tail", "200", box]).stderr.decode(
+                "utf-8", "replace")[-2000:]
+            raise DetonationError("the sandbox recorded no trace, so nothing is reported"
+                                  + (f": {errors.strip()}" if errors.strip() else ""))
         return RunResult(captured.getvalue().decode("utf-8", "replace"), events, timed_out,
                          capped.is_set(), notes)
     finally:

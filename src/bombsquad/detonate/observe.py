@@ -6,13 +6,15 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 from dataclasses import asdict, dataclass, field
 
 from bombsquad.detonate.canary import HOME, Canaries, found_in
 from bombsquad.detonate.trace import Trace
 
 # The processes whose code is the package's: npm's `sh -c` for a lifecycle script, pip's
-# build-backend helper (which runs setup.py or the build backend), and the import step.
+# build-backend helper (which runs the build backend) or its legacy setup.py caller, and the
+# import step.
 IMPORT_STEP = "/opt/detonate/import.py"
 BUILD_TOOLS = frozenset({"cc", "gcc", "g++", "c++", "cc1", "cc1plus", "as", "ld", "collect2",
                          "make", "cmake", "ninja", "cargo", "rustc", "git", "uname", "ldconfig",
@@ -67,11 +69,45 @@ def _name(argv: list[str], path: str) -> str:
     return (argv[0] if argv else path).rsplit("/", 1)[-1]
 
 
+PIP_SETUP_CALLER = "pip-setuptools-caller"  # pip's legacy way of running setup.py
+
+
+def describe(argv: list[str]) -> str:
+    """A command line to show: pip's ways of running package code are named, and the code
+    of `-c` is cut to its first line."""
+    if "-c" in argv:
+        i = argv.index("-c")
+        code = argv[i + 1].strip() if i + 1 < len(argv) else ""
+        if PIP_SETUP_CALLER in code:
+            return " ".join(["setup.py", *argv[i + 2:i + 3], "(run by pip)"])
+        first = code.splitlines()[0][:200] if code else ""
+        shown = first + (" ..." if "\n" in code else "")
+        return " ".join([*argv[:i + 1], shown, *argv[i + 2:]])[:300]
+    for j, arg in enumerate(argv):
+        if arg.endswith("_in_process.py"):
+            return " ".join(["build backend", *argv[j + 1:j + 2], "(run by pip)"])
+    return " ".join(argv)[:300]
+
+
+def owner(trace: Trace, pid: int) -> int:
+    """The process whose program this is: a thread, or a fork that has not called exec yet,
+    runs the code of the nearest process above it that did."""
+    for candidate in [pid, *trace.ancestors(pid)]:
+        if trace.processes[candidate].execs:
+            return candidate
+    return pid
+
+
+def command(trace: Trace, pid: int) -> str:
+    process = trace.processes[owner(trace, pid)]
+    return describe(process.execs[-1]) if process.execs else "(no exec)"
+
+
 def _hook_command(execs: list[list[str]]) -> str:
     for argv in execs:
-        if len(argv) > 2 and argv[1] == "-c":
+        if len(argv) > 2 and argv[0].rsplit("/", 1)[-1] == "sh" and argv[1] == "-c":
             return argv[2][:300]  # the lifecycle script as package.json has it
-    return " ".join(execs[-1])[:300] if execs else "(no exec)"
+    return describe(execs[-1]) if execs else "(no exec)"
 
 
 def hook_roots(trace: Trace, ecosystem: str) -> tuple[set[int], int | None]:
@@ -87,7 +123,8 @@ def hook_roots(trace: Trace, ecosystem: str) -> tuple[set[int], int | None]:
                 elif (_name(argv, path) == "sh" and len(argv) > 2 and argv[1] == "-c"
                       and manager is not None and manager in trace.ancestors(pid)):
                     roots.add(pid)
-            elif any("_in_process" in a or a == IMPORT_STEP for a in argv):
+            elif any("_in_process" in a or a == IMPORT_STEP or PIP_SETUP_CALLER in a
+                     for a in argv):
                 roots.add(pid)
     # Keep the outermost: a root below another root is that root's code.
     outer = {pid for pid in roots if not set(trace.ancestors(pid)) & roots}
@@ -113,22 +150,20 @@ def observe(trace: Trace, sink_events: list[dict], canaries: Canaries, ecosystem
                                                      strict=True)}
     seen_reads = set()
     for item in trace.opens:
-        if item.path in canary_paths and (item.pid, item.path) not in seen_reads:
-            expected = (ecosystem == "npm" and item.pid == manager
+        if item.path in canary_paths and (owner(trace, item.pid), item.path) not in seen_reads:
+            expected = (ecosystem == "npm" and owner(trace, item.pid) == manager
                         and canary_paths[item.path] == ".npmrc")
             if expected:
                 continue
-            seen_reads.add((item.pid, item.path))
+            seen_reads.add((owner(trace, item.pid), item.path))
             obs.credentials_read.append({
                 "file": "~/" + canary_paths[item.path], "opened": item.ok,
-                "command": trace.processes[item.pid].command(),
-                "package_code": item.pid in package})
+                "command": command(trace, item.pid), "package_code": item.pid in package})
         if item.write and item.ok and item.pid in package:
             relative = item.path[len(HOME) + 1:] if item.path.startswith(HOME + "/") else None
             if (relative is not None and relative.startswith(PERSISTENCE)) or (
                     relative is None and item.path.startswith(SYSTEM_PERSISTENCE)):
-                obs.persistence.append({"file": item.path,
-                                        "command": trace.processes[item.pid].command()})
+                obs.persistence.append({"file": item.path, "command": command(trace, item.pid)})
 
     first_child_exec = set()
     if ecosystem == "npm":
@@ -145,14 +180,14 @@ def observe(trace: Trace, sink_events: list[dict], canaries: Canaries, ecosystem
             if _name(argv, path) in BUILD_TOOLS:
                 obs.build_tools.append(_name(argv, path))
                 continue
-            obs.programs_started.append({"command": " ".join(argv)[:300], "program": path})
+            obs.programs_started.append({"command": describe(argv), "program": path})
     obs.build_tools = sorted(set(obs.build_tools))
 
     for item in trace.connects:
         if item.family == "unix":
             continue
         record = {"call": item.call, "address": item.address, "port": item.port,
-                  "command": trace.processes[item.pid].command()}
+                  "command": command(trace, item.pid)}
         (obs.network if item.pid in package else obs.manager_network).append(record)
 
     for event in sink_events:
@@ -174,6 +209,8 @@ def observe(trace: Trace, sink_events: list[dict], canaries: Canaries, ecosystem
         elif kind == "truncated":
             obs.notes.append(f"The sink stopped recording after {event.get('after')} events.")
     obs.dns_names = sorted(set(obs.dns_names))
+    unique = {json.dumps(r, sort_keys=True): r for r in obs.credentials_sent}
+    obs.credentials_sent = list(unique.values())
     if not roots:
         obs.notes.append("No install script, build step or import ran package code.")
     return obs

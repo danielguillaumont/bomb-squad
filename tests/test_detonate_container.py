@@ -100,7 +100,9 @@ def test_pypi_setup_py_and_import_are_both_observed(tmp_path):
     })
     report = _detonate("pypi:detonate-standin@1.0", artifact, tmp_path / "pypi.json")
     observed = report["observed"]
-    assert len(observed["hook_commands"]) == 2  # the build step and the import step
+    hooks = observed["hook_commands"]
+    assert any(h.startswith("setup.py") for h in hooks)  # pip runs it, once per step
+    assert any("/opt/detonate/import.py" in h for h in hooks)
     assert "~/.aws/credentials" in {r["file"] for r in observed["credentials_read"]}
     assert {r["secret"] for r in observed["credentials_sent"]} >= {"AWS access key",
                                                                    "AWS secret key"}

@@ -177,6 +177,29 @@ def test_pip_and_the_import_step_are_package_code_and_build_tools_are_named():
         ("~/.pypirc", False), ("~/.git-credentials", True)]
 
 
+def test_pips_legacy_setup_py_caller_is_package_code_and_threads_belong_to_their_process():
+    # Seen in a real run: without a pyproject.toml, pip runs setup.py through `python -c`
+    # with its <pip-setuptools-caller> shim; npm reads ~/.npmrc from a worker thread.
+    caller = "\\n# This is <pip-setuptools-caller> -- a caller that pip uses to run setup.py\\n"
+    text = f"""\
+300 10:00:00.000001 execve("/usr/local/bin/python", ["python", "-m", "pip"], 0x1 /* 9 vars */) = 0
+300 10:00:00.000002 clone(child_stack=NULL, flags=SIGCHLD) = 301
+301 10:00:00.000003 execve("/usr/local/bin/python", ["/usr/local/bin/python", "-c", "{caller}"..., "egg_info", "--egg-base", "/tmp/x"], 0x1 /* 9 vars */) = 0
+301 10:00:00.000004 openat(AT_FDCWD, "/home/detonate/.aws/credentials", O_RDONLY|O_CLOEXEC) = 3
+"""
+    obs = observe.observe(trace.parse(text), [], _canaries(), "pypi")
+    assert obs.hook_commands == ["setup.py egg_info (run by pip)"]
+    assert [(r["command"], r["package_code"]) for r in obs.credentials_read] == [
+        ("setup.py egg_info (run by pip)", True)]
+
+    npm = """\
+400 10:00:00.000001 execve("/usr/local/bin/npm", ["npm", "rebuild"], 0x1 /* 9 vars */) = 0
+400 10:00:00.000002 clone3({flags=CLONE_VM|CLONE_THREAD, exit_signal=0, stack=0x7f, stack_size=0x9000}, 88) = 401
+401 10:00:00.000003 openat(AT_FDCWD, "/home/detonate/.npmrc", O_RDONLY|O_CLOEXEC) = 17
+"""
+    assert observe.observe(trace.parse(npm), [], _canaries(), "npm").credentials_read == []
+
+
 # Runner -------------------------------------------------------------------------------------
 
 def _tar_members(data: bytes) -> dict[str, tarfile.TarInfo]:
@@ -248,7 +271,7 @@ def test_the_sandbox_has_no_mounts_no_route_out_and_no_extra_privileges():
     [create] = [c for c in docker.calls if c[1] == "create"]
     assert create[create.index("--cap-drop") + 1] == "ALL"
     assert [create[i + 1] for i, a in enumerate(create) if a == "--cap-add"] == [
-        "SETUID", "SETGID"]
+        "SETUID", "SETGID", "SYS_PTRACE"]
     assert "no-new-privileges" in create and create[create.index("--dns") + 1] == "172.30.0.2"
     assert any(a.startswith("GITHUB_TOKEN=ghp_") for a in create)
     [run_sink] = [c for c in docker.calls if c[1] == "run"]
