@@ -188,11 +188,13 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 **Built:** `benchmark/` and `.github/workflows/benchmark.yml`. The pins are: DataDog dataset commit `72c723be5470` (2026-11-05), GuardDog 3.2.0, `npm-high-impact` 1.13.0, top-pypi-packages commit `29c0d4c38c28` (2026-11-01) and seed 2026. The cutoff is the commit date of the Bomb Squad commit that runs. [Methodology](methodology.md#how-the-benchmark-works) describes it.
 
-**Development runs:** the first runs (Actions runs 46052046868, 46055333444, 46060295931 and 46063110536) found faults in the harness and in Bomb Squad, fixed in one pull request before any figure was used: GuardDog was scored by any matched rule instead of its risk label, archives with names Windows cannot hold unpacked to nothing, crashes were scored as clean scans, repository files inside published packages were scored as if installing ran them, and three crashes on real packages. Rules changed after seeing those runs' rule counts on the retrospective set.
+**Development runs:** six runs on a branch found faults in the harness and in Bomb Squad, fixed in one pull request before any figure was used. Among them: GuardDog was scored by any matched rule instead of its risk label, crashes were scored as clean scans, and repository files inside published packages were scored as if installing ran them. Rules changed after seeing those runs' rule counts on the retrospective set. The [write-up](research/guarddog-benchmark.md#development-runs) lists them.
 
-**Not yet:** the write-up, consecutive version pairs for the diff engine, and OpenSSF malicious-packages reports. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit.
+**Measured:** [the write-up](research/guarddog-benchmark.md), from Actions run 46066816294 on `main` (2026-11-27). It includes where Bomb Squad loses. The README's accuracy figures are taken from it.
 
-**Exit:** the write-up is published, and every accuracy figure in the README is computed from it.
+**Not yet:** consecutive version pairs for the diff engine, and OpenSSF malicious-packages reports. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit. Until then every figure is retrospective and in-sample.
+
+**Exit (Phase 4) met:** the write-up is published, and every accuracy figure in the README is computed from it. The time split is still to be measured.
 
 ## v2.0.0
 
