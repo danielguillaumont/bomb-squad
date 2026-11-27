@@ -90,14 +90,16 @@ def _parse(value: object) -> datetime | None:
 
 
 def release_on(ecosystem: str, name: str, as_of: datetime, fetch: Fetch) -> str | None:
-    """The highest stable version published on or before `as_of`."""
+    """The highest stable version published on or before `as_of`, or the highest
+    pre-release for a package that has only ever published pre-releases (OpenTelemetry's
+    instrumentation packages are all 0.xbN)."""
     if ecosystem == "npm":
         url = f"{NPM_REGISTRY}/{urllib.parse.quote(name, safe='@')}"
         document = json.loads(fetch(url, MAX_METADATA_BYTES))
         times = document.get("time") if isinstance(document.get("time"), dict) else {}
         versions = document.get("versions") if isinstance(document.get("versions"), dict) else {}
         candidates = [(t, v) for v, t in ((v, _parse(times.get(v))) for v in versions)
-                      if t and t <= as_of and _stable(v)]
+                      if t and t <= as_of]
     else:
         url = f"{PYPI}/pypi/{urllib.parse.quote(name, safe='')}/json"
         document = json.loads(fetch(url, MAX_METADATA_BYTES))
@@ -106,10 +108,11 @@ def release_on(ecosystem: str, name: str, as_of: datetime, fetch: Fetch) -> str 
         for version, files in releases.items():
             files = [f for f in files if isinstance(f, dict) and not f.get("yanked")]
             times = [t for t in (_parse(f.get("upload_time_iso_8601")) for f in files) if t]
-            if times and min(times) <= as_of and _stable(version):
+            if times and min(times) <= as_of:
                 candidates.append((min(times), version))
     # The highest version, not the latest upload: maintainers publish backports to old
     # majors (semver 5.7.x after 7.x), which were never the current release.
+    candidates = [c for c in candidates if _stable(c[1])] or candidates
     return max(candidates, key=lambda c: version_key(c[1]))[1] if candidates else None
 
 

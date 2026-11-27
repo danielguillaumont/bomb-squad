@@ -133,7 +133,7 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 ### 2a: capability diff and publish signals ✅
 
 - **Fetching:** HTTPS only, to `registry.npmjs.org`, `pypi.org` and `files.pythonhosted.org`, redirects included. Each artifact is checked against the registry's SHA-512 (npm) or SHA-256 (PyPI) before it is opened. For PyPI, the sdist and one wheel are compared, because install hooks live in the first and `.pth` files in the second.
-- **Unpacking:** regular files only. Links, absolute paths, `..`, drive letters, names Windows cannot hold and case clashes are skipped and listed. Member counts and decompressed bytes are capped.
+- **Unpacking:** regular files only. Links, `..` and case clashes are skipped and listed; absolute paths and drive letters are made relative and names Windows cannot hold are renamed, as listed. Member counts and decompressed bytes are capped.
 - **Capability diff:** both versions are scanned as `bombsquad scan` would, and the report lists:
   - new and changed entry points;
   - new findings, matched by rule, file and evidence so moved code is not reported again;

@@ -10,7 +10,14 @@ import tree_sitter
 import tree_sitter_javascript
 import tree_sitter_typescript
 
-from bombsquad.code.common import CodeHit, clip, credential_reference, packed_code
+from bombsquad.code.common import (
+    CodeHit,
+    Snippet,
+    clip,
+    command_line,
+    credential_reference,
+    packed_code,
+)
 from bombsquad.textpos import Positions
 
 NETWORK_MODULES = frozenset({
@@ -18,6 +25,8 @@ NETWORK_MODULES = frozenset({
     "request", "undici", "ws", "superagent", "needle", "phin", "socket.io-client",
 })
 PROCESS_MODULES = frozenset({"child_process"})
+SHELL_FUNCTIONS = frozenset({"exec", "execSync"})  # a command line, run by the shell
+ARGV_FUNCTIONS = frozenset({"spawn", "spawnSync", "execFile", "execFileSync"})
 VM_MODULES = frozenset({"vm"})
 NETWORK_GLOBALS = frozenset({"fetch", "WebSocket", "XMLHttpRequest", "EventSource"})
 ENV_SERIALIZERS = frozenset({
@@ -65,6 +74,14 @@ def _string_value(node) -> str | None:
     return None
 
 
+def _strings(node) -> list[str] | None:
+    """The values of an array of string literals, or None when any element is not one."""
+    if node is None or node.type != "array":
+        return [] if node is not None and node.type == "object" else None
+    values = [_string_value(c) for c in node.named_children]
+    return None if None in values else values  # type: ignore[return-value]
+
+
 def _text(node) -> str:
     return node.text.decode("utf-8", "replace")
 
@@ -82,6 +99,8 @@ class JsResult:
     hits: list[CodeHit] = field(default_factory=list)
     relative_imports: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # Command lines passed to child_process as literals, for the shell analyzer.
+    snippets: list[Snippet] = field(default_factory=list)
 
 
 class _Analysis:
@@ -182,10 +201,33 @@ class _Analysis:
             self.hit("BS-NET-003", node, [f"calls {name}"])
         elif name.split(".")[0] in PROCESS_MODULES or name in ("Bun.spawn", "Bun.spawnSync"):
             self.hit("BS-PRC-001", node, [f"calls {name}"])
+            command = self.command(name, args)
+            if command:
+                region = self.region(node)
+                self.result.snippets.append(Snippet("shell", command, region,
+                                                    f"{name} command at line {region.line}"))
         elif name in ("eval", "Function", "globalThis.eval", "window.eval") or (
                 name.split(".")[0] in VM_MODULES and name.split(".")[-1] in (
                 "runInThisContext", "runInNewContext", "runInContext", "compileFunction")):
             self.dynamic(node, first, name)
+
+    def command(self, name: str, args) -> str | None:
+        """The command line a child_process call runs, when it is written out literally."""
+        values = args.named_children if args is not None else []
+        if not values:
+            return None
+        function = name.split(".")[-1]
+        if function in SHELL_FUNCTIONS:
+            return _string_value(values[0])
+        if name in ("Bun.spawn", "Bun.spawnSync"):
+            words = _strings(values[0])
+        elif function in ARGV_FUNCTIONS:
+            program = _string_value(values[0])
+            rest = _strings(values[1]) if len(values) > 1 else []
+            words = [program, *rest] if program is not None and rest is not None else None
+        else:
+            return None
+        return command_line(words) if words else None
 
     def dynamic(self, node, first, name: str) -> None:
         if first is not None and _string_value(first) is not None and name == "eval":

@@ -35,6 +35,23 @@ class Snippet:
     offset: tuple[int, int] | None = None
 
 
+def command_line(words: list[str]) -> str:
+    """An argument list as one shell command line, quoted so the shell analyzer reads the
+    same words back: single quotes, or double quotes for a word that holds single quotes
+    and nothing the shell would expand inside double quotes."""
+    out = []
+    for word in words:
+        if word and re.fullmatch(r"[\w@%+=:,./-]+", word):
+            out.append(word)
+        elif "'" not in word:
+            out.append(f"'{word}'")
+        elif not re.search(r'["$`\\!]', word):
+            out.append(f'"{word}"')
+        else:
+            out.append("'" + word.replace("'", "'\"'\"'") + "'")
+    return " ".join(out)
+
+
 def clip(text: str) -> str:
     text = " ".join(text.split()) if "\n" not in text.strip() else text.strip()
     return text if len(text) <= EVIDENCE_LIMIT else text[:EVIDENCE_LIMIT] + "…"

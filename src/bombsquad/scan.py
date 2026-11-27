@@ -138,13 +138,16 @@ class _Scan:
         self.result(item.shown, language)
         if language == "javascript":
             js = analyze_javascript(text, item.shown)
-            item.hits = js.hits
+            item.hits, item.snippets = js.hits, js.snippets
             item.imports = [p for p in (self.resolve_import(key, spec)
                                         for spec in js.relative_imports) if p]
             self.results[item.shown].notes.extend(js.notes)
         elif language == "python":
             py = analyze_python(text)
-            item.hits = py.hits
+            item.hits, item.snippets = py.hits, py.snippets
+            item.imports = list(dict.fromkeys(
+                p for module, level in py.imports
+                for p in self.resolve_python_import(key, module, level)))
             self.results[item.shown].notes.extend(py.notes)
         elif language == "shell":
             sh = analyze_shell(text)
@@ -161,6 +164,35 @@ class _Scan:
                     self.inside_roots(candidate)):
                 return candidate
         return None
+
+    def resolve_python_import(self, importer: Path, module: str, level: int) -> list[Path]:
+        """Local files an import runs: each package's __init__.py on the way and the
+        module itself. Absolute imports are looked up from the importer's folder upwards,
+        as the folder of the script Python runs is first on its path."""
+        if level:
+            bases = [importer.parents[level - 1]] if level <= len(importer.parents) else []
+        else:
+            bases = []
+            folder = importer.parent
+            while self.inside_roots(folder) and len(bases) < MAX_IMPORT_DEPTH:
+                bases.append(folder)
+                folder = folder.parent
+        parts = [p for p in module.split(".") if p] if module else []
+        for base in bases:
+            found = [base / "__init__.py"] if level and (base / "__init__.py").is_file() else []
+            folder = base
+            for i, part in enumerate(parts):
+                if (folder / part / "__init__.py").is_file():
+                    folder = folder / part
+                    found.append(folder / "__init__.py")
+                elif i == len(parts) - 1 and (folder / f"{part}.py").is_file():
+                    found.append(folder / f"{part}.py")
+                else:
+                    break
+            found = [f.resolve() for f in found if self.inside_roots(f.resolve())]
+            if found:
+                return found
+        return []
 
     def follow(self, entry: EntryPoint, start: Path, language: str) -> None:
         """Analyse an entry point's target and the local files it imports."""
@@ -191,7 +223,7 @@ class _Scan:
                         f"Imports more than {MAX_IMPORT_DEPTH} levels from {entry.path} "
                         "were not followed.")
                 continue
-            frontier.extend((p, "javascript", depth + 1) for p in item.imports)
+            frontier.extend((p, lang, depth + 1) for p in item.imports)
 
     def add_powershell_file(self, path: Path, entry: EntryPoint | None) -> None:
         shown = display_path(path)

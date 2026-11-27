@@ -148,6 +148,11 @@ def test_release_current_on_a_date():
     as_of = datetime(2026, 11, 5, tzinfo=UTC)
     assert benign.release_on("npm", "demo", as_of, registry) == "1.1.0"
     assert benign.release_on("pypi", "demo", as_of, registry) == "1.0.post1"
+    registry.urls["https://pypi.org/pypi/beta/json"] = json.dumps({"releases": {
+        "0.58b0": [{"upload_time_iso_8601": "2026-09-01T00:00:00Z"}],
+        "0.59b0": [{"upload_time_iso_8601": "2026-10-01T00:00:00Z"}],
+        "0.60b0": [{"upload_time_iso_8601": "2026-12-01T00:00:00Z"}]}}).encode()
+    assert benign.release_on("pypi", "beta", as_of, registry) == "0.59b0"
 
 
 def test_tool_output_is_reduced_to_what_scoring_needs():
@@ -157,12 +162,18 @@ def test_tool_output_is_reduced_to_what_scoring_needs():
         "entry_points": [{"surface": "npm"}], "files": [{"status": "analysed"},
                                                          {"status": "not_analysed"}]}))
     assert bs == {"levels": ["high", "review"], "rules": ["BS-EX-001", "BS-NET-001"],
+                  "rules_by_level": {"high": ["BS-EX-001"], "review": ["BS-NET-001"]},
                   "surfaces": ["npm"], "not_analysed": 1}
     assert "secret stuff" not in json.dumps(bs)
     gd = tools.parse_guarddog("log line\n" + json.dumps({
         "issues": 2, "results": {"npm-install-script": {"x": 1}, "shady-links": {}},
-        "errors": {"some-rule": "failed"}}))
-    assert gd == {"issues": 2, "rules": ["npm-install-script"], "rule_errors": ["some-rule"]}
+        "errors": {"some-rule": "failed"},
+        "risk_score": {"score": 5.4, "label": "suspicious", "findings_count": 3},
+        "risks": [{"threat_code": "secret stuff"}]}))
+    assert gd == {"issues": 2, "rules": ["npm-install-script"], "rule_errors": ["some-rule"],
+                  "score": 5.4, "label": "suspicious"}
+    assert "secret stuff" not in json.dumps(gd)
+    assert tools.parse_guarddog(json.dumps({"issues": 0}))["label"] is None
     with pytest.raises(ValueError):
         tools.parse_guarddog("no json")
 
@@ -172,8 +183,10 @@ def row(set_: str, eco: str, bs_levels: list[str] | None, gd_issues: int | None,
     return {"set": set_, "ecosystem": eco, "name": "x", "splits": list(splits),
             "bombsquad": ({"levels": bs_levels, "surfaces": surfaces or []}
                           if bs_levels is not None else {"error": "timed out"}),
-            "guarddog": ({"issues": gd_issues} if gd_issues is not None
-                         else {"error": "exit 2"})}
+            "guarddog": ({"issues": gd_issues,
+                          "label": {0: "no_risks_detected", 1: "low"}.get(gd_issues,
+                                                                          "suspicious")}
+                         if gd_issues is not None else {"error": "exit 2"})}
 
 
 def test_scores_keep_their_denominators(tmp_path):
@@ -198,6 +211,11 @@ def test_scores_keep_their_denominators(tmp_path):
     gd = get[("npm", "retrospective", "guarddog", "any")]
     assert gd["recall"] == {"count": 3, "of": 4, "rate": 0.75}
     assert get[("npm", "after-cutoff", "guarddog", "any")]["recall"]["of"] == 0
+    assert get[("npm", "retrospective", "guarddog", "suspicious")]["recall"]["count"] == 0
+    flagged_row = row("benign", "npm", [], 2)
+    assert score.flagged(flagged_row, "guarddog", "suspicious") is True
+    assert score.flagged(flagged_row, "guarddog", "high_risk") is False
+    assert score.flagged({"guarddog": {"issues": 1}}, "guarddog", "suspicious") is None
     assert scores["packages"] == {"total": 8, "unusable": 1, "unusable_reasons": ["x"]}
     surfaces = {(s["surface"], s["tool"], s["threshold"]): s["recall"]
                 for s in scores["surfaces"]}

@@ -51,6 +51,10 @@ def parse_bombsquad(text: str) -> dict:
         "levels": [level for level in LEVELS if level in levels],
         "rules": sorted({f.get("rule_id") for f in data.get("findings", [])
                          if isinstance(f.get("rule_id"), str)}),
+        "rules_by_level": {level: sorted({f.get("rule_id") for f in data.get("findings", [])
+                                          if f.get("level") == level
+                                          and isinstance(f.get("rule_id"), str)})
+                           for level in LEVELS if level in levels},
         "surfaces": sorted({e.get("surface") for e in data.get("entry_points", [])
                             if isinstance(e.get("surface"), str)}),
         "not_analysed": sum(1 for f in data.get("files", [])
@@ -63,10 +67,16 @@ def parse_guarddog(text: str) -> dict:
     results = data.get("results") if isinstance(data.get("results"), dict) else {}
     issues = data.get("issues")
     errors = data.get("errors") if isinstance(data.get("errors"), dict) else {}
+    # GuardDog 3 correlates rule matches into a 0-10 risk score labelled low, suspicious
+    # or high_risk. Its exit code still counts any matched rule.
+    risk = data.get("risk_score") if isinstance(data.get("risk_score"), dict) else {}
+    score, label = risk.get("score"), risk.get("label")
     return {
         "issues": issues if isinstance(issues, int) else 0,
         "rules": sorted(name for name, found in results.items() if found),
         "rule_errors": sorted(errors),
+        "score": score if isinstance(score, int | float) else None,
+        "label": label if isinstance(label, str) else None,
     }
 
 

