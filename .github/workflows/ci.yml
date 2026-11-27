@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      - name: Install
+        run: uv sync --locked --python 3.12
+
+      - name: Show PowerShell version
+        shell: pwsh
+        run: $PSVersionTable.PSVersion.ToString()
+
+      - name: Lint
+        if: runner.os == 'Linux'
+        run: uv run --locked ruff check .
+
+      - name: Test with PowerShell 7
+        run: uv run --locked pytest -q
+
+      - name: Test with Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        env:
+          BOMBSQUAD_POWERSHELL: powershell
+        run: uv run --locked pytest -q
+
+      - name: Scan the sample
+        run: uv run --locked bombsquad scan samples/example.ps1 --format sarif -o bombsquad.sarif
+
+  actionlint:
+    name: Lint workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      - name: actionlint
+        run: uvx --from actionlint-py actionlint

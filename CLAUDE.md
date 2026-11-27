@@ -25,13 +25,17 @@ These apply to code, docs, site copy, and commit messages.
 
 ## Commands
 
-Until Phase 0 lands, `main` is the v1 .NET solution:
-
 ```powershell
-dotnet test .\BombSquad.slnx -c Release
-dotnet run --project .\src\BombSquad.Cli\BombSquad.Cli.csproj -c Release -- --file .\samples\example.ps1
+uv sync --locked --python 3.12
+uv run --locked pytest
+uv run --locked ruff check .
 uvx --from actionlint-py actionlint   # after any workflow change
+uv run bombsquad scan samples\example.ps1
 ```
+
+Parsing PowerShell needs `pwsh` 7, or Windows PowerShell 5.1 on Windows. See `docs/development.md`.
+
+Antivirus quarantines files that spell out download cradles, encoded commands or AMSI internals, and blocks reading tool output that prints them. Keep such samples ROT13-encoded in tests, compare rule IDs only in assertions, and never print or write them in plain text.
 
 ## Conventions
 

@@ -32,20 +32,23 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 - Accuracy claims come only from the benchmark: time-split, with denominators and dataset dates, against GuardDog on the same packages.
 - LLM triage is optional, off by default, and must beat the no-LLM baseline to be used.
 
-## Phase 0: Reset
+## Phase 0: Reset ✅
 
-- v1.0.0 stays at its tag and release. The WinUI app, the C# engine, the packaging scripts and the milestone documents leave `main`, and the README points to v1.0.0 for the desktop app.
-- Docs reduced to the README, this roadmap, `threat-model.md`, `methodology.md` and `development.md`. No milestone codes in file names.
-- Python 3.12 package and CLI (`bombsquad`), managed with uv, with JSON and SARIF 2.1.0 output and CI on Linux, macOS and Windows.
-- The project's own workflows pin actions by commit SHA and declare least-privilege permissions, the rules it will enforce on others.
-- `threat-model.md`: Bomb Squad reads hostile input by design. It covers parser abuse, archive extraction, sandbox escape, injection into the LLM reviewer, and the release pipeline.
-- PowerShell engine ported. `pwsh` builds the AST with `Parser.ParseInput` and emits it as JSON, without execution. On top of that:
-  - resolving aliases and native tools;
-  - decoding `-EncodedCommand` and parsing the result;
-  - `[ScriptBlock]::Create`;
-  - download-and-run cradles, Defender exclusions and AMSI tampering.
+- **v1 frozen:** v1.0.0 stays at its tag and release. The WinUI app, the C# engine, the packaging scripts and the milestone documents left `main`.
+- **Docs:** reduced to the README, this roadmap, `threat-model.md`, `methodology.md` and `development.md`.
+- **Package and CI:**
+  - A Python 3.12 package and CLI (`bombsquad scan`, `bombsquad rules`), managed with uv, with text, JSON and SARIF 2.1.0 output and `--fail-on` for CI.
+  - CI runs on Linux, macOS and Windows with PowerShell 7, and again on Windows with Windows PowerShell 5.1.
+  - Actions are pinned by commit SHA with read-only permissions.
+- **PowerShell engine:**
+  - `Parser.ParseInput` runs in a separate process, and its syntax tree is emitted as JSON.
+  - Names resolve through aliases, module-qualified names and native tools (`reg`, `schtasks`, `sc.exe`, `net`, `certutil`, `bitsadmin`).
+  - Names and arguments built from string literals are folded.
+  - `-EncodedCommand` (including en-dash forms and `Start-Process`), `-Command`, base64 literals and literal text run by `Invoke-Expression` or `[ScriptBlock]::Create` are decoded and analysed.
+  - New rules cover download-and-run (inline, piped, or through a variable), Defender exclusions, AMSI and logging tampering, autostart registry keys, compiled C# and loaded assemblies, and modules loaded from a path.
+- **Parser safety:** the parser reads the file a `using module` statement names when it resolves classes (tested on Windows PowerShell 5.1), and v1 parsed this way too. Those statements are now blanked before parsing and reported. Rules also run on files with parse errors, so a deliberate error cannot hide the rest of a file. See the [threat model](threat-model.md).
 
-**Exit:** the constructs v1 missed are regression tests and pass, and the v1 sample still produces its six findings.
+**Exit met:** the constructs v1 missed are regression tests in `tests/test_powershell_rules.py`, and the v1 sample still produces its six findings.
 
 ## Phase 1: Inventory, what runs without a decision
 
