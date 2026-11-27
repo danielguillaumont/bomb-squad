@@ -2,53 +2,60 @@
 
 **Find what runs before anyone chooses to run it.**
 
-Bomb Squad reviews third-party code before it runs. Version 2 is being built step by step ([roadmap](docs/roadmap.md)). It will cover dependencies, workflows, editor and agent configs, and scripts. Today it covers PowerShell, the language of most paste-and-run attacks.
+Bomb Squad reviews third-party code before it runs. Version 2 is being built step by step ([roadmap](docs/roadmap.md)).
 
-It reads a script with PowerShell's own parser. It then reports what the script could do to the machine, with the exact source, how it was found, and what the analysis could not see. **It never runs the script.**
+It first lists the **entry points**: code that runs without anyone choosing to run it. Today that covers npm install hooks and Python's `.pth` files, `setup.py`, in-tree build backends, `sitecustomize` and `conftest.py`. Workflows, editor tasks, git hooks and agent configs come next. It then reads the code each entry point reaches and reports what that code could do, with the exact source, how it was reached, and what the analysis could not see. **It never runs anything it scans.**
 
 ```text
-$ bombsquad scan samples/example.ps1
-samples/example.ps1
-  6:5  review  BS-FS-001  Deletes files or directories
-      Remove-Item -LiteralPath 'demo-cache'
-  7:5  high    BS-SS-001  Changes Microsoft Defender settings
-      Set-MpPreference -DisableRealtimeMonitoring $true
+$ bombsquad scan demo-package
+Runs without being asked (1 entry point)
+  demo-package/package.json:5  postinstall script
+      runs on: npm install, including when installed as a dependency
+      runs: node scripts/setup.js
+      reaches: demo-package/scripts/setup.js
+      reaches: demo-package/scripts/send.js
+
+demo-package/package.json
+  5:5  high    BS-EX-001  Collects secrets and can send them out
+      node scripts/setup.js
+      via: runs on npm install, including when installed as a dependency: postinstall script in demo-package/package.json:5
+      via: collects: collects all environment variables at demo-package/scripts/setup.js:2 (JSON.stringify(process.env))
+      via: network: opens network connections at demo-package/scripts/send.js:1 (require("https"))
   ...
 ```
 
 ## What it finds
 
-17 rules, listed by `bombsquad rules`, cover:
+28 rules, listed by `bombsquad rules`.
 
-- **Destructive and persistent changes:**
-  - file deletion;
-  - registry writes, and separately writes to autostart keys;
-  - local accounts and groups;
-  - scheduled tasks and services.
-- **Security tooling:** Defender settings and exclusions, and tampering with AMSI or script logging.
-- **Downloads:** content fetched from the network, and downloaded content that is then run. That covers the download inside the call, the download piped into it, and the download stored in a variable first.
-- **Dynamic code:**
-  - `Invoke-Expression` and script blocks built from text;
-  - commands whose name is chosen at run time;
-  - compiled C# and loaded assemblies;
-  - modules loaded from a path.
-- **Encoded and obfuscated code:**
-  - `-EncodedCommand` is decoded and analysed, including through `Start-Process`. So are `-Command` text, base64 literals and literal text passed to `Invoke-Expression`.
-  - Names assembled from string literals, such as `('Remove-' + 'Item')` or `-join [char[]](…)`, are folded back to the command they name.
-- **The same action under other names:**
-  - aliases (`rm`, `del`, `iwr`) and module-qualified names;
-  - native tools (`reg`, `schtasks`, `sc.exe`, `net`, `certutil`, `bitsadmin`);
-  - en and em dashes, which PowerShell accepts in place of `-`.
+**In code an entry point reaches** (JavaScript and TypeScript, Python, shell, and code embedded with `node -e`, `python -c`, `sh -c` or a PowerShell command line):
 
-Every finding carries its source location, the evidence, how it was resolved and what the analysis could not see. Accuracy has not been measured yet. The benchmark against GuardDog is [Phase 4](docs/roadmap.md#phase-4-benchmark-against-guarddog), and until it runs this README states no detection rates. **No findings does not mean safe.**
+- network access, and downloads piped into a shell;
+- credential files and token variables (`~/.npmrc`, `~/.aws/credentials`, `GITHUB_TOKEN`), and code that collects the whole environment;
+- both of those reachable from one entry point, reported once at the entry point as **BS-EX-001**;
+- text evaluated as code, and decoded data that is then run;
+- packed or obfuscated code, and other programs started.
+
+**In any text file:** invisible or direction-changing Unicode (Trojan Source and similar), and code hidden after a long run of whitespace.
+
+**In PowerShell**, wherever it is (the language of most paste-and-run attacks, read with PowerShell's own parser):
+
+- deletion, registry and autostart writes, accounts, scheduled tasks and services;
+- Defender settings and exclusions, and AMSI or script-logging tampering;
+- downloads, and downloads that are run, including through a variable;
+- `Invoke-Expression`, script blocks, compiled C#, assemblies and modules loaded from a path;
+- `-EncodedCommand`, `-Command` text and base64 literals, decoded and analysed;
+- names assembled from string literals, aliases, native tools, and en and em dashes in place of `-`.
+
+Every finding carries its source location, the evidence, how it was reached and what the analysis could not see. Accuracy has not been measured yet. The benchmark against GuardDog is [Phase 4](docs/roadmap.md#phase-4-benchmark-against-guarddog), and until it runs this README states no detection rates. **No findings does not mean safe.**
 
 ## Use it
 
-Requires Python 3.12 and PowerShell: PowerShell 7 (`pwsh`) on any OS, or Windows PowerShell 5.1.
+Requires Python 3.12. PowerShell files and command lines also need PowerShell: PowerShell 7 (`pwsh`) on any OS, or Windows PowerShell 5.1.
 
 ```powershell
 uv tool install git+https://github.com/danielguillaumont/bomb-squad
-bombsquad scan .\scripts                     # files or directories
+bombsquad scan .\some-package               # files or directories
 Get-Clipboard | bombsquad scan -             # check a pasted command before running it
 bombsquad scan . --format sarif -o bombsquad.sarif --fail-on high
 ```
@@ -59,9 +66,9 @@ Output is text, JSON or SARIF 2.1.0 (for GitHub code scanning). `--fail-on high|
 
 The input is data, never code:
 
-- It is parsed by `Parser.ParseInput` in a separate PowerShell process, in an empty working directory.
-- `using module` and `using assembly` statements are blanked before parsing, because the parser opens the files they name.
-- Names built from literals are folded by Bomb Squad's own code, never evaluated by PowerShell.
+- PowerShell is parsed by `Parser.ParseInput` in a separate process, in an empty working directory. `using module` and `using assembly` statements are blanked first, because the parser opens the files they name.
+- JavaScript, TypeScript and shell are parsed with tree-sitter, and Python with the standard library's `ast`. Nothing is imported or evaluated.
+- Only files inside the scanned directories are followed, and symlinked files are skipped.
 
 See the [threat model](docs/threat-model.md) for the rest, and [methodology](docs/methodology.md) for what each rule matches and its limits.
 
@@ -71,4 +78,4 @@ See the [threat model](docs/threat-model.md) for the rest, and [methodology](doc
 
 v1 matched 12 PowerShell command names and `iex` by exact name. The constructs it missed are now regression tests in [`tests/test_powershell_rules.py`](tests/test_powershell_rules.py). Its six-finding sample still produces the same six findings.
 
-**Built with:** Python · PowerShell AST · pytest · ruff · uv · GitHub Actions. [Development](docs/development.md).
+**Built with:** Python · PowerShell AST · tree-sitter · pytest · ruff · uv · GitHub Actions. [Development](docs/development.md).

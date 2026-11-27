@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 CMDLETS = {
     name.lower(): name
     for name in (
-        "Add-LocalGroupMember", "Add-MpPreference", "Add-Type", "Import-Module",
+        "Add-LocalGroupMember", "Add-MpPreference", "Add-Type", "Get-ChildItem", "Get-Item",
+        "Import-Module",
         "Invoke-Command", "Invoke-Expression", "Invoke-RestMethod", "Invoke-WebRequest",
         "New-Item", "New-ItemProperty", "New-LocalUser", "New-Object", "New-Service",
         "Register-ScheduledTask", "Remove-Item", "Remove-ItemProperty", "Set-ItemProperty",
@@ -24,7 +25,8 @@ ALIASES = {
     "iex": "Invoke-Expression", "iwr": "Invoke-WebRequest", "irm": "Invoke-RestMethod",
     "icm": "Invoke-Command", "ipmo": "Import-Module", "ni": "New-Item",
     "rp": "Remove-ItemProperty", "sp": "Set-ItemProperty", "saps": "Start-Process",
-    "start": "Start-Process",
+    "start": "Start-Process", "gci": "Get-ChildItem", "dir": "Get-ChildItem",
+    "gi": "Get-Item",
 }
 
 NATIVE_TOOLS = frozenset({

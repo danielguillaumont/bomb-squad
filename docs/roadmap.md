@@ -52,41 +52,58 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 ## Phase 1: Inventory, what runs without a decision
 
-`bombsquad scan <path>` lists every automatic-execution entry point and what the code behind it can do.
+`bombsquad scan <path>` lists every automatic-execution entry point and what the code behind it can do. It ships in three steps.
 
-| Surface | Runs on | Files |
-|---|---|---|
-| npm | install | `preinstall`, `install`, `postinstall`, `prepare` scripts; `binding.gyp` |
-| Python | install, interpreter start, test | `setup.py`, in-tree build backends, `.pth`, `sitecustomize.py`, `conftest.py` |
-| GitHub Actions | push, PR, schedule | `.github/workflows/*`, composite `action.yml` |
-| Editors | folder open, container start | `.vscode/tasks.json` (`runOn: folderOpen`), `.devcontainer/*` lifecycle commands |
-| Git hooks | commit, push | `.husky/`, `lefthook.yml`, `.pre-commit-config.yaml` |
-| AI agents | agent start, tool call | `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json` hooks, `.cursor/rules`, `.github/copilot-instructions.md`, MCP configs, `SKILL.md`, agent `.env` files |
-| Scripts | when called by any of the above | PowerShell, shell |
+| Surface | Runs on | Files | Step |
+|---|---|---|---|
+| npm | install | `preinstall`, `install`, `postinstall`, `prepare` scripts and the scripts they call; `binding.gyp` | 1a ✅ |
+| Python | install, interpreter start, test | `setup.py`, in-tree build backends, `.pth`, `sitecustomize.py`, `conftest.py` | 1a ✅ |
+| Scripts | when called by any of the above | JavaScript, TypeScript, Python, shell, PowerShell | 1a ✅ |
+| GitHub Actions | push, PR, schedule | `.github/workflows/*`, composite `action.yml` | 1b |
+| Editors | folder open, container start | `.vscode/tasks.json` (`runOn: folderOpen`), `.devcontainer/*` lifecycle commands | 1b |
+| Git hooks | commit, push | `.husky/`, `lefthook.yml`, `.pre-commit-config.yaml` | 1b |
+| AI agents | agent start, tool call | `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json` hooks, `.cursor/rules`, `.github/copilot-instructions.md`, MCP configs, `SKILL.md`, agent `.env` files | 1c |
 
-- JavaScript, TypeScript and Python are analysed with tree-sitter. The rules look for:
-  - network calls and child processes;
-  - reads of credential paths (`.npmrc`, `.pypirc`, `~/.aws`, `~/.ssh`, `.git-credentials`) and CI token variables;
-  - code that enumerates environment variables;
-  - `eval`, `Function`, `exec` and decode-then-run code;
-  - large minified blobs and long whitespace padding;
-  - invisible Unicode: bidi controls, tag characters, zero-width characters.
+### 1a: npm, Python and the code they run ✅
+
+- **Entry points:**
+  - npm install and prepare hooks, including scripts they call with `npm run`;
+  - `binding.gyp` when there is no install script, with its `<!(…)` command expansions;
+  - `.pth` lines that start with `import`, `setup.py`, in-tree build backends, `sitecustomize`/`usercustomize` and `conftest.py`.
+- **Reachability:** from each entry point, the files its command names and their local JavaScript imports (five levels deep), plus code embedded with `node -e`, `python -c`, `sh -c` or a PowerShell command line. Code no entry point reaches is not analysed, except PowerShell and files named on the command line.
+- **Analysis:** JavaScript, TypeScript and shell with tree-sitter, Python with the standard library's `ast`. The rules cover:
+  - network access, child processes, credential paths and token variables, and whole-environment collection;
+  - `eval`, `Function`, `exec`, and decode-then-run code;
+  - packed code;
+  - hidden Unicode and whitespace padding in any text file.
+- **Correlation:** credential or environment collection plus network access reachable from one entry point is reported once at the entry point (BS-EX-001).
+
+**Exit met:** `tests/test_entry_points.py` has fixtures modelled on the `preinstall` stealer, `.pth` and `conftest.py` techniques above, plus negatives (a prebuild-style install that only spawns a build, code no entry point reaches, targets outside the package).
+
+### 1b: workflows, editors and git hooks
+
 - Workflow rules are deliberately narrow, covering only trust-boundary cases that lead to execution:
   - `pull_request_target` or `workflow_run` with a checkout of untrusted code;
   - `${{ github.event.* }}` interpolated into `run:`;
   - missing or write-all permissions and `id-token: write`;
   - third-party actions referenced by tag;
-  - self-hosted runners on public repos.
+  - self-hosted runners on public repos;
+  - secrets sent to the network from a step (the GhostAction pattern).
 
   For a full audit, zizmor is the reference.
+- `run:` steps, editor tasks, devcontainer lifecycle commands and git hooks go through the 1a shell and script analysis.
+
+### 1c: agent files and code scanning
+
 - Agent-file rules look for:
   - instructions to run commands, fetch URLs, read secrets or skip confirmations;
   - hidden Unicode;
   - MCP servers launched through `npx` or `uvx` without a pinned version;
   - deprecated reference MCP servers;
   - hooks that run shell commands.
+- SARIF upload to GitHub code scanning from this repo's CI.
 
-**Exit:** each surface in the table has fixture tests modelled on a public write-up, and SARIF from this repo loads in GitHub code scanning.
+**Exit (Phase 1):** each surface in the table has fixture tests modelled on a public write-up, and SARIF from this repo loads in GitHub code scanning.
 
 ## Phase 2: Version diff, what an update newly gains
 

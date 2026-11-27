@@ -8,9 +8,9 @@ import sys
 from pathlib import Path
 
 from bombsquad import __version__
+from bombsquad.catalogue import ALL_RULES as RULES
 from bombsquad.model import Level
 from bombsquad.powershell.parser import ParserFailed, ParserUnavailable
-from bombsquad.powershell.rules import RULES
 from bombsquad.sarif import to_sarif
 from bombsquad.scan import scan
 from bombsquad.sources import InputError, decode

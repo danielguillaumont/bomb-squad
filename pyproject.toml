@@ -7,7 +7,12 @@ authors = [
     { name = "danielguillaumont", email = "181521129+danielguillaumont@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "tree-sitter>=0.26.1",
+    "tree-sitter-bash>=0.25.1",
+    "tree-sitter-javascript>=0.25.0",
+    "tree-sitter-typescript>=0.23.2",
+]
 
 [project.urls]
 Repository = "https://github.com/danielguillaumont/bomb-squad"
@@ -35,3 +40,7 @@ ignore = ["SIM102"]  # dispatch on a tool or cmdlet name, then check its argumen
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+# Dependency cooldown: never resolve a release younger than a week.
+exclude-newer = "7 days"

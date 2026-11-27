@@ -17,6 +17,17 @@ def _first_line(text: str, limit: int = 160) -> str:
 
 def render(report: ScanReport) -> str:
     out: list[str] = []
+    if report.entry_points:
+        count = len(report.entry_points)
+        out.append(f"Runs without being asked ({count} entry point{'s' if count != 1 else ''})")
+        for e in report.entry_points:
+            out.append(f"  {e.path}:{e.region.line}  {e.kind}")
+            out.append(f"      runs on: {e.trigger}")
+            out.append(f"      runs: {_first_line(e.runs)}")
+            for target in e.targets:
+                if target != e.path:
+                    out.append(f"      reaches: {target}")
+        out.append("")
     by_path: dict[str, list] = {}
     for f in report.findings:
         by_path.setdefault(f.path, []).append(f)
@@ -46,6 +57,8 @@ def render(report: ScanReport) -> str:
         summary += " (" + ", ".join(f"{levels[k]} {k}" for k in ("high", "review", "info")
                                     if levels[k]) + ")"
     summary += f" in {analysed} of {len(report.files)} file{'s' if len(report.files) != 1 else ''}"
+    if report.files_read:
+        summary += f" ({report.files_read} read)"
     if report.parser:
         summary += (f", parsed with PowerShell {report.parser.get('version')} "
                     f"({report.parser.get('edition')})")
