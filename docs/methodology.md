@@ -228,6 +228,43 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 - **SARIF** holds the repository's new findings. Dependency findings are in files the repository does not have, so they stay in the comment and the JSON.
 - `--fail-on` applies to new findings and signals, in the repository and in dependencies.
 
+## Detonation
+
+`bombsquad detonate npm:<name>@<version>` or `pypi:<name>@<version>` installs one release in a throwaway container and records what it does. `--artifact FILE` detonates a local archive. It runs only on Linux with Docker, and is meant for disposable CI runners. The [threat model](threat-model.md) lists its controls.
+
+- **Sandbox:**
+  - Two containers share an internal Docker network with no route out: the package's container, and the sink.
+  - Nothing on the host is mounted in the package's container. It has no capabilities except the two strace needs to switch users, and `no-new-privileges`.
+  - Images are built from base images pinned by digest.
+- **npm:** the tarball is unpacked into `node_modules` and `npm rebuild` runs its `preinstall`, `install` and `postinstall` scripts, and node-gyp for `binding.gyp`. Its dependencies are not installed.
+- **PyPI:**
+  - The sdist is detonated when there is one, otherwise a wheel.
+  - pip installs it without dependencies or an index, using build backends preinstalled in the image, so `setup.py` or the build backend runs.
+  - Each top-level module is then imported once, which also runs any `.pth` file it installed.
+- **Fake credentials:**
+  - Files: `.npmrc`, `.pypirc`, `~/.aws/credentials`, `~/.ssh/id_ed25519` and `.git-credentials`.
+  - Variables: npm, GitHub, AWS and PyPI tokens, and the GitHub Actions OIDC request variables.
+  - They are unique to each run.
+- **What is recorded:**
+  - strace, running as root, records processes, files opened and connection attempts. The package runs as an unprivileged user.
+  - The sink answers every DNS A query with its own address. It records names, TCP connections on common ports, HTTP request lines, TLS server names and the first 64 KB of each connection.
+  - A fake credential that appears in what the sink received counts as sent: as is, hex, URL-encoded, base64 at any alignment, or in a DNS name.
+- **Package code:** what npm's `sh -c` for a lifecycle script, pip's build-backend helper, and the import step start, and everything below them.
+  - npm reading `~/.npmrc` itself is expected and not reported.
+  - Compilers, linkers, `make` and `git` are listed as build tools, not as programs started.
+- **Against the static scan:** the rule IDs of the static findings that installing runs are mapped to what they predict: network, credentials read, credentials sent, programs started and persistence.
+  - Observed and predicted is confirmed.
+  - Observed with no static finding marks a gap in the static rules.
+  - Predicted but not observed is not cleared.
+- **What it cannot see:**
+  - Code that needs the missing dependencies fails.
+  - HTTPS traffic shows only its server name.
+  - Reading environment variables leaves no trace.
+  - One timed run as a fresh user does not trigger payloads gated on time, host or a later run.
+  - Nothing observed does not mean safe.
+
+`tests/test_detonate_container.py` runs harmless stand-in packages in real containers on Linux CI. Real packages are not detonated there.
+
 ## Accuracy
 
 Detection rates come only from the benchmark below. Every figure states its counts, the dataset commit and date, and GuardDog's result on the same packages. The current figures are in the [write-up](research/guarddog-benchmark.md): a development sample, which is in-sample, and a [held-out sample](research/guarddog-benchmark.md#held-out-sample). Both are retrospective, because the time-split set is empty for the pinned dataset commit.

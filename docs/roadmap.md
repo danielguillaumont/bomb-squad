@@ -223,6 +223,10 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
   - observed with no static finding marks a gap in the static rules;
   - predicted but not observed is not cleared, because payloads can be time-gated or conditional.
 
+**Built:** `bombsquad detonate`, with the sandbox, the sink, the fake credentials, the strace recorder and the comparison with the static scan ([methodology](methodology.md#detonation)). CI runs harmless stand-in packages in real containers.
+
+**Not yet:** detonation in the benchmark, its dependencies, HTTPS content, and eBPF.
+
 **Exit:** a benchmark re-run shows whether detonation adds recall, and at what cost per package.
 
 ## Phase 6: Live watch and site (v2.2)

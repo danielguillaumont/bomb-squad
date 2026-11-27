@@ -1,4 +1,4 @@
-"""Command line: `bombsquad scan`, `bombsquad diff`, `bombsquad gate` and `bombsquad rules`."""
+"""Command line: `bombsquad scan`, `diff`, `gate`, `detonate` and `rules`."""
 
 from __future__ import annotations
 
@@ -25,7 +25,8 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="bombsquad",
         description="Find what runs before anyone chooses to run it. "
-                    "Static analysis only: nothing scanned is executed.",
+                    "scan, diff and gate are static: nothing they read is executed. "
+                    "detonate runs a package only inside a throwaway container.",
     )
     parser.add_argument("--version", action="version", version=f"bombsquad {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -84,6 +85,19 @@ def _parser() -> argparse.ArgumentParser:
         help="exit with status 1 when a new finding or signal is at this level or above",
     )
 
+    det_cmd = sub.add_parser(
+        "detonate", help="install a package in a throwaway container with fake credentials "
+                         "and a network that reaches only a local sink, and report what it "
+                         "did next to the static scan (Linux with Docker)")
+    det_cmd.add_argument("spec", metavar="SPEC",
+                         help="npm:<name>@<version> or pypi:<name>@<version>")
+    det_cmd.add_argument("--artifact", type=Path, metavar="FILE",
+                         help="detonate this local archive instead of downloading the release")
+    det_cmd.add_argument("--timeout", type=int, default=120, metavar="SECONDS",
+                         help="stop the container after this long (default 120)")
+    det_cmd.add_argument("--format", choices=("text", "json"), default="text")
+    det_cmd.add_argument("--output", "-o", type=Path, help="write the report to this file")
+
     sub.add_parser("rules", help="list the rules")
     return parser
 
@@ -116,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
         return _diff(args)
     if args.command == "gate":
         return _gate(args)
+    if args.command == "detonate":
+        return _detonate(args)
 
     paths = [Path(p) for p in args.paths if p != "-"]
     stdin_text = decode(sys.stdin.buffer.read())[0] if "-" in args.paths else None
@@ -196,4 +212,23 @@ def _gate(args) -> int:
         highest = report.highest_level()
         if highest is not None and highest.rank >= Level(args.fail_on).rank:
             return EXIT_FINDINGS
+    return EXIT_OK
+
+
+def _detonate(args) -> int:
+    from bombsquad.archive import ArchiveError
+    from bombsquad.detonate.detonation import detonate, render
+    from bombsquad.detonate.runner import DetonationError
+    from bombsquad.registry import FetchError
+
+    try:
+        report = detonate(args.spec, args.artifact, max(10, args.timeout))
+    except (ValueError, OSError, FetchError, ArchiveError, DetonationError, InputError,
+            ParserFailed, ParserUnavailable) as exc:
+        print(f"bombsquad: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if args.format == "json":
+        _write_json(report.to_dict(), args.output)
+    else:
+        _write(render(report), args.output)
     return EXIT_OK
