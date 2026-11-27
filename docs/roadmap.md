@@ -146,13 +146,15 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
   - release age at scan time, flagged inside a seven-day window.
 - Two local folders or archives can be compared too: `bombsquad diff old.tgz new.tgz`.
 
-### 2b: artifact against source and history
+### 2b: artifact against source and history ✅
 
-- **Tags:** no matching tag or commit in the declared repository.
-- **Artifact against source:** the published package diffed against the repository at the tagged commit. Files that exist only in the artifact are listed.
-- **History:** tags that moved, and commits rewritten with the same author and date (the PolinRider pattern), checked against previously recorded SHAs.
+`bombsquad diff … --source` and `--record FILE`. GitHub repositories only, read over the public API without credentials.
 
-**Exit:** for the ChainDrop and `agent-framework` versions named in their write-ups, wherever the artifacts can still be obtained from public malware datasets, the new entry point is reported as a new capability.
+- **Tags:** the new version's tag is looked up under the usual names (`v1.2.3`, `1.2.3`, `name@1.2.3` and others). A missing tag is reported, and so is a tag that does not point at the commit npm recorded at publish time (`gitHead`).
+- **Artifact against source:** the npm tarball, or the sdist, is compared file by file with the repository archive at the tagged commit, in the package's folder for monorepos. Files only in the package, and files that differ, are listed. Code files among them are signals, raised to review when an entry point runs them.
+- **History:** with `--record`, each tag's commit, author and date are appended to a JSON file. A later run reports a tag that moved, and a high signal when the new commit has the same author and date as the recorded one (the PolinRider pattern). Entries are only ever added.
+
+**Exit (Phase 2), not yet met:** for the ChainDrop and `agent-framework` versions named in their write-ups, wherever the artifacts can still be obtained from public malware datasets, the new entry point is reported as a new capability.
 
 ## Phase 3: Pull-request gate
 

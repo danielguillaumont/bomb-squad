@@ -121,6 +121,26 @@ def render_diff(diff) -> str:
                 out.append(f"      via: {_first_line(step)}")
         out.append("")
 
+    check = diff.source
+    if check is not None:
+        where = check.repository or "no GitHub repository"
+        if check.compared:
+            where += f" at {check.tag or check.compared[:12]}"
+        out.append(f"Against the source ({where})")
+        if check.compared and not (check.only_in_artifact or check.differs):
+            out.append("  the package's files match the source (package.json and metadata the "
+                       "registry generates are not compared)")
+        for path in check.only_in_artifact[:20]:
+            out.append(f"  only in the package  {path}")
+        for path in check.differs[:20]:
+            out.append(f"  differs              {path}")
+        hidden = len(check.only_in_artifact[20:]) + len(check.differs[20:])
+        if hidden:
+            out.append(f"  … and {hidden} more")
+        for note in check.notes:
+            out.append(f"  note: {note}")
+        out.append("")
+
     if diff.grew:
         out.append("Files with a new minified or packed line")
         for path, detail in diff.grew:

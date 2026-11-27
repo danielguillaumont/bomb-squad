@@ -17,9 +17,10 @@ from pathlib import Path
 from bombsquad import __version__
 from bombsquad.archive import unpack
 from bombsquad.discovery import LANGUAGE_BY_SUFFIX
-from bombsquad.model import EntryPoint, Finding, Level, ScanReport
+from bombsquad.model import EntryPoint, Finding, Level, ScanReport, Signal
 from bombsquad.registry import Fetch, Release, download, http_get, npm_releases, pypi_releases
 from bombsquad.scan import scan
+from bombsquad.source import SourceCheck, compare_to_source
 from bombsquad.sources import MAX_FILE_BYTES, SKIPPED_DIRS, display_path
 
 LONG_LINE = 1000  # characters; minified bundles and packed payloads run far longer
@@ -46,16 +47,6 @@ class Side:
 
 
 @dataclass
-class Signal:
-    id: str
-    level: Level
-    detail: str
-
-    def to_dict(self) -> dict:
-        return {"signal": self.id, "level": self.level.value, "detail": self.detail}
-
-
-@dataclass
 class DiffReport:
     subject: str
     old: Side
@@ -69,6 +60,7 @@ class DiffReport:
     added_files: list[str]
     removed_files: list[str]
     grew: list[tuple[str, str]]  # (path, what changed)
+    source: SourceCheck | None = None
 
     def highest_level(self) -> Level | None:
         levels = [f.level for f in self.added_findings] + [s.level for s in self.signals]
@@ -111,6 +103,7 @@ class DiffReport:
                          "removed": [f.to_dict() for f in self.removed_findings]},
             "files": {"added": self.added_files, "removed": self.removed_files,
                       "grew": [{"path": p, "detail": d} for p, d in self.grew]},
+            "source": self.source.to_dict() if self.source else None,
         }
 
 
@@ -272,8 +265,11 @@ def parse_spec(spec: str) -> tuple[str, str, str, str]:
     return ecosystem, name, old, new
 
 
-def diff_registry(spec: str, fetch: Fetch = http_get, now: datetime | None = None
-                  ) -> DiffReport:
+def diff_registry(spec: str, fetch: Fetch = http_get, now: datetime | None = None,
+                  source: bool = False, record: Path | None = None) -> DiffReport:
+    """Compare two published versions. With `source`, also compare the new version with
+    its GitHub repository at the release tag; with `record`, also check that tag against
+    earlier observations kept in that file, and add this one."""
     ecosystem, name, old_version, new_version = parse_spec(spec)
     lookup = npm_releases if ecosystem == "npm" else pypi_releases
     old_release, new_release = lookup(name, [old_version, new_version], fetch)
@@ -300,7 +296,22 @@ def diff_registry(spec: str, fetch: Fetch = http_get, now: datetime | None = Non
                 release.artifacts) == 1 else folder
             sides.append(scan_side(f"{name}@{release.version}" if ecosystem == "npm" else
                                    f"{name} {release.version}", root, release, notes))
-        return compare(f"{ecosystem}:{name}", sides[0], sides[1], now)
+        report = compare(f"{ecosystem}:{name}", sides[0], sides[1], now)
+        if source or record is not None:
+            # Compare the artifact laid out like the repository: the npm tarball, or the
+            # sdist. A wheel is laid out for installation and would differ everywhere.
+            tree: Path | None = root
+            if ecosystem == "pypi" and root.name != "sdist":
+                tree = root / "sdist" if (root / "sdist").is_dir() else None
+            prefix = "" if tree is None or tree == root else f"{tree.name}/"
+            entries = sides[1].report.entry_points
+            reached = {p.removeprefix(prefix) for p in
+                       {e.path for e in entries} | {t for e in entries for t in e.targets}
+                       if p.startswith(prefix)}
+            report.source = compare_to_source(new_release, tree, reached, fetch, record, now,
+                                              prefix)
+            report.signals += report.source.signals
+        return report
 
 
 def diff_paths(old: Path, new: Path) -> DiffReport:

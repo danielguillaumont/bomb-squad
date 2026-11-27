@@ -186,7 +186,23 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
   - `repository-changed` (review): the declared repository URL differs.
   - `recent-release` (review) within seven days of the scan, otherwise `release-age` (info). These are registry publish times.
 - `--fail-on` applies to new findings and signals only.
-- Not yet compared: the artifact against its source repository, and tags or history (step 2b).
+
+### Against the source
+
+`--source` compares the new version with its declared repository, when that is on GitHub. Requests go only to `api.github.com` and `codeload.github.com`, without credentials, so GitHub's unauthenticated rate limit applies; a failed request leaves a note and an incomplete comparison.
+
+- **Tag:** the first of `v<version>`, `<version>`, `<name>@<version>`, and the unscoped name with `@`, `-v` or `-`, that exists. Annotated tags are followed to their commit.
+  - `no-matching-tag` (info): none exists. Many projects do not tag releases. For npm, the comparison then uses `gitHead`, the commit npm recorded at publish time, when there is one.
+  - `tag-not-at-published-commit` (review): npm's `gitHead` differs from the tag's commit.
+- **Files:** the npm tarball, or the sdist, is compared with the repository archive at that commit, inside the folder npm's `repository.directory` names. Content is compared after normalising line endings. `package.json`, which npm rewrites, and `PKG-INFO`, `*.egg-info` and `setup.cfg`, which sdist builds generate, are not compared. Wheels are not compared, because they are laid out for installation.
+  - `only-in-artifact`: code files in the package that the repository does not have.
+  - `differs-from-source`: files in both whose content differs.
+  - Both are review when an entry point runs one of the files, and info otherwise. Build output such as bundles and compiled files is often published without being committed, so a difference is a lead, not a finding.
+- **History:** `--record FILE` implies `--source`. Each tag's commit, with its author, author date and subject from the API, is appended to the file with the time it was seen. Nothing is removed or rewritten; an unreadable file is left alone and noted.
+  - `tag-moved` (review): the tag now points at a different commit from one recorded earlier.
+  - `commit-rewritten` (high): the new commit has the same author name and author date as the recorded one, which is what rewriting history and force-pushing the tag looks like.
+  - A tag that moved before the first recorded run is not seen.
+- GitHub generates archives on request and publishes no hash for them, so unlike registry artifacts they are not checked against one.
 
 ## Accuracy
 

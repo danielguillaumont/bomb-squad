@@ -78,12 +78,13 @@ Get-Clipboard | bombsquad scan -             # check a pasted command before run
 bombsquad scan . --format sarif -o bombsquad.sarif --fail-on high
 bombsquad diff npm:some-package@1.4.2..1.4.3   # what an update newly gains
 bombsquad diff pypi:some-package@2.0..2.1 --format json
+bombsquad diff npm:some-package@1.4.2..1.4.3 --source --record tags.json
 bombsquad diff old.tgz new.tgz                 # two local folders or archives
 ```
 
 Output is text, JSON or SARIF 2.1.0 (for GitHub code scanning). `--fail-on high|review|info` sets a non-zero exit code for CI.
 
-`bombsquad diff` downloads both versions from npm or PyPI, checks each against the registry's hash, unpacks them without running anything, and scans both. It reports new and changed entry points, new findings, code files that gained a minified line, and publish signals: a different publisher or maintainers, provenance that went missing, a changed repository, and how recently the new version was published.
+`bombsquad diff` downloads both versions from npm or PyPI, checks each against the registry's hash, unpacks them without running anything, and scans both. It reports new and changed entry points, new findings, code files that gained a minified line, and publish signals: a different publisher or maintainers, provenance that went missing, a changed repository, and how recently the new version was published. With `--source` it also compares the new version with its GitHub repository at the release tag, listing files only in the package or changed from the source, and with `--record` it keeps each tag's commit so a tag that later moves is reported.
 
 ## How it stays safe
 
@@ -93,7 +94,7 @@ The input is data, never code:
 - JavaScript, TypeScript and shell are parsed with tree-sitter, and Python with the standard library's `ast`. Nothing is imported or evaluated.
 - YAML is composed into nodes with PyYAML's safe loader and never constructed into objects. VS Code's JSON with comments is read by Bomb Squad's own reader. Markdown is split into prose, code and comments without rendering it.
 - Only files inside the scanned directories are followed, and symlinked files are skipped.
-- `bombsquad diff` fetches only over HTTPS from the npm and PyPI hosts, refuses artifacts whose hash differs from the registry's, and unpacks only regular files that stay inside a temporary folder.
+- `bombsquad diff` fetches only over HTTPS from the npm and PyPI hosts, and from GitHub with `--source`, refuses artifacts whose hash differs from the registry's, and unpacks only regular files that stay inside a temporary folder.
 
 See the [threat model](docs/threat-model.md) for the rest, and [methodology](docs/methodology.md) for what each rule matches and its limits.
 

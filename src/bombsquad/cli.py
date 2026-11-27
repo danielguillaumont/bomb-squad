@@ -44,6 +44,12 @@ def _parser() -> argparse.ArgumentParser:
                      "pypi:<name>@<old>..<new>, or two folders or archives")
     diff_cmd.add_argument("subject", nargs="+", metavar="SPEC_OR_PATHS")
     diff_cmd.add_argument("--format", choices=("text", "json"), default="text")
+    diff_cmd.add_argument("--source", action="store_true",
+                          help="also compare the new version with its GitHub repository at "
+                               "the release tag")
+    diff_cmd.add_argument("--record", type=Path, metavar="FILE",
+                          help="keep release tags' commits in FILE and report tags that moved "
+                               "since they were recorded (implies --source)")
     diff_cmd.add_argument("--output", "-o", type=Path, help="write the report to this file")
     diff_cmd.add_argument(
         "--fail-on", choices=("high", "review", "info", "never"), default="never",
@@ -103,7 +109,9 @@ def _diff(args) -> int:
 
     try:
         if len(args.subject) == 1:
-            report = diff_registry(args.subject[0])
+            report = diff_registry(args.subject[0], source=args.source, record=args.record)
+        elif args.source or args.record:
+            raise ValueError("--source and --record need an npm: or pypi: spec")
         elif len(args.subject) == 2:
             report = diff_paths(Path(args.subject[0]), Path(args.subject[1]))
         else:

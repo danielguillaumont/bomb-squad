@@ -28,7 +28,7 @@ Set `BOMBSQUAD_POWERSHELL` to pick a specific PowerShell executable.
 | `src/bombsquad/powershell/names.py` | Aliases, native tools, parameter prefixes, registry paths |
 | `src/bombsquad/powershell/analyze.py` | Applies the rules and follows decoded content |
 | `src/bombsquad/powershell/rules.py` | The rule catalogue |
-| `src/bombsquad/registry.py`, `archive.py`, `diff.py` | `bombsquad diff`: registry metadata and hash checks, safe unpacking, and the comparison |
+| `src/bombsquad/registry.py`, `archive.py`, `diff.py`, `source.py` | `bombsquad diff`: registry metadata and hash checks, safe unpacking, the comparison, and the check against the GitHub source and tag record |
 | `src/bombsquad/sarif.py`, `text_report.py` | Output formats |
 
 ## Samples that look like malware
