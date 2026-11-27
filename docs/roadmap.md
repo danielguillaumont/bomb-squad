@@ -124,7 +124,7 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 - **Code scanning:** CI scans this repository and uploads the SARIF to GitHub code scanning from a job that alone has `security-events: write`.
 - **Also:** `dict(os.environ)`, `os.environ.copy()` and `{**os.environ}` count as collecting the environment when they are serialised. PowerShell embedded in a workflow, task or agent file is noted as not analysed when no PowerShell is installed, instead of failing the scan.
 
-**Exit (Phase 1):** each surface in the table has fixture tests modelled on a public write-up, and SARIF from this repo loads in GitHub code scanning.
+**Exit (Phase 1) met:** each surface in the table has fixture tests modelled on a public write-up (`tests/test_entry_points.py`, `tests/test_repo_entry_points.py`, `tests/test_agent_entry_points.py`), and SARIF from this repository's CI loads in GitHub code scanning (first analysis on 2026-11-27, from the 1c pull request, with the six findings of `samples/example.ps1`).
 
 ## Phase 2: Version diff, what an update newly gains
 
