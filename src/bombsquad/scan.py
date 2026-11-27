@@ -329,6 +329,7 @@ class _Scan:
     def run(self, paths: list[Path], stdin_text: str | None) -> ScanReport:
         self.roots = [p.resolve() if p.is_dir() else p.resolve().parent for p in paths
                       if p.exists()]
+        self.found.roots = self.roots
         files = collect_files(paths)
         for path, named in files:
             suffix = path.suffix.lower()

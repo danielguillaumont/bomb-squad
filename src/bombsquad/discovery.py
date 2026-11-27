@@ -36,6 +36,13 @@ class Discovery:
     # Placeholders that stand in for GitHub Actions ${{ }} expressions while embedded code
     # is parsed, and the original text, which evidence shows.
     expressions: dict[str, str] = field(default_factory=dict)
+    # The folders being scanned, which bound the files an action may run.
+    roots: list[Path] = field(default_factory=list)
+
+    def root_of(self, path: Path) -> Path | None:
+        resolved = path.resolve()
+        inside = [r for r in self.roots if resolved.is_relative_to(r)]
+        return max(inside, key=lambda r: len(r.parts)) if inside else None
 
     def placeholder(self, original: str) -> str:
         """A word-safe stand-in for `original`, padded to the same length when possible so
@@ -57,14 +64,15 @@ def shell_join(words: list[str]) -> str:
     return " ".join(quote_word(w) for w in words)
 
 
-def target_path(base: Path, word: str) -> Path | None:
-    """A file named on a command line, if it exists inside `base`."""
+def target_path(base: Path, word: str, boundary: Path | None = None) -> Path | None:
+    """A file named on a command line, relative to `base`, if it exists inside
+    `boundary` (by default `base`)."""
     word = word.strip("'\"").rstrip(";&|)").lstrip("(")
     if not word or word.startswith("-") or "://" in word:
         return None
     candidate = (base / word).resolve()
     try:
-        candidate.relative_to(base.resolve())
+        candidate.relative_to((boundary or base).resolve())
     except ValueError:
         return None  # outside the package or repository
     if candidate.is_file() and candidate.suffix.lower() in LANGUAGE_BY_SUFFIX:

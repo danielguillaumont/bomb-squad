@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from bombsquad import __version__
+from bombsquad.actionrefs import ECOSYSTEM, action_changes, read_refs, review_action, short
 from bombsquad.archive import ArchiveError
 from bombsquad.diff import DiffReport, compare, diff_release, scan_side
 from bombsquad.lockfiles import Change, changes, read_tree
@@ -34,7 +35,7 @@ GATE_LIMITATIONS = (
     "that it would do harm. No new findings does not mean safe.",
     "Code fetched or decoded only at run time, and payloads gated on time or environment, "
     "are not seen. Lockfile formats other than npm, uv, Poetry and pinned requirements are "
-    "not read.",
+    "not read. Actions that an updated action itself uses are not followed.",
     "Registry times are publish times, not when any change was made.",
 )
 
@@ -98,13 +99,23 @@ def gate(base: Path, head: Path, fetch: Fetch = http_get, now: datetime | None =
 
     base_pins, head_pins = read_tree(base), read_tree(head)
     report.notes += sorted(set(head_pins.notes) - set(base_pins.notes))
-    found = changes(base_pins, head_pins)
+    packages = changes(base_pins, head_pins)
+    base_refs, _ = read_refs(base)
+    head_refs, ref_notes = read_refs(head)
+    report.notes += ref_notes
+    actions = action_changes(base_refs, head_refs)
+    # Direct dependencies and actions first: they are what the change asked for.
+    found = ([c for c in packages if c.direct] + actions
+             + [c for c in packages if not c.direct])
     report.not_reviewed = found[max_packages:]
     for change in found[:max_packages]:
         review = DependencyReview(change)
         try:
-            review.report = diff_release(change.ecosystem, change.name, change.old, change.new,
-                                         fetch, now, source=source)
+            if change.ecosystem == ECOSYSTEM:
+                review.report = review_action(change, fetch)
+            else:
+                review.report = diff_release(change.ecosystem, change.name, change.old,
+                                             change.new, fetch, now, source=source)
         except (FetchError, ArchiveError, ValueError, OSError, ParserFailed,
                 ParserUnavailable) as exc:
             review.error = str(exc)
@@ -208,8 +219,8 @@ def render_markdown(report: GateReport) -> str:
     else:
         summary = "**No new entry points, findings or signals.** "
     summary += (f"Repository: {_count(entries, 'new or changed entry point')}, "
-                f"{_count(len(repo.added_findings), 'new finding')}. Dependencies: "
-                f"{_count(len(reviewed), 'new version')} reviewed")
+                f"{_count(len(repo.added_findings), 'new finding')}. Dependencies and actions: "
+                f"{_count(len(reviewed), 'update')} reviewed")
     if failed:
         summary += f", {len(failed)} could not be"
     if report.not_reviewed:
@@ -222,11 +233,12 @@ def render_markdown(report: GateReport) -> str:
     out.append("")
 
     if report.dependencies or report.not_reviewed:
-        out.append("#### Dependency updates")
+        out.append("#### Dependency and action updates")
         for d in report.dependencies:
             c = d.change
-            label = (f"{code(f'{c.ecosystem}:{c.name}')} {code(c.old)} → {code(c.new)}"
-                     if c.old else f"{code(f'{c.ecosystem}:{c.name}')} {code(c.new)} (new)")
+            label = (f"{code(f'{c.ecosystem}:{c.name}')} {code(short(c.old))} → "
+                     f"{code(short(c.new))}" if c.old else
+                     f"{code(f'{c.ecosystem}:{c.name}')} {code(short(c.new))} (new)")
             where = ", ".join(code(path) for path in c.lockfiles[:3])
             if d.error:
                 out.append(f"- {label} in {where}: could not be reviewed: {plain(d.error)}")

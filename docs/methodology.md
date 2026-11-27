@@ -30,7 +30,7 @@ An entry point is code that runs without anyone choosing to run it. Each one in 
 
 - An npm hook's command, a workflow `run:` step, a task or lifecycle command and a git hook command are analysed as shell, or in the language of the step's `shell:` (bash, sh, pwsh, powershell, python). Workflow steps on a `windows` runner default to pwsh, and VS Code shell tasks under `windows` to PowerShell. `cmd` is not analysed and the report says so.
 - A JavaScript, TypeScript, Python, shell or PowerShell file inside the package or repository becomes a target when a command runs it: as the command itself, as the script given to an interpreter (`node`, `python`, `bash`, `pwsh -File` and others), or through `uv run`, `poetry run` or `npx`. A file only passed as data, as in `cat x.sh` or `shellcheck x.sh`, is not a target. `${{ github.workspace }}`, `${{ github.action_path }}` and `${workspaceFolder}` are resolved for this.
-- Lefthook scripts in `.lefthook/<hook>/`, pre-commit `script` hooks, a JavaScript action's `pre`, `main` and `post`, and husky hook files are targets directly.
+- Lefthook scripts in `.lefthook/<hook>/`, pre-commit `script` hooks, a JavaScript action's `pre`, `main` and `post`, and husky hook files are targets directly. A JavaScript action's scripts may be anywhere in the scanned folder, because an action in a subfolder often runs `../lib/index.js` and the runner downloads the whole repository.
 - Agent hook commands, MCP server commands and the shell code blocks in agent instructions follow the same rule. `$CLAUDE_PROJECT_DIR` and similar variables are resolved to the project, and a skill's commands are also resolved from the skill's folder. A `NODE_OPTIONS=--require` file in agent settings is a target too.
 - Targets' relative `require` and `import` calls are followed, up to five levels and 500 files. Bare package names are not followed.
 - Code embedded with `node -e`/`-p`, `python -c`, `sh -c` or a `pwsh`/`powershell` command line is analysed in its own language, up to three levels deep. Its findings point at the line in the file that embeds it.
@@ -214,6 +214,12 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
   - `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`, `Pipfile.lock` and `pdm.lock` are noted as not read.
   - Each version the head pins and the base did not is paired with the base version it most likely replaces: one that was removed, else the closest lower one. It is then reviewed as `bombsquad diff` would.
   - A package new to the lockfile is reviewed against nothing, so everything it has is new.
+- **Actions:** every remote `uses:` in `.github/workflows/*.yml` and in any `action.yml`, for steps and for reusable workflows. Local actions, `docker://` images and references built from expressions are skipped.
+  - A reference the head uses and the base did not is paired with the reference to the same action that it replaces.
+  - The action's repository is fetched from `codeload.github.com` at both references and compared. Only the action that is used, or the reusable workflow, is reported, with the files its entry point reaches anywhere in its repository. The action repository's own workflows and tooling never run in the repository that uses it.
+  - `action-updated` (info) links GitHub's comparison of the two commits; `action-added` (info) marks an action that was not used before.
+  - Actions that an updated action itself uses are not followed. Docker actions' images are not compared.
+  - Actions are reviewed with direct dependencies, ahead of transitive ones, within the same `--max-packages` limit.
   - Direct dependencies come first, up to `--max-packages` (25 by default). The rest are listed as not reviewed. A version the registry cannot serve is listed with the error.
 - **Comment:** text from the pull request or a registry is escaped. Paths, commands and evidence go in code spans that a backtick cannot end early, other text has Markdown and HTML escaped, and `@` is written as an entity so no one is notified. The comment is cut to fit GitHub's limit, and the JSON report keeps everything.
 - **SARIF** holds the repository's new findings. Dependency findings are in files the repository does not have, so they stay in the comment and the JSON.

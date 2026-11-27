@@ -487,8 +487,11 @@ def action(path: Path, shown: str, text: str, found: Discovery, display) -> None
         entry = EntryPoint("github-actions", f"JavaScript action ({using})", trigger, shown,
                            region, ", ".join(f"{k}: {v}" for k, v in scripts if v))
         found.entry_points.append(entry)
+        # The runner downloads the whole repository, and actions in a subfolder often
+        # run code from elsewhere in it (`main: ../lib/index.js`).
+        boundary = found.root_of(path) or path.parent
         for _, script in scripts:
-            target = target_path(path.parent, script) if script else None
+            target = target_path(path.parent, script, boundary) if script else None
             if target is not None:
                 entry.targets.append(display(target))
                 found.targets.append(Target(target, "javascript", entry))
