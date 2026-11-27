@@ -355,3 +355,10 @@ def test_held_out_selection_leaves_out_earlier_packages(tmp_path):
     with pytest.raises(SystemExit):
         bench_main(["select", "--listing", str(path), "--cutoff", "2026-11-27", "-o", str(out),
                     "--exclude-selection", "2026"])
+
+
+def test_rates_are_shown_from_their_counts():
+    # 90/114 is 78.947...%: rounding the stored rate (0.7895) again showed 79.0%.
+    assert score._cell(score._rate(90, 114)) == "78.9% (90/114)"
+    assert score._cell(score._rate(100, 185)) == "54.1% (100/185)"
+    assert score._cell(score._rate(0, 0)) == "n/a (0)"
