@@ -106,7 +106,7 @@ Markdown is split into front matter, fenced code blocks, inline code and HTML co
 These run on every text file in the scan, whatever its language:
 
 - **BS-UC-001:** direction-changing controls, Unicode tag characters, runs of four or more variation selectors or private-use characters (HIGH), and zero-width characters (REVIEW). A byte order mark at the start of a file and single emoji variation selectors are ignored.
-- **BS-OB-001:** code after 100 or more spaces or tabs on a line. Leading indentation under 200 characters is ignored.
+- **BS-OB-001:** code after 100 or more spaces or tabs on a line. Leading indentation is ignored when it is under 200 characters, or within 100 characters of the line above, as in deeply nested data.
 
 ## PowerShell
 
@@ -180,6 +180,7 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 - **Fetching:** the npm package document or the PyPI JSON API gives each version's artifacts and hashes. Requests go only to `registry.npmjs.org`, `pypi.org` and `files.pythonhosted.org` over HTTPS, redirects included, with size limits. An artifact whose SHA-512 (npm, from `dist.integrity`) or SHA-256 (PyPI) differs from the registry's is not opened. When npm gives only a SHA-1 `shasum`, that is used and noted.
 - **Which artifacts:** the npm tarball; for PyPI, the sdist and one wheel, preferring a pure-Python `none-any` wheel. Platform-specific wheels other than the one chosen are not compared.
 - **Unpacking:** regular files only, written under a temporary folder that is deleted afterwards. Links, devices, paths that climb out with `..`, and names that differ only in case are skipped and listed in the report's notes. Leading slashes and drive letters are dropped, as npm's and Python's unpackers drop them, and names Windows reserves or cannot hold are renamed (`a:b.js` to `a_b.js`), so a file is renamed in the notes rather than hidden from the scan. More than 20,000 members or 500 MB decompressed stops the diff.
+- **Published packages:** a registry release or a package archive is scanned as a package. Workflows, git hooks, editor and agent settings and `conftest.py` inside it are still listed, but their findings are reported at info with a note, because installing the package does not run them. `bombsquad scan --package` does the same for a folder.
 - **Matching:** entry points match by surface, kind and file, and are reported as changed when their command changes. Findings match by rule, file and evidence, ignoring line numbers and whitespace, so code that only moved is not reported again. A finding that appears twice in the new version and once in the old one is reported once as new.
 - **Minified lines:** a JavaScript, TypeScript, Python, shell or PowerShell file that has a line of 1,000 characters or more in the new version and none in the old one, or is new and has one.
 - **Publish signals:**
@@ -247,7 +248,7 @@ Not measured yet. Detection rates will come only from the benchmark in [Phase 4]
   - A popular release is assumed benign; a compromised one in the sample would count as a false positive.
 - **Time split:** the cutoff is the commit date of the Bomb Squad commit being run. Packages DataDog found after it are the `after-cutoff` set, which the rules could not have been written for; the rest are `retrospective`. Many rules follow public write-ups of campaigns in the retrospective set, and rules were changed after seeing the rule counts of an earlier run on it, so only `after-cutoff` figures measure detection of the unknown.
 - **Detectors:**
-  - Bomb Squad flags a package with a high finding, or, as a second detector, with a review or high finding.
+  - Bomb Squad runs `scan --package`, as `bombsquad diff` scans a release, and flags a package with a high finding, or, as a second detector, with a review or high finding. Output without a result, such as a crash, counts as an error.
   - GuardDog 3.2.0, with its dependencies as of 2026-11-20, at three thresholds: its risk label `high_risk`, its label `suspicious` or `high_risk`, and any matched rule (the criterion of its exit code). GuardDog 3 labels a package from a 0–10 risk score that pairs capabilities with threat indicators.
   - GuardDog is given the folder, so its registry-metadata rules do not run. Bomb Squad's `scan` reads no registry metadata either.
   - Each tool runs in its own process with a 300-second limit. A timeout or crash counts as an error for that tool and is reported, not counted as a miss or a pass.

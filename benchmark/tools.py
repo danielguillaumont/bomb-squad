@@ -28,7 +28,9 @@ def _run(command: list[str], timeout: int) -> tuple[str | None, str | None, floa
     except OSError as exc:
         return None, f"could not start: {exc}", time.monotonic() - start
     elapsed = time.monotonic() - start
-    if done.returncode not in (0, 1):
+    # Exit 1 means "found something" to both tools, but it is also what Python exits with
+    # on an uncaught exception, so output without a JSON object is an error too.
+    if done.returncode not in (0, 1) or "{" not in done.stdout:
         tail = done.stderr.strip().splitlines()[-1:] or [f"exit {done.returncode}"]
         return done.stdout, f"exit {done.returncode}: {tail[0][:300]}", elapsed
     return done.stdout, None, elapsed
@@ -82,9 +84,9 @@ def parse_guarddog(text: str) -> dict:
 
 def bombsquad(root: Path, timeout: int = TIMEOUT_SECONDS) -> dict:
     out, error, seconds = _run([sys.executable, "-m", "bombsquad", "scan", str(root),
-                                "--format", "json"], timeout)
+                                "--package", "--format", "json"], timeout)
     result: dict = {"seconds": round(seconds, 2), "error": error}
-    if out and error is None:
+    if error is None:
         try:
             result.update(parse_bombsquad(out))
         except ValueError as exc:
@@ -97,7 +99,7 @@ def guarddog(executable: str, ecosystem: str, root: Path,
     out, error, seconds = _run([executable, ecosystem, "scan", str(root),
                                 "--output-format", "json"], timeout)
     result: dict = {"seconds": round(seconds, 2), "error": error}
-    if out and error is None:
+    if error is None:
         try:
             result.update(parse_guarddog(out))
         except ValueError as exc:

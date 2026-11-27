@@ -43,7 +43,9 @@ def flagged(row: dict, tool: str, threshold: str) -> bool | None:
         if result.get("label") is None:
             return None  # no risk score in the output
         return result["label"] in GUARDDOG_LABELS[threshold]
-    levels = set(result.get("levels", []))
+    if "levels" not in result:
+        return None  # no result was read
+    levels = set(result["levels"])
     return "high" in levels if threshold == "high" else bool(levels & {"high", "review"})
 
 

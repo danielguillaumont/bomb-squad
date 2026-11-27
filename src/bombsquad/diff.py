@@ -145,8 +145,10 @@ def _inventory(root: Path) -> dict[str, tuple[int, int]]:
 
 
 def scan_side(label: str, root: Path, release: Release | None = None,
-              notes: list[str] | None = None) -> Side:
-    report = scan([root])
+              notes: list[str] | None = None, package: bool = False) -> Side:
+    """`package`: a published package, where only what installing it runs keeps its
+    level (see `scan`)."""
+    report = scan([root], package=package)
     _relative(report, root)
     return Side(label, report, _inventory(root), release, list(notes or []))
 
@@ -328,7 +330,8 @@ def diff_release(ecosystem: str, name: str, old_version: str | None, new_version
             folder.mkdir()
             root, notes = unpack_release(release, folder, fetch)
             sides.append(scan_side(f"{name}@{release.version}" if ecosystem == "npm" else
-                                   f"{name} {release.version}", root, release, notes))
+                                   f"{name} {release.version}", root, release, notes,
+                                   package=True))
         report = compare(f"{ecosystem}:{name}", sides[0], sides[1], now)
         if source or record is not None:
             # Compare the artifact laid out like the repository: the npm tarball, or the
@@ -354,6 +357,7 @@ def diff_paths(old: Path, new: Path) -> DiffReport:
         sides = []
         for label, path in (("old", old), ("new", new)):
             notes: list[str] = []
+            package = path.is_file()
             if path.is_file() and path.name.lower().endswith(ARCHIVE_SUFFIXES):
                 target = Path(work, label)
                 target.mkdir()
@@ -362,5 +366,5 @@ def diff_paths(old: Path, new: Path) -> DiffReport:
                 root = path
             else:
                 raise FileNotFoundError(f"not a folder or package archive: {path}")
-            sides.append(scan_side(path.name, root, None, notes))
+            sides.append(scan_side(path.name, root, None, notes, package=package))
         return compare("", sides[0], sides[1])

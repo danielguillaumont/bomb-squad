@@ -34,6 +34,10 @@ def _parser() -> argparse.ArgumentParser:
     scan_cmd.add_argument("paths", nargs="+", help="files or directories; - reads stdin")
     scan_cmd.add_argument("--format", choices=("text", "json", "sarif"), default="text")
     scan_cmd.add_argument("--output", "-o", type=Path, help="write the report to this file")
+    scan_cmd.add_argument("--package", action="store_true",
+                          help="the folder is a published package: findings that only "
+                               "workflows, git hooks, editor or agent settings reach are "
+                               "reported at info, since installing does not run them")
     scan_cmd.add_argument(
         "--fail-on", choices=("high", "review", "info", "never"), default="never",
         help="exit with status 1 when a finding at this level or above is reported",
@@ -109,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     paths = [Path(p) for p in args.paths if p != "-"]
     stdin_text = decode(sys.stdin.buffer.read())[0] if "-" in args.paths else None
     try:
-        report = scan(paths, stdin_text)
+        report = scan(paths, stdin_text, package=args.package)
     except (InputError, ParserUnavailable, ParserFailed) as exc:
         print(f"bombsquad: {exc}", file=sys.stderr)
         return EXIT_ERROR

@@ -25,7 +25,7 @@ from bombsquad.code.python import analyze_python
 from bombsquad.code.shell import analyze_shell
 from bombsquad.discovery import LANGUAGE_BY_SUFFIX, Discovery
 from bombsquad.inventory import discover, is_detected
-from bombsquad.model import EntryPoint, FileResult, Finding, Region, ScanReport
+from bombsquad.model import EntryPoint, FileResult, Finding, Level, Region, ScanReport
 from bombsquad.powershell.analyze import Source, analyze_tagged
 from bombsquad.powershell.parser import ParserUnavailable
 from bombsquad.sources import (
@@ -51,6 +51,18 @@ TEXT_SUFFIXES = frozenset({
 })
 TEXT_NAMES = frozenset({"makefile", "dockerfile", "justfile", ".npmrc", ".yarnrc", ".cursorrules",
                         ".windsurfrules", ".clinerules"})
+
+NOT_RUN_FROM_PACKAGE = ("Found in a published package, where installing it does not run "
+                        "this. It runs only where the package's files are used as a "
+                        "project or repository, so it is reported at info.")
+
+
+def runs_from_package(entry: EntryPoint) -> bool:
+    """Whether installing a package, or starting Python with it installed, runs this entry
+    point. Workflows, git hooks, editor and agent settings, and conftest.py inside a
+    published package do not run: they belong to the project the package was built from."""
+    return entry.surface == "npm" or (entry.surface == "python" and entry.kind != "conftest.py")
+
 
 SECRET_RULES = frozenset({"BS-CR-001", "BS-ENV-001", "BS-AG-003"})
 NETWORK_RULES = frozenset({"BS-NET-001", "BS-NET-002", "BS-NET-003", "BS-AG-004"})
@@ -79,7 +91,8 @@ class _Tagged:
 
 
 class _Scan:
-    def __init__(self) -> None:
+    def __init__(self, package: bool = False) -> None:
+        self.package = package
         self.results: dict[str, FileResult] = {}
         self.files: dict[Path, _File] = {}
         self.texts: dict[Path, str] = {}
@@ -347,8 +360,11 @@ class _Scan:
                    f"network: {net.rule.title.lower()} at {net.path}:{net.region.line} "
                    f"({clip(net.evidence)[:120]})"]
             if entry is not None:
-                out.append(Finding(rule, entry.path, entry.region, clip(entry.runs), rule.level,
-                                   [entry.describe(), *via]))
+                finding = Finding(rule, entry.path, entry.region, clip(entry.runs), rule.level,
+                                  [entry.describe(), *via])
+                if self.package and not runs_from_package(entry):
+                    _not_run(finding)
+                out.append(finding)
             else:
                 out.append(Finding(rule, secret.path, secret.region, secret.evidence,
                                    rule.level, via, ["No entry point was found that runs this "
@@ -448,6 +464,10 @@ class _Scan:
                             "syntax such as && and ternaries. Install pwsh to parse it as "
                             "PowerShell 7.")
 
+        if self.package:
+            for t in self.tagged:
+                if t.entries and not any(runs_from_package(e) for e in t.entries):
+                    _not_run(t.finding)
         findings = _dedupe([t.finding for t in self.tagged]) + self.correlate()
         if self.found.expressions:
             for f in findings:
@@ -472,6 +492,12 @@ def _restore(text: str, expressions: dict[str, str]) -> str:
     return text
 
 
+def _not_run(finding: Finding) -> None:
+    finding.level = Level.INFO
+    if NOT_RUN_FROM_PACKAGE not in finding.limitations:
+        finding.limitations.append(NOT_RUN_FROM_PACKAGE)
+
+
 def _dedupe(findings: list[Finding]) -> list[Finding]:
     """Drop exact repeats: the same rule at the same place with the same evidence."""
     seen: set[tuple] = set()
@@ -485,9 +511,11 @@ def _dedupe(findings: list[Finding]) -> list[Finding]:
     return out
 
 
-def scan(paths: list[Path] | None = None, stdin_text: str | None = None) -> ScanReport:
-    """Scan files and directories, and optionally pasted PowerShell."""
-    return _Scan().run(paths or [], stdin_text)
+def scan(paths: list[Path] | None = None, stdin_text: str | None = None,
+         package: bool = False) -> ScanReport:
+    """Scan files and directories, and optionally pasted PowerShell. `package`: the paths
+    are a published package, so only what installing it runs keeps its level."""
+    return _Scan(package).run(paths or [], stdin_text)
 
 
 __all__ = ["STDIN_PATH", "scan"]

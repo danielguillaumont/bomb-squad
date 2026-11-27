@@ -162,13 +162,24 @@ def hidden_characters(text: str, positions: Positions) -> list[CodeHit]:
 _PADDING = re.compile(r"[ \t]{100,}(?=\S)")
 
 
+def _previous_indent(text: str, positions: Positions, line_no: int) -> int:
+    """The leading whitespace of the nearest non-blank line above, or 0."""
+    for number in range(line_no - 1, 0, -1):
+        line = positions.line_text(number)
+        if line.strip():
+            return len(line) - len(line.lstrip(" \t"))
+    return 0
+
+
 def whitespace_padding(text: str, positions: Positions) -> list[CodeHit]:
     hits: list[CodeHit] = []
     for match in _PADDING.finditer(text):
         line_no = positions.region(match.start(), match.start()).line
         line_start = positions.line_starts[line_no - 1]
-        if text[line_start:match.start()].strip() == "" and len(match.group()) < 200:
-            continue  # deep indentation, not padding
+        if text[line_start:match.start()].strip() == "" and (
+                len(match.group()) < 200 or
+                len(match.group()) - _previous_indent(text, positions, line_no) < 100):
+            continue  # deep indentation, or nesting that deepens step by step: not padding
         hidden_start = match.end()
         line_end = text.find("\n", hidden_start)
         line_end = len(text) if line_end < 0 else line_end
