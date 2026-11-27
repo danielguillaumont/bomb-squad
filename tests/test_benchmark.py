@@ -322,3 +322,36 @@ def test_incident_missing_from_the_dataset(tmp_path):
     assert "no findings does not mean safe" in text
     assert all(i.surface in ("npm", "python") and i.report.startswith("MAL-")
                for i in incidents.INCIDENTS)
+
+
+# Held-out samples --------------------------------------------------------------------------
+
+def test_held_out_selection_leaves_out_earlier_packages(tmp_path):
+    listing = [f"samples/npm/malicious_intent/p{i}/1.0.0/2024-01-01-p{i}-v1.0.0.zip"
+               for i in range(40)]
+    listing += [f"samples/pypi/malicious_intent/q{i}/0.1/2024-01-01-q{i}-v0.1.zip"
+                for i in range(40)]
+    parsed = samples.parse_listing(listing)
+    earlier = samples.chosen_names(parsed, 10, 2026)
+    assert len(earlier) == 20
+    assert earlier == {(s.ecosystem, s.name) for s in samples.select(
+        parsed, 10, 2026, date(2026, 11, 27))}  # what the earlier run chose
+    held = samples.select(parsed, 10, 2027, date(2026, 11, 27), earlier)
+    assert len(held) == 20 and not {(s.ecosystem, s.name) for s in held} & earlier
+    names = [f"n{i}" for i in range(30)]
+    used = frozenset(benign.sample_names(names, 30, 10, 2026, "npm"))
+    fresh = benign.sample_names(names, 30, 10, 2027, "npm", used)
+    assert len(fresh) == 10 and not set(fresh) & used
+    path = tmp_path / "listing.txt"
+    path.write_text("\n".join(listing) + "\n", encoding="utf-8")
+    out = tmp_path / "selected.json"
+    assert bench_main(["select", "--listing", str(path), "--per-ecosystem", "10", "--seed",
+                       "2027", "--cutoff", "2026-11-27", "-o", str(out),
+                       "--exclude-selection", "2026:10", "--exclude-selection", "2026:3"]) == 0
+    document = json.loads(out.read_text(encoding="utf-8"))
+    both = earlier | samples.chosen_names(parsed, 3, 2026)  # both earlier runs are left out
+    assert document["excluded"] == {"selections": ["2026:10", "2026:3"], "packages": len(both)}
+    assert not {(s["ecosystem"], s["name"]) for s in document["samples"]} & both
+    with pytest.raises(SystemExit):
+        bench_main(["select", "--listing", str(path), "--cutoff", "2026-11-27", "-o", str(out),
+                    "--exclude-selection", "2026"])

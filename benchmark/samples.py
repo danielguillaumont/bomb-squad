@@ -51,12 +51,13 @@ def parse_listing(lines: list[str]) -> list[Sample]:
     return out
 
 
-def select(samples: list[Sample], per_ecosystem: int, seed: int, cutoff: date
-           ) -> list[Sample]:
+def select(samples: list[Sample], per_ecosystem: int, seed: int, cutoff: date,
+           exclude: frozenset[tuple[str, str]] = frozenset()) -> list[Sample]:
     """One version per package name, so a campaign of near-identical versions counts once.
 
     `retrospective`: a seeded sample of every package. `after-cutoff`: every package found
-    after the cutoff, up to the same number, for the time-split evaluation."""
+    after the cutoff, up to the same number, for the time-split evaluation. `exclude`:
+    (ecosystem, name) pairs left out, such as those earlier runs used."""
     chosen: dict[str, Sample] = {}
     splits: dict[str, set[str]] = {}
     for ecosystem in ECOSYSTEMS:
@@ -66,7 +67,8 @@ def select(samples: list[Sample], per_ecosystem: int, seed: int, cutoff: date
             if s.ecosystem == ecosystem:
                 by_name.setdefault(s.name, []).append(s)
         unique = [rng.choice(sorted(group, key=lambda s: s.path))
-                  for _, group in sorted(by_name.items())]
+                  for name, group in sorted(by_name.items())
+                  if (ecosystem, name) not in exclude]
         for s in rng.sample(unique, min(per_ecosystem, len(unique))):
             chosen[s.path] = s
             splits.setdefault(s.path, set()).add("retrospective")
@@ -76,6 +78,15 @@ def select(samples: list[Sample], per_ecosystem: int, seed: int, cutoff: date
             splits.setdefault(s.path, set()).add("after-cutoff")
     return [Sample(**{**asdict(s), "splits": tuple(sorted(splits[s.path]))})
             for s in sorted(chosen.values(), key=lambda s: s.path)]
+
+
+def chosen_names(samples: list[Sample], per_ecosystem: int, seed: int
+                 ) -> frozenset[tuple[str, str]]:
+    """The (ecosystem, name) pairs `select` takes for the retrospective set with this seed
+    and count. Recomputed from the listing, so exact only for the dataset commit the
+    earlier selection used."""
+    return frozenset((s.ecosystem, s.name) for s in select(samples, per_ecosystem, seed,
+                                                           date.max))
 
 
 def _shallowest(root: Path, names: tuple[str, ...]) -> Path | None:

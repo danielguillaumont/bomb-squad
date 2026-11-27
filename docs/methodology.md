@@ -247,6 +247,10 @@ Detection rates come only from the benchmark below. Every figure states its coun
   - Releases over the 100 MB download limit, such as GPU wheels, cannot be checked and are left out.
   - A popular release is assumed benign; a compromised one in the sample would count as a false positive.
 - **Time split:** the cutoff is the commit date of the Bomb Squad commit being run. Packages DataDog found after it are the `after-cutoff` set, which the rules could not have been written for; the rest are `retrospective`. Many rules follow public write-ups of campaigns in the retrospective set, and rules were changed after seeing the rule counts of an earlier run on it, so only `after-cutoff` figures measure detection of the unknown.
+- **Held-out sample:** `--seed` and `--leave-out SEED:COUNT` choose a fresh sample that leaves out every package earlier runs chose. The left-out packages are worked out again from the run's own listing. For seed 2026 at the pinned commit, that reproduces the 400 malicious and 400 benign packages of the development runs exactly.
+  - It is held out by package, not by campaign: near-identical packages of one campaign can fall on both sides.
+  - It is less in-sample than the retrospective set, not a replacement for the time split.
+  - The protocol is fixed before it runs: one run on `main` at seed 2027 with `--leave-out 2026:200,2026:5`, its figures published whatever they are, and no rule changed after seeing them reported as held-out again.
 - **Detectors:**
   - Bomb Squad runs `scan --package`, as `bombsquad diff` scans a release, and flags a package with a high finding, or, as a second detector, with a review or high finding. Output without a result, such as a crash, counts as an error.
   - GuardDog 3.2.0, with its dependencies as of 2026-11-20, at three thresholds: its risk label `high_risk`, its label `suspicious` or `high_risk`, and any matched rule (the criterion of its exit code). GuardDog 3 labels a package from a 0–10 risk score that pairs capabilities with threat indicators.

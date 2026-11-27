@@ -69,9 +69,9 @@ def pypi_popular(fetch: Fetch) -> list[str]:
     return pypi_names_from(base64.b64decode(document["content"]).decode("utf-8"))
 
 
-def sample_names(names: list[str], top: int, count: int, seed: int, ecosystem: str
-                 ) -> list[str]:
-    pool = names[:top]
+def sample_names(names: list[str], top: int, count: int, seed: int, ecosystem: str,
+                 exclude: frozenset[str] = frozenset()) -> list[str]:
+    pool = [name for name in names[:top] if name not in exclude]
     return random.Random(f"{seed}:benign:{ecosystem}").sample(pool, min(count, len(pool)))
 
 

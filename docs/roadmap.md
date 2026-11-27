@@ -202,7 +202,7 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 **Measured:** [the write-up](research/guarddog-benchmark.md), from Actions run 46066816294 on `main` (2026-11-27). It includes where Bomb Squad loses. The README's accuracy figures are taken from it.
 
-**Not yet:** consecutive version pairs for the diff engine, and OpenSSF malicious-packages reports. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit. Until then every figure is retrospective and in-sample.
+**Not yet:** the held-out run (seed 2027, leaving out the development runs' packages; protocol in [methodology](methodology.md#how-the-benchmark-works)), consecutive version pairs for the diff engine, and OpenSSF malicious-packages reports. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit. Until then every figure is retrospective and in-sample.
 
 **Exit (Phase 4) met:** the write-up is published, and every accuracy figure in the README is computed from it. The time split is still to be measured.
 
