@@ -1,0 +1,89 @@
+name: Bomb Squad gate
+description: >-
+  Report what a pull request newly runs: new entry points and findings in the repository,
+  and what each dependency version its lockfiles newly pin gains. Nothing is run.
+branding:
+  icon: shield
+  color: red
+
+inputs:
+  base:
+    description: Commit to compare with. Defaults to the pull request's base commit.
+    default: ${{ github.event.pull_request.base.sha }}
+  fail-on:
+    description: Fail when a new finding or signal is at this level or above (high, review, info or never).
+    default: high
+  max-packages:
+    description: Review at most this many new dependency versions, direct dependencies first.
+    default: "25"
+  source:
+    description: Also compare each new dependency version with its GitHub source at the release tag (true or false).
+    default: "false"
+
+outputs:
+  level:
+    description: The highest level reported (high, review or info), or none.
+    value: ${{ steps.gate.outputs.level }}
+  report:
+    description: Path of the Markdown report, written for a pull request comment.
+    value: ${{ steps.gate.outputs.report }}
+  json:
+    description: Path of the JSON report.
+    value: ${{ steps.gate.outputs.json }}
+  sarif:
+    description: Path of the SARIF file with the repository's new findings.
+    value: ${{ steps.gate.outputs.sarif }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up uv
+      uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+    - name: Check out the base commit
+      shell: bash
+      env:
+        BASE: ${{ inputs.base }}
+        GIT_LFS_SKIP_SMUDGE: "1"
+      run: |
+        set -euo pipefail
+        if ! [[ "$BASE" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error::The base input must be a full commit SHA; on pull_request events it defaults to the base commit."
+          exit 2
+        fi
+        if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+          git fetch --no-tags --depth=1 origin "$BASE"
+        fi
+        git worktree add --detach "$RUNNER_TEMP/bombsquad-base" "$BASE"
+
+    - name: Review the pull request
+      id: gate
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MAX_PACKAGES: ${{ inputs.max-packages }}
+        SOURCE: ${{ inputs.source }}
+      run: |
+        set -uo pipefail
+        out="$RUNNER_TEMP/bombsquad"
+        mkdir -p "$out"
+        args=(gate "$RUNNER_TEMP/bombsquad-base" "$GITHUB_WORKSPACE"
+              --format text --json "$out/gate.json" --markdown "$out/gate.md"
+              --sarif "$out/gate.sarif" --max-packages "$MAX_PACKAGES" --fail-on "$FAIL_ON")
+        if [ "$SOURCE" = "true" ]; then args+=(--source); fi
+        # Run from the action's own folder, so uv reads this project's settings and lockfile
+        # and none from the repository under review.
+        uv run --directory "$ACTION_PATH" --locked --no-dev --python 3.12 --quiet \
+          bombsquad "${args[@]}"
+        status=$?
+        if [ -f "$out/gate.json" ]; then
+          echo "level=$(jq -r '.highest_level // "none"' "$out/gate.json")" >> "$GITHUB_OUTPUT"
+          {
+            echo "report=$out/gate.md"
+            echo "json=$out/gate.json"
+            echo "sarif=$out/gate.sarif"
+          } >> "$GITHUB_OUTPUT"
+          cat "$out/gate.md" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        exit "$status"

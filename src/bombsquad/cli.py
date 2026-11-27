@@ -1,4 +1,4 @@
-"""Command line: `bombsquad scan`, `bombsquad diff` and `bombsquad rules`."""
+"""Command line: `bombsquad scan`, `bombsquad diff`, `bombsquad gate` and `bombsquad rules`."""
 
 from __future__ import annotations
 
@@ -56,6 +56,30 @@ def _parser() -> argparse.ArgumentParser:
         help="exit with status 1 when a new finding or signal is at this level or above",
     )
 
+    gate_cmd = sub.add_parser(
+        "gate", help="what a pull request newly runs: compare its base and head folders, and "
+                     "review each dependency version its lockfiles newly pin")
+    gate_cmd.add_argument("base", type=Path, help="the pull request's base, checked out")
+    gate_cmd.add_argument("head", type=Path, help="the pull request's head, checked out")
+    gate_cmd.add_argument("--format", choices=("markdown", "text", "json"), default="text")
+    gate_cmd.add_argument("--output", "-o", type=Path, help="write the report to this file")
+    gate_cmd.add_argument("--sarif", type=Path, metavar="FILE",
+                          help="also write the repository's new findings as SARIF")
+    gate_cmd.add_argument("--markdown", type=Path, metavar="FILE",
+                          help="also write the report as a pull request comment")
+    gate_cmd.add_argument("--json", type=Path, metavar="FILE",
+                          help="also write the report as JSON")
+    gate_cmd.add_argument("--max-packages", type=int, default=25, metavar="N",
+                          help="review at most N new dependency versions (default 25, direct "
+                               "dependencies first)")
+    gate_cmd.add_argument("--source", action="store_true",
+                          help="also compare each new dependency version with its GitHub "
+                               "source at the release tag")
+    gate_cmd.add_argument(
+        "--fail-on", choices=("high", "review", "info", "never"), default="never",
+        help="exit with status 1 when a new finding or signal is at this level or above",
+    )
+
     sub.add_parser("rules", help="list the rules")
     return parser
 
@@ -79,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "diff":
         return _diff(args)
+    if args.command == "gate":
+        return _gate(args)
 
     paths = [Path(p) for p in args.paths if p != "-"]
     stdin_text = decode(sys.stdin.buffer.read())[0] if "-" in args.paths else None
@@ -124,6 +150,37 @@ def _diff(args) -> int:
         _write(json.dumps(report.to_dict(), indent=2, ensure_ascii=False) + "\n", args.output)
     else:
         _write(render_diff(report), args.output)
+    if args.fail_on != "never":
+        highest = report.highest_level()
+        if highest is not None and highest.rank >= Level(args.fail_on).rank:
+            return EXIT_FINDINGS
+    return EXIT_OK
+
+
+def _gate(args) -> int:
+    from bombsquad.gate import gate, gate_sarif_report, render_markdown, render_text
+
+    try:
+        report = gate(args.base, args.head, max_packages=max(0, args.max_packages),
+                      source=args.source)
+    except (ValueError, OSError, InputError, ParserFailed, ParserUnavailable) as exc:
+        print(f"bombsquad: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if args.format == "json":
+        _write(json.dumps(report.to_dict(), indent=2, ensure_ascii=False) + "\n", args.output)
+    elif args.format == "markdown":
+        _write(render_markdown(report), args.output)
+    else:
+        _write(render_text(report), args.output)
+    if args.markdown:
+        args.markdown.write_text(render_markdown(report), encoding="utf-8", newline="\n")
+    if args.json:
+        args.json.write_text(json.dumps(report.to_dict(), indent=2, ensure_ascii=False) + "\n",
+                             encoding="utf-8", newline="\n")
+    if args.sarif:
+        sarif = to_sarif(gate_sarif_report(report))
+        args.sarif.write_text(json.dumps(sarif, indent=2, ensure_ascii=False) + "\n",
+                              encoding="utf-8", newline="\n")
     if args.fail_on != "never":
         highest = report.highest_level()
         if highest is not None and highest.rank >= Level(args.fail_on).rank:
