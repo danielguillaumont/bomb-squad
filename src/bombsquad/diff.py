@@ -323,12 +323,22 @@ def diff_release(ecosystem: str, name: str, old_version: str | None, new_version
         sides = []
         if old_release is None:
             sides.append(Side("(not a dependency before)", ScanReport(__version__, [], []), {}))
+        unpacked = []
         for label, release in (("old", old_release), ("new", new_release)):
             if release is None:
                 continue
             folder = Path(work, label)
             folder.mkdir()
             root, notes = unpack_release(release, folder, fetch)
+            unpacked.append((release, folder, root, notes))
+        # Paths line up only when both sides are laid out alike: a release with one
+        # artifact is scanned from its folder, one with several from above them. When the
+        # kinds differ (a wheel before, an sdist and a wheel now), both are scanned from
+        # above, so `wheel/x.py` stays `wheel/x.py` instead of every file looking new.
+        kinds = {frozenset(a.kind for a in release.artifacts) for release, *_ in unpacked}
+        for release, folder, root, notes in unpacked:
+            if len(kinds) > 1:
+                root = folder
             sides.append(scan_side(f"{name}@{release.version}" if ecosystem == "npm" else
                                    f"{name} {release.version}", root, release, notes,
                                    package=True))

@@ -203,7 +203,9 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 **Measured:** [the write-up](research/guarddog-benchmark.md), from two Actions runs on `main` (2026-11-27). Run 46066816294 is the development sample, which shaped the rules. Run 46075004726 is the held-out sample: seed 2027, leaving out the development runs' packages, under a protocol fixed before it ran. The README's accuracy figures are from the held-out run. The write-up includes where Bomb Squad loses in both.
 
-**Not yet:** consecutive version pairs for the diff engine, and OpenSSF malicious-packages reports. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit. Until then every figure is retrospective, and the held-out sample is held out by package, not by campaign.
+**Built, not yet run:** consecutive version pairs for the diff engine, behind the workflow's `version-pairs` input: each benign release diffed against the one before it, counting false alarms per 1,000 updates.
+
+**Not yet:** OpenSSF malicious-packages reports. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit. Until then every figure is retrospective, and the held-out sample is held out by package, not by campaign.
 
 **Exit (Phase 4) met:** the write-up is published, and every accuracy figure in the README is computed from it. The time split is still to be measured.
 

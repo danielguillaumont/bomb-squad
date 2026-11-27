@@ -64,7 +64,10 @@ def _benign_packages(args, work: Path) -> list[dict]:
                                         args.seed, ecosystem, exclude):
             row = {"set": "benign", "ecosystem": ecosystem, "name": name}
             try:
-                row["version"] = benign.release_on(ecosystem, name, as_of, http_get)
+                row["version"], previous = benign.release_pair(ecosystem, name, as_of,
+                                                               http_get)
+                if args.version_pairs:
+                    row["previous"] = previous
                 if row["version"] is None:
                     row["prepare_error"] = f"no stable release on or before {args.as_of}"
             except (benign.FetchError, ValueError) as exc:
@@ -86,6 +89,9 @@ def _evaluate(row: dict, args, sample: samples.Sample | None) -> dict:
             return row
         row["bombsquad"] = tools.bombsquad(root)
         row["guarddog"] = tools.guarddog(args.guarddog, row["ecosystem"], root)
+        if sample is None and row.get("previous"):
+            row["diff"] = tools.bombsquad_diff(row["ecosystem"], row["name"], row["previous"],
+                                               row["version"])
         if args.detonate == "all" or (args.detonate == "benign" and sample is None):
             with _DETONATIONS:
                 row["detonation"] = detonation.detonate(row, root, Path(work), sample is None,
@@ -113,6 +119,7 @@ def _run(args) -> int:
         "benign_per_ecosystem": args.benign_per_ecosystem, "benign_top": args.benign_top,
         "benign_as_of": args.as_of,
         "detonate": args.detonate,
+        "version_pairs": args.version_pairs,
     }
     if args.exclude_selection:
         meta["left_out"] = ("packages chosen with seed:count "
@@ -220,6 +227,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--exclude-selection", action="append", default=[], metavar="SEED:COUNT",
                    help="leave out the benign packages this seed and count would choose")
     r.add_argument("--workers", type=int, default=4)
+    r.add_argument("--version-pairs", action="store_true",
+                   help="also diff each benign release against the release before it, as "
+                        "the pull-request gate reviews an update")
     r.add_argument("--detonate", choices=("none", "benign", "all"), default="none",
                    help="also detonate the benign packages, or every package, in the sandbox "
                         "(Linux with Docker)")

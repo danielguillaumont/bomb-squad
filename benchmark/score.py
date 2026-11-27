@@ -21,6 +21,16 @@ DETONATION_DETECTORS = (
     ("detonation", "any", "Detonation, anything observed"),
     ("combined", "review", "Bomb Squad review or high, or detonation flagged"),
 )
+# Updates of benign packages, each diffed against the release before it: how often the
+# diff, and so the pull-request gate, raises something on an ordinary update. Release age
+# is left out, because it is measured from when the benchmark runs, not from the update.
+DIFF_DETECTORS = (
+    ("findings", "Diff: a new review or high finding"),
+    ("high", "Diff: a new high finding"),
+    ("entry_points", "Diff: a new or changed entry point"),
+    ("any", "Diff: a new review or high finding, or a publish signal at review"),
+)
+AGE_SIGNALS = ("recent-release", "release-age")
 GUARDDOG_LABELS = {"high_risk": {"high_risk"}, "suspicious": {"suspicious", "high_risk"}}
 SPLITS = ("retrospective", "after-cutoff")
 
@@ -66,6 +76,48 @@ def flagged(row: dict, tool: str, threshold: str) -> bool | None:
         return None  # no result was read
     levels = set(result["levels"])
     return "high" in levels if threshold == "high" else bool(levels & {"high", "review"})
+
+
+def diff_alarm(result: dict, threshold: str) -> bool:
+    levels = set(result.get("levels") or [])
+    if threshold == "high":
+        return "high" in levels
+    findings = bool(levels & {"high", "review"})
+    if threshold == "findings":
+        return findings
+    entries = result.get("entry_points") or {}
+    if threshold == "entry_points":
+        return bool(entries.get("added") or entries.get("changed"))
+    signals = [s.rsplit(":", 1) for s in result.get("signals") or []]
+    return findings or any(level in ("review", "high") and name not in AGE_SIGNALS
+                           for name, level in signals)
+
+
+def _updates(rows: list[dict]) -> list[dict]:
+    """False alarms on benign updates, per ecosystem, with the rules behind them."""
+    out = []
+    for ecosystem in ("npm", "pypi"):
+        benign = [r for r in rows if r["set"] == "benign" and r["ecosystem"] == ecosystem
+                  and "previous" in r]
+        diffed = [r["diff"] for r in benign if isinstance(r.get("diff"), dict)]
+        ok = [d for d in diffed if not d.get("error")]
+        rules: dict[str, int] = {}
+        for d in ok:
+            for rule in {*d.get("rules_by_level", {}).get("high", []),
+                         *d.get("rules_by_level", {}).get("review", [])}:
+                rules[rule] = rules.get(rule, 0) + 1
+        seconds = [d["seconds"] for d in ok if isinstance(d.get("seconds"), int | float)]
+        out.append({
+            "ecosystem": ecosystem, "releases": len(benign),
+            "no_earlier_release": sum(1 for r in benign if not r.get("previous")),
+            "errors": len(diffed) - len(ok),
+            "alarms": [{"threshold": t, "label": label,
+                        **_rate(sum(1 for d in ok if diff_alarm(d, t)), len(ok))}
+                       for t, label in DIFF_DETECTORS],
+            "rules": sorted(rules.items(), key=lambda kv: (-kv[1], kv[0])),
+            "median_seconds": round(statistics.median(seconds), 1) if seconds else None,
+        })
+    return out
 
 
 def _rate(numerator: int, denominator: int) -> dict:
@@ -139,6 +191,8 @@ def score(meta: dict, rows: list[dict]) -> dict:
                     "ecosystem": ecosystem, "surface": surface, "tool": tool,
                     "threshold": threshold, "label": label,
                     "recall": _rate(hits.count(True), hits.count(True) + hits.count(False))})
+    if meta.get("version_pairs"):
+        out["updates"] = _updates(usable)
     if meta.get("detonate", "none") != "none":
         out["detonation_cost"] = [
             {"ecosystem": e, "set": kind,
@@ -181,6 +235,21 @@ def markdown(scores: dict) -> str:
     for r in scores.get("surfaces", []):
         lines.append(f"| {r['ecosystem']} | {r['surface']} | {r['label']} | "
                      f"{_cell(r['recall'])} |")
+    if scores.get("updates"):
+        lines += ["", "### Updates of benign packages (diff against the release before)", "",
+                  "| Ecosystem | Detector | False alarms | Per 1,000 updates |",
+                  "|---|---|---|---|"]
+        for u in scores["updates"]:
+            for a in u["alarms"]:
+                per = "n/a" if not a["of"] else round(1000 * a["count"] / a["of"], 1)
+                lines.append(f"| {u['ecosystem']} | {a['label']} | {_cell(a)} | {per} |")
+        lines.append("")
+        for u in scores["updates"]:
+            rules = ", ".join(f"{rule} ({n})" for rule, n in u["rules"][:10]) or "none"
+            median = "n/a" if u["median_seconds"] is None else u["median_seconds"]
+            lines.append(f"- {u['ecosystem']}: {u['releases']} releases, "
+                         f"{u['no_earlier_release']} with no earlier release, {u['errors']} "
+                         f"diff errors, median {median} s. Rules in new findings: {rules}.")
     if scores.get("detonation_cost"):
         lines += ["", "### Detonation cost", "",
                   "| Ecosystem | Set | Detonated | Errors | Timed out | Median seconds | "

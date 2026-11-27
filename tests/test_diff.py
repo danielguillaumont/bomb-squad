@@ -214,6 +214,38 @@ def test_wheel_that_gains_a_pth_file(tmp_path):
     assert {s.id for s in report.signals} == {"provenance-missing", "release-age"}
 
 
+def _pypi(registry: Registry, name: str, releases: dict[str, dict[str, bytes]]) -> None:
+    base = "https://files.pythonhosted.org/packages"
+    for version, artifacts in releases.items():
+        urls = []
+        for kind, data in artifacts.items():
+            filename = (f"{name}-{version}-py3-none-any.whl" if kind == "wheel"
+                        else f"{name}-{version}.tar.gz")
+            registry.urls[f"{base}/{filename}"] = data
+            urls.append({"filename": filename, "url": f"{base}/{filename}",
+                         "packagetype": "bdist_wheel" if kind == "wheel" else "sdist",
+                         "digests": {"sha256": hashlib.sha256(data).hexdigest()},
+                         "upload_time_iso_8601": "2026-10-01T00:00:00.000Z"})
+        registry.urls[f"https://pypi.org/pypi/{name}/{version}/json"] = json.dumps(
+            {"info": {}, "urls": urls}).encode()
+
+
+def test_a_release_that_adds_an_sdist_does_not_report_its_wheel_again(tmp_path):
+    registry = Registry()
+    boot = {"thing/__init__.py": "", "thing_boot.pth": "import thing\n"}
+    _pypi(registry, "thing", {
+        "1.0": {"wheel": wheel(boot)},
+        "1.1": {"sdist": tarball({"setup.py": "from setuptools import setup\nsetup()\n"},
+                                 prefix="thing-1.1/"),
+                "wheel": wheel(boot)}})
+    report = diff_registry("pypi:thing@1.0..1.1", registry, NOW)
+    # The wheel is unchanged; only the sdist, and the setup.py it brings, are new.
+    assert [(e.kind, e.path) for e in report.added_entries] == [("setup.py", "sdist/setup.py")]
+    assert report.removed_entries == [] and report.removed_findings == []
+    assert all(not f.path.startswith("wheel/") for f in report.added_findings)
+    assert report.added_files == ["sdist/setup.py"]
+
+
 def test_minified_blob_and_local_paths(tmp_path):
     old, new = tmp_path / "old", tmp_path / "new"
     for root in (old, new):

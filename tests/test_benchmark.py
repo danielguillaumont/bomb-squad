@@ -432,3 +432,67 @@ def test_detonation_is_scored_only_where_it_ran():
     assert cost == {"ecosystem": "npm", "set": "malicious", "packages": 3, "errors": 0,
                     "timed_out": 0, "median_seconds": 4.0, "total_seconds": 12.0}
     assert "### Detonation cost" in score.markdown(scores)
+
+
+def test_an_update_pairs_a_release_with_the_one_before_it():
+    registry = Registry()
+    registry.urls["https://registry.npmjs.org/demo"] = json.dumps({
+        "versions": {"1.0.0": {}, "1.1.0": {}, "0.9.9": {}, "1.2.0-rc.1": {}, "2.0.0": {}},
+        "time": {"1.0.0": "2026-01-01T00:00:00Z", "1.1.0": "2026-06-01T00:00:00Z",
+                 "0.9.9": "2026-08-01T00:00:00Z",  # a backport, after 1.1.0
+                 "1.2.0-rc.1": "2026-05-01T00:00:00Z",
+                 "2.0.0": "2026-12-01T00:00:00Z"}}).encode()
+    as_of = datetime(2026, 11, 5, tzinfo=UTC)
+    # Not the pre-release, and not 2.0.0, which came later.
+    assert benign.release_pair("npm", "demo", as_of, registry) == ("1.1.0", "1.0.0")
+    registry.urls["https://pypi.org/pypi/first/json"] = json.dumps({"releases": {
+        "1.0": [{"upload_time_iso_8601": "2026-01-01T00:00:00Z"}]}}).encode()
+    assert benign.release_pair("pypi", "first", as_of, registry) == ("1.0", None)
+    registry.urls["https://pypi.org/pypi/beta/json"] = json.dumps({"releases": {
+        "0.58b0": [{"upload_time_iso_8601": "2026-09-01T00:00:00Z"}],
+        "0.59b0": [{"upload_time_iso_8601": "2026-10-01T00:00:00Z"}]}}).encode()
+    assert benign.release_pair("pypi", "beta", as_of, registry) == ("0.59b0", "0.58b0")
+
+
+def test_diff_output_is_reduced_to_what_scoring_needs():
+    d = tools.parse_diff(json.dumps({
+        "entry_points": {"added": [{"surface": "npm", "runs": "node x.js"}],
+                         "changed": [{"old": {}, "new": {"surface": "python"}}],
+                         "removed": []},
+        "findings": {"added": [{"rule_id": "BS-NET-001", "level": "review",
+                                "evidence": "secret stuff"}], "removed": []},
+        "signals": [{"signal": "release-age", "level": "info", "detail": "x"},
+                    {"signal": "maintainers-changed", "level": "review",
+                     "detail": "added someone"}],
+        "files": {"grew": [{"path": "a.js", "detail": "x"}]}}))
+    assert d == {"entry_points": {"added": 1, "changed": 1, "surfaces": ["npm", "python"]},
+                 "levels": ["review"], "rules_by_level": {"review": ["BS-NET-001"]},
+                 "signals": ["maintainers-changed:review", "release-age:info"], "grew": 1}
+    assert "secret stuff" not in json.dumps(d) and "someone" not in json.dumps(d)
+
+
+def test_updates_are_scored_as_false_alarms_with_their_rules():
+    def update(levels=(), rules=(), entries=0, signals=(), error=None, previous="1.0"):
+        r = row("benign", "npm", [], 0)
+        r["previous"] = previous
+        if previous:
+            r["diff"] = {"levels": list(levels), "error": error, "seconds": 2.0,
+                         "rules_by_level": {"review": list(rules)} if rules else {},
+                         "entry_points": {"added": entries, "changed": 0},
+                         "signals": list(signals)}
+        return r
+
+    rows = [update(["review"], ["BS-NET-001"]), update(entries=1),
+            update(signals=["recent-release:review"]),  # age: not the update's doing
+            update(signals=["publisher-changed:review"]), update(error="exit 2"),
+            update(previous=None), update()]
+    assert "updates" not in score.score({}, rows)
+    scores = score.score({"version_pairs": True}, rows)
+    npm = next(u for u in scores["updates"] if u["ecosystem"] == "npm")
+    assert npm["releases"] == 7 and npm["no_earlier_release"] == 1 and npm["errors"] == 1
+    alarms = {a["threshold"]: (a["count"], a["of"]) for a in npm["alarms"]}
+    assert alarms == {"findings": (1, 5), "high": (0, 5), "entry_points": (1, 5),
+                      "any": (2, 5)}
+    assert npm["rules"] == [("BS-NET-001", 1)]
+    text = score.markdown(scores)
+    assert "### Updates of benign packages" in text and "20.0% (1/5)" in text

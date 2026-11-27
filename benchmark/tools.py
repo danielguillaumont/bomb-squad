@@ -94,6 +94,47 @@ def bombsquad(root: Path, timeout: int = TIMEOUT_SECONDS) -> dict:
     return result
 
 
+def parse_diff(text: str) -> dict:
+    """What an update newly gains, reduced to kinds, rule IDs and signal names."""
+    data = _json_object(text)
+    entries = data.get("entry_points") if isinstance(data.get("entry_points"), dict) else {}
+    added = [e for e in entries.get("added", []) if isinstance(e, dict)]
+    changed = [c.get("new") for c in entries.get("changed", [])
+               if isinstance(c, dict) and isinstance(c.get("new"), dict)]
+    findings = (data.get("findings") or {}).get("added", [])
+    findings = [f for f in findings if isinstance(f, dict)]
+    levels = {f.get("level") for f in findings}
+    return {
+        "entry_points": {"added": len(added), "changed": len(changed),
+                         "surfaces": sorted({e.get("surface") for e in added + changed
+                                             if isinstance(e.get("surface"), str)})},
+        "levels": [level for level in LEVELS if level in levels],
+        "rules_by_level": {level: sorted({f.get("rule_id") for f in findings
+                                          if f.get("level") == level
+                                          and isinstance(f.get("rule_id"), str)})
+                           for level in LEVELS if level in levels},
+        "signals": sorted({f"{s.get('signal')}:{s.get('level')}"
+                           for s in data.get("signals", []) if isinstance(s, dict)}),
+        "grew": len((data.get("files") or {}).get("grew", [])),
+    }
+
+
+def bombsquad_diff(ecosystem: str, name: str, old: str, new: str,
+                   timeout: int = TIMEOUT_SECONDS) -> dict:
+    """`bombsquad diff` on an update, as the pull-request gate reviews one: both releases
+    fetched from the registry, checked against its hashes, and scanned, never run."""
+    out, error, seconds = _run([sys.executable, "-m", "bombsquad", "diff",
+                                f"{ecosystem}:{name}@{old}..{new}", "--format", "json"],
+                               timeout)
+    result: dict = {"seconds": round(seconds, 2), "error": error}
+    if error is None:
+        try:
+            result.update(parse_diff(out))
+        except ValueError as exc:
+            result["error"] = f"unreadable output: {exc}"
+    return result
+
+
 def guarddog(executable: str, ecosystem: str, root: Path,
              timeout: int = TIMEOUT_SECONDS) -> dict:
     out, error, seconds = _run([executable, ecosystem, "scan", str(root),

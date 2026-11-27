@@ -89,31 +89,55 @@ def _parse(value: object) -> datetime | None:
     return moment if moment.tzinfo else None
 
 
-def release_on(ecosystem: str, name: str, as_of: datetime, fetch: Fetch) -> str | None:
-    """The highest stable version published on or before `as_of`, or the highest
-    pre-release for a package that has only ever published pre-releases (OpenTelemetry's
-    instrumentation packages are all 0.xbN)."""
+def _published(ecosystem: str, name: str, fetch: Fetch) -> list[tuple[datetime, str]]:
+    """Each version the registry still serves, with the time it was first published."""
     if ecosystem == "npm":
         url = f"{NPM_REGISTRY}/{urllib.parse.quote(name, safe='@')}"
         document = json.loads(fetch(url, MAX_METADATA_BYTES))
         times = document.get("time") if isinstance(document.get("time"), dict) else {}
         versions = document.get("versions") if isinstance(document.get("versions"), dict) else {}
-        candidates = [(t, v) for v, t in ((v, _parse(times.get(v))) for v in versions)
-                      if t and t <= as_of]
-    else:
-        url = f"{PYPI}/pypi/{urllib.parse.quote(name, safe='')}/json"
-        document = json.loads(fetch(url, MAX_METADATA_BYTES))
-        releases = document.get("releases") if isinstance(document.get("releases"), dict) else {}
-        candidates = []
-        for version, files in releases.items():
-            files = [f for f in files if isinstance(f, dict) and not f.get("yanked")]
-            times = [t for t in (_parse(f.get("upload_time_iso_8601")) for f in files) if t]
-            if times and min(times) <= as_of:
-                candidates.append((min(times), version))
+        return [(t, v) for v, t in ((v, _parse(times.get(v))) for v in versions) if t]
+    url = f"{PYPI}/pypi/{urllib.parse.quote(name, safe='')}/json"
+    document = json.loads(fetch(url, MAX_METADATA_BYTES))
+    releases = document.get("releases") if isinstance(document.get("releases"), dict) else {}
+    out = []
+    for version, files in releases.items():
+        files = [f for f in files if isinstance(f, dict) and not f.get("yanked")]
+        times = [t for t in (_parse(f.get("upload_time_iso_8601")) for f in files) if t]
+        if times:
+            out.append((min(times), version))
+    return out
+
+
+def _highest(candidates: list[tuple[datetime, str]]) -> tuple[datetime, str] | None:
     # The highest version, not the latest upload: maintainers publish backports to old
-    # majors (semver 5.7.x after 7.x), which were never the current release.
+    # majors (semver 5.7.x after 7.x), which were never the current release. Stable
+    # versions win, unless a package has only ever published pre-releases
+    # (OpenTelemetry's instrumentation packages are all 0.xbN).
     candidates = [c for c in candidates if _stable(c[1])] or candidates
-    return max(candidates, key=lambda c: version_key(c[1]))[1] if candidates else None
+    return max(candidates, key=lambda c: version_key(c[1])) if candidates else None
+
+
+def release_pair(ecosystem: str, name: str, as_of: datetime, fetch: Fetch
+                 ) -> tuple[str | None, str | None]:
+    """The release current on `as_of`, and the one an update to it would have come from:
+    the highest lower version published before it. Either can be None."""
+    published = _published(ecosystem, name, fetch)
+    current = _highest([c for c in published if c[0] <= as_of])
+    if current is None:
+        return None, None
+    key = version_key(current[1])
+    earlier = [c for c in published if c[0] <= current[0] and version_key(c[1]) < key]
+    if _stable(current[1]):
+        earlier = [c for c in earlier if _stable(c[1])]
+    previous = _highest(earlier)
+    return current[1], previous[1] if previous else None
+
+
+def release_on(ecosystem: str, name: str, as_of: datetime, fetch: Fetch) -> str | None:
+    """The highest stable version published on or before `as_of`, or the highest
+    pre-release for a package that has only ever published pre-releases."""
+    return release_pair(ecosystem, name, as_of, fetch)[0]
 
 
 def fetch_release(ecosystem: str, name: str, version: str, folder: Path, fetch: Fetch
@@ -128,4 +152,4 @@ def fetch_release(ecosystem: str, name: str, version: str, folder: Path, fetch: 
 
 
 __all__ = ["FetchError", "fetch_release", "npm_popular", "pypi_popular", "release_on",
-           "sample_names"]
+           "release_pair", "sample_names"]
