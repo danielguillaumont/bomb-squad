@@ -54,6 +54,29 @@ jobs:
       - name: Scan the sample
         run: uv run --locked bombsquad scan samples/example.ps1 --format sarif -o bombsquad.sarif
 
+  detonate:
+    name: Detonate stand-in packages
+    # Harmless stand-ins only: they read a fake credential and send it to a .invalid name
+    # that only the sandbox's sink answers. Real packages are never detonated here.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      - name: Install
+        run: uv sync --locked --python 3.12
+
+      - name: Detonate in containers
+        env:
+          BOMBSQUAD_DETONATE: "1"
+        run: uv run --locked pytest -q -s tests/test_detonate_container.py
+
   code-scanning:
     name: Code scanning
     # Fork pull requests get a read-only token, which cannot upload results.

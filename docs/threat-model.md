@@ -45,11 +45,14 @@ The input is the bytes of every scanned file and of pasted text, including workf
 | A pull request attacks the gate that reviews it | The gate runs on `pull_request`, never `pull_request_target`, so it gets a read-only token and no secrets on fork pull requests. The pull request's code is only parsed. uv runs from the Action's own folder, so the repository's uv settings are not read. The base is checked out with LFS downloads off. | In place |
 | The gate's comment is used to inject content or notify people | One job, with only `pull-requests: write`, posts the comment. It downloads the report as data and runs nothing from the pull request. Untrusted text is escaped or put in code spans, and `@` cannot mention anyone. Fork pull requests get no comment, only the job summary. | In place |
 | Antivirus quarantines test fixtures, breaking checkouts | Fixtures that look like malware are ROT13-encoded in the tests and decoded in memory. | In place |
+| A detonated package escapes to the host | `bombsquad detonate` runs only on Linux, and is meant for disposable CI runners. The package's container has no host folders mounted: files go in with `docker cp` and the trace comes out on standard output. All capabilities are dropped except the three strace needs, to trace and to switch users. Switching to the unprivileged user clears them, and `no-new-privileges` stops the package from regaining any. Memory, CPU and process counts are limited. Docker still mounts its own generated `resolv.conf`, `hosts` and `hostname` files, owned by root. A container is not a virtual machine: a kernel or Docker flaw can still be used to escape. | Partial |
+| A detonated package reaches the network | Its only network is an internal Docker network with no route out. The sink is the only other host and answers every name with its own address. strace records every address the package connects to, including ones the sink never sees. The Docker host's bridge address can be reachable from an internal network, which is one reason detonation runs on disposable runners. | Partial |
+| A detonated package tampers with what is recorded | strace runs as root and pipes the trace through a root process. The package runs as another user and cannot write to it. The sink runs in its own container. A package can still flood its own trace, which is cut at 64 MB, or run out the time limit; both are reported. | In place |
+| Canary credentials leak or work somewhere | They are random for each run and valid nowhere. | In place |
 
 ## Later phases
 
 These get their own rows when they are built:
 
-- **Detonation** (Phase 5): sandbox escape, canary-credential leaks and network egress.
 - **The live watch** (Phase 6): false accusations against real packages. Changes are reported, never verdicts, and a person reviews every report.
 - **LLM triage** (Phase 7): prompt injection from the code under review. The LLM can reorder findings but never suppress them.

@@ -331,7 +331,7 @@ def test_this_repository_follows_its_own_rules():
     assert {e.kind for e in report.entry_points} == {
         "workflow job test", "workflow job code-scanning", "workflow job actionlint",
         "workflow job review", "workflow job comment", "composite action",
-        "workflow job benchmark"}
+        "workflow job benchmark", "workflow job detonate"}
     assert report.findings == []
 
 
