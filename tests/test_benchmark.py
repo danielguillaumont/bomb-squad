@@ -8,6 +8,7 @@ a real sample.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import random
@@ -17,10 +18,10 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from benchmark import benign, samples, score, tools
+from benchmark import benign, incidents, samples, score, tools
 from benchmark.__main__ import main as bench_main
 from bombsquad.archive import ArchiveError, unpack
-from tests.test_diff import Registry, manifest, tarball
+from tests.test_diff import Registry, manifest, tarball, wheel
 
 
 def _crc_byte(crc: int, byte: int) -> int:
@@ -240,3 +241,84 @@ def test_benchmark_cli_select_and_score(tmp_path, capsys):
         row("malicious", "pypi", ["high"], 0)) + "\n", encoding="utf-8")
     assert bench_main(["score", str(results), "--json", str(tmp_path / "s.json")]) == 0
     assert "| pypi | Bomb Squad, a high finding | 100.0% (1/1)" in capsys.readouterr().out
+
+
+# Named incidents ---------------------------------------------------------------------------
+
+def _dataset_sample(tmp_path, ecosystem, name, version, inner_name, inner):
+    path = (f"samples/{ecosystem}/compromised_lib/{name}/{version}/"
+            f"2026-08-04-{name}-v{version}.zip")
+    target = tmp_path / "dataset" / path
+    target.parent.mkdir(parents=True)
+    target.write_bytes(encrypted_zip({f"2026-08-04-{name}-v{version}/{inner_name}": inner}))
+    return path
+
+
+def test_incident_version_gains_a_preinstall_hook(tmp_path):
+    incident = incidents.Incident("Test", "npm", "cachething", "6.0.0", "2026-08-04T09:35:00Z",
+                                  "MAL-2026-0", "npm")
+    registry = Registry()
+    registry.npm("cachething", {
+        "5.1.0": {"tarball": tarball({"package.json": manifest(), "index.js": "1;\n"}),
+                  "time": "2026-07-01T00:00:00Z"},
+        "5.0.0": {"tarball": tarball({"package.json": manifest()}),
+                  "time": "2026-06-01T00:00:00Z"}})
+    inner = tarball({"package.json": manifest({"preinstall": "node setup.mjs"}),
+                     "index.js": "1;\n", "setup.mjs": "1;\n"})
+    path = _dataset_sample(tmp_path, "npm", "cachething", "6.0.0", "cachething-6.0.0.tgz", inner)
+    found = incidents.find((incident,), [path, "samples/npm/x/other/1.0.0/2026-01-01-o.zip"])
+    assert found[incident].path == path
+    (tmp_path / "work").mkdir()
+    row = incidents.evaluate(incident, found[incident], tmp_path / "dataset",
+                             tmp_path / "work", registry)
+    assert row["status"] == "compared" and row["previous"] == "5.1.0"
+    assert row["reported"] is True
+    assert [(e["change"], e["surface"], e["kind"]) for e in row["entry_points"]] == [
+        ("added", "npm", "preinstall script")]
+    assert "MAL-2026-0" in incidents.markdown([row], "a" * 40)
+
+
+def test_incident_wheel_gains_a_pth_file(tmp_path):
+    incident = incidents.Incident("Test", "pypi", "agent-thing", "1.26.1",
+                                  "2026-11-17T20:35:20Z", "MAL-2026-1", "python")
+    registry = Registry()
+    base = "https://files.pythonhosted.org/packages"
+    urls = []
+    for kind, filename, data in (
+            ("sdist", "agent_thing-1.26.0.tar.gz",
+             tarball({"setup.py": "from setuptools import setup\nsetup()\n"},
+                     prefix="agent_thing-1.26.0/")),
+            ("bdist_wheel", "agent_thing-1.26.0-py3-none-any.whl",
+             wheel({"agent_thing/__init__.py": ""}))):
+        registry.urls[f"{base}/{filename}"] = data
+        urls.append({"filename": filename, "url": f"{base}/{filename}", "packagetype": kind,
+                     "digests": {"sha256": hashlib.sha256(data).hexdigest()},
+                     "upload_time_iso_8601": "2026-11-12T18:25:37Z"})
+    registry.urls["https://pypi.org/pypi/agent-thing/1.26.0/json"] = json.dumps(
+        {"info": {}, "urls": urls}).encode()
+    registry.urls["https://pypi.org/pypi/agent-thing/json"] = json.dumps({"releases": {
+        "1.26.0": [{"upload_time_iso_8601": "2026-11-12T18:25:37Z"}]}}).encode()
+    inner = wheel({"agent_thing/__init__.py": "", "agent_thing_meta.pth": "import agent_thing\n"})
+    path = _dataset_sample(tmp_path, "pypi", "agent-thing", "1.26.1",
+                           "agent_thing-1.26.1-py3-none-any.whl", inner)
+    [sample] = samples.parse_listing([path])
+    (tmp_path / "work").mkdir()
+    row = incidents.evaluate(incident, sample, tmp_path / "dataset", tmp_path / "work",
+                             registry)
+    assert row["status"] == "compared" and row["artifacts"] == ["wheel"]
+    assert row["reported"] is True
+    assert [(e["surface"], e["kind"]) for e in row["entry_points"]] == [
+        ("python", ".pth import line")]
+    assert "BS-EP-001" in row["findings"]["review"]
+
+
+def test_incident_missing_from_the_dataset(tmp_path):
+    [incident] = [i for i in incidents.INCIDENTS if i.package == "keyv"]
+    assert incidents.find(incidents.INCIDENTS, []) == {}
+    row = incidents.evaluate(incident, None, tmp_path, tmp_path, Registry())
+    assert row["status"] == "not in the dataset" and "reported" not in row
+    text = incidents.markdown([row], "72c723be5470")
+    assert "not in the dataset" in text and "MAL-2026-11524" in text
+    assert "no findings does not mean safe" in text
+    assert all(i.surface in ("npm", "python") and i.report.startswith("MAL-")
+               for i in incidents.INCIDENTS)

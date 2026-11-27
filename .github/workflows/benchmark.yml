@@ -86,6 +86,9 @@ jobs:
           uv run --locked python -m benchmark select --listing data/listing.txt \
             --per-ecosystem "$PER_ECOSYSTEM" --cutoff "$CUTOFF" \
             -o data/selected.json --paths data/paths.txt
+          uv run --locked python -m benchmark incidents --listing data/listing.txt \
+            --paths data/incident-paths.txt
+          cat data/incident-paths.txt >> data/paths.txt
 
       - name: Fetch the selected samples
         run: |
@@ -128,6 +131,17 @@ jobs:
             --json data/scores.json --markdown data/scores.md
           cat data/scores.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Diff the named incident versions
+        # The versions OpenSSF reports confirm for ChainDrop and agent-framework, against
+        # the release before each, where this dataset commit has the sample.
+        env:
+          DATASET_COMMIT: ${{ inputs.dataset-commit }}
+        run: |
+          uv run --locked python -m benchmark incidents --listing data/listing.txt \
+            --dataset data/dataset --dataset-commit "$DATASET_COMMIT" \
+            -o data/incidents.json --markdown data/incidents.md
+          cat data/incidents.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Keep the results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -138,5 +152,7 @@ jobs:
             data/results.jsonl
             data/scores.json
             data/scores.md
+            data/incidents.json
+            data/incidents.md
           if-no-files-found: ignore
           retention-days: 90

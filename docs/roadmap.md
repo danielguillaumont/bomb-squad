@@ -156,6 +156,16 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 **Exit (Phase 2), not yet met:** for the ChainDrop and `agent-framework` versions named in their write-ups, wherever the artifacts can still be obtained from public malware datasets, the new entry point is reported as a new capability.
 
+- **The versions:** Microsoft's ChainDrop write-up names keyv, flat-cache and cache-manager but no versions. StepSecurity names `agent-framework` 1.26.1 and 1.26.2. OpenSSF malicious-packages confirms:
+  - keyv 6.0.0 ([MAL-2026-11524](https://github.com/ossf/malicious-packages/blob/main/osv/malicious/npm/keyv/MAL-2026-11524.json));
+  - flat-cache 6.1.24 ([MAL-2026-11971](https://github.com/ossf/malicious-packages/blob/main/osv/malicious/npm/flat-cache/MAL-2026-11971.json));
+  - cache-manager 7.2.10 ([MAL-2026-11523](https://github.com/ossf/malicious-packages/blob/main/osv/malicious/npm/cache-manager/MAL-2026-11523.json));
+  - `agent-framework` 1.26.1 and 1.26.2 ([MAL-2026-20101](https://github.com/ossf/malicious-packages/blob/main/osv/malicious/pypi/agent-framework/MAL-2026-20101.json)).
+- **The artifacts:** checked on 2026-11-27, none of these is in a public dataset. The DataDog dataset's newest commit, `72c723be5470` of 2026-11-05, has no sample of them. `pypi_malregistry` was last updated on 2026-11-11, before the `agent-framework` releases. npm and PyPI no longer serve these versions.
+- **The check:** the benchmark job diffs each of these versions against the release before it whenever its dataset commit has the sample ([methodology](methodology.md#how-the-benchmark-works)). Until then, harmless stand-ins cover the changes the write-ups describe:
+  - a release that gains an install hook (`postinstall` in `tests/test_diff.py`, `preinstall` in `tests/test_benchmark.py`);
+  - a wheel that gains a `.pth` file (both files).
+
 ## Phase 3: Pull-request gate
 
 - A GitHub Action for pull requests that change manifests or lockfiles (Dependabot, Renovate or people), workflows, editor files or agent files.

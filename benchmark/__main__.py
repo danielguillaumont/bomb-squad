@@ -9,10 +9,11 @@ import sys
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from benchmark import benign, samples, score, tools
+from benchmark import benign, incidents, samples, score, tools
 from bombsquad import __version__
 from bombsquad.registry import http_get
 
@@ -125,6 +126,34 @@ def _score(args) -> int:
     return 0
 
 
+def _incidents(args) -> int:
+    found = incidents.find(incidents.INCIDENTS,
+                           args.listing.read_text(encoding="utf-8").splitlines())
+    if args.paths:
+        args.paths.write_text("".join(f"{s.path}\n" for s in found.values()),
+                              encoding="utf-8")
+        print(f"{len(found)} of {len(incidents.INCIDENTS)} incident versions in the dataset")
+        return 0
+    if not (args.dataset and args.output):
+        raise SystemExit("incidents: give --paths, or --dataset and --output")
+    rows = []
+    for incident in incidents.INCIDENTS:
+        with tempfile.TemporaryDirectory(prefix="incident-", ignore_cleanup_errors=True) as work:
+            try:
+                rows.append(incidents.evaluate(incident, found.get(incident), args.dataset,
+                                               Path(work), http_get))
+            except Exception as exc:  # reported, as a benchmark row would be
+                rows.append({**asdict(incident), "report_url": incident.report_url,
+                             "status": f"error: {exc.__class__.__name__}: {str(exc)[:200]}"})
+    args.output.write_text(json.dumps({"dataset_commit": args.dataset_commit, "incidents": rows},
+                                      indent=2) + "\n", encoding="utf-8")
+    text = incidents.markdown(rows, args.dataset_commit)
+    if args.markdown:
+        args.markdown.write_text(text, encoding="utf-8")
+    sys.stdout.write(text)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m benchmark")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -159,8 +188,17 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--json", type=Path)
     c.add_argument("--markdown", type=Path)
 
+    i = sub.add_parser("incidents", help="diff the named incident versions in the dataset")
+    i.add_argument("--listing", type=Path, required=True)
+    i.add_argument("--paths", type=Path, help="only write the samples' paths, one per line")
+    i.add_argument("--dataset", type=Path, help="the dataset checkout")
+    i.add_argument("--dataset-commit", default="")
+    i.add_argument("--output", "-o", type=Path)
+    i.add_argument("--markdown", type=Path)
+
     args = parser.parse_args(argv)
-    return {"select": _select, "run": _run, "score": _score}[args.command](args)
+    return {"select": _select, "run": _run, "score": _score,
+            "incidents": _incidents}[args.command](args)
 
 
 if __name__ == "__main__":
