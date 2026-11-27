@@ -204,6 +204,21 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
   - A tag that moved before the first recorded run is not seen.
 - GitHub generates archives on request and publishes no hash for them, so unlike registry artifacts they are not checked against one.
 
+## Pull-request gate
+
+`bombsquad gate BASE HEAD`, where both are checked-out folders. The `action.yml` Action checks out the pull request's base commit in a git worktree, outside the workspace, and passes both folders.
+
+- **Repository:** both folders are scanned and compared as in [Version diff](#version-diff). New and changed entry points, new findings and new minified lines are reported, wherever they are: workflows, actions, editor and hook files, agent files, package scripts and code.
+- **Dependencies:** pinned versions are read from `package-lock.json` and `npm-shrinkwrap.json` (lockfile versions 1 to 3), `uv.lock`, `poetry.lock`, and `name==version` lines in `requirements*.txt`.
+  - Only npm registry and PyPI packages are read. Git, path, link and private-index entries are counted in the notes.
+  - `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`, `Pipfile.lock` and `pdm.lock` are noted as not read.
+  - Each version the head pins and the base did not is paired with the base version it most likely replaces: one that was removed, else the closest lower one. It is then reviewed as `bombsquad diff` would.
+  - A package new to the lockfile is reviewed against nothing, so everything it has is new.
+  - Direct dependencies come first, up to `--max-packages` (25 by default). The rest are listed as not reviewed. A version the registry cannot serve is listed with the error.
+- **Comment:** text from the pull request or a registry is escaped. Paths, commands and evidence go in code spans that a backtick cannot end early, other text has Markdown and HTML escaped, and `@` is written as an entity so no one is notified. The comment is cut to fit GitHub's limit, and the JSON report keeps everything.
+- **SARIF** holds the repository's new findings. Dependency findings are in files the repository does not have, so they stay in the comment and the JSON.
+- `--fail-on` applies to new findings and signals, in the repository and in dependencies.
+
 ## Accuracy
 
 Not measured yet. Detection rates will come only from the benchmark in [Phase 4](roadmap.md#phase-4-benchmark-against-guarddog): time-split, compared with GuardDog on the same packages, with denominators and dataset dates.

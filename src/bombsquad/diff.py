@@ -207,8 +207,16 @@ def compare(subject: str, old: Side, new: Side, now: datetime | None = None) -> 
 
 def signals(old: Release | None, new: Release | None, now: datetime | None = None
             ) -> list[Signal]:
-    if old is None or new is None:
+    """Publish signals for `new`, compared with `old` when there is one."""
+    if new is None:
         return []
+    out = _changes(old, new) if old is not None else []
+    if new.published is not None:
+        out.append(_age(new, now))
+    return out
+
+
+def _changes(old: Release, new: Release) -> list[Signal]:
     out: list[Signal] = []
     if old.publisher and new.publisher and old.publisher != new.publisher:
         out.append(Signal("publisher-changed", Level.REVIEW,
@@ -231,24 +239,24 @@ def signals(old: Release | None, new: Release | None, now: datetime | None = Non
         out.append(Signal("repository-changed", Level.REVIEW,
                           f"the declared repository changed from {old.repository} to "
                           f"{new.repository}"))
-    if new.published is not None:
-        moment = now or datetime.now(UTC)
-        published = new.published if new.published.tzinfo else new.published.replace(
-            tzinfo=UTC)
-        age = moment - published
-        days = age.total_seconds() / 86400
-        when = published.strftime("%Y-%m-%d %H:%M UTC")
-        if days < RECENT_DAYS:
-            hours = max(0, int(age.total_seconds() // 3600))
-            out.append(Signal("recent-release", Level.REVIEW,
-                              f"{new.version} was published {when}, {hours} hours before this "
-                              f"scan, inside the {RECENT_DAYS}-day cooldown this project uses "
-                              "for its own dependencies"))
-        else:
-            out.append(Signal("release-age", Level.INFO,
-                              f"{new.version} was published {when}, {int(days)} days before "
-                              "this scan"))
     return out
+
+
+def _age(new: Release, now: datetime | None) -> Signal:
+    assert new.published is not None
+    moment = now or datetime.now(UTC)
+    published = new.published if new.published.tzinfo else new.published.replace(tzinfo=UTC)
+    age = moment - published
+    days = age.total_seconds() / 86400
+    when = published.strftime("%Y-%m-%d %H:%M UTC")
+    if days < RECENT_DAYS:
+        hours = max(0, int(age.total_seconds() // 3600))
+        return Signal("recent-release", Level.REVIEW,
+                      f"{new.version} was published {when}, {hours} hours before this scan, "
+                      f"inside the {RECENT_DAYS}-day cooldown this project uses for its own "
+                      "dependencies")
+    return Signal("release-age", Level.INFO,
+                  f"{new.version} was published {when}, {int(days)} days before this scan")
 
 
 # Registries and local paths -----------------------------------------------------------------
@@ -271,12 +279,28 @@ def diff_registry(spec: str, fetch: Fetch = http_get, now: datetime | None = Non
     its GitHub repository at the release tag; with `record`, also check that tag against
     earlier observations kept in that file, and add this one."""
     ecosystem, name, old_version, new_version = parse_spec(spec)
+    return diff_release(ecosystem, name, old_version, new_version, fetch, now, source, record)
+
+
+def diff_release(ecosystem: str, name: str, old_version: str | None, new_version: str,
+                 fetch: Fetch = http_get, now: datetime | None = None, source: bool = False,
+                 record: Path | None = None) -> DiffReport:
+    """`diff_registry` for parsed versions. With no old version, everything the new one
+    has is reported as new."""
     lookup = npm_releases if ecosystem == "npm" else pypi_releases
-    old_release, new_release = lookup(name, [old_version, new_version], fetch)
+    if old_version is None:
+        [new_release] = lookup(name, [new_version], fetch)
+        old_release = None
+    else:
+        old_release, new_release = lookup(name, [old_version, new_version], fetch)
     with tempfile.TemporaryDirectory(prefix="bombsquad-",
                                      ignore_cleanup_errors=True) as work:
         sides = []
+        if old_release is None:
+            sides.append(Side("(not a dependency before)", ScanReport(__version__, [], []), {}))
         for label, release in (("old", old_release), ("new", new_release)):
+            if release is None:
+                continue
             folder = Path(work, label)
             folder.mkdir()
             notes: list[str] = []

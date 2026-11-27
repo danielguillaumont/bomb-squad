@@ -86,6 +86,29 @@ Output is text, JSON or SARIF 2.1.0 (for GitHub code scanning). `--fail-on high|
 
 `bombsquad diff` downloads both versions from npm or PyPI, checks each against the registry's hash, unpacks them without running anything, and scans both. It reports new and changed entry points, new findings, code files that gained a minified line, and publish signals: a different publisher or maintainers, provenance that went missing, a changed repository, and how recently the new version was published. With `--source` it also compares the new version with its GitHub repository at the release tag, listing files only in the package or changed from the source, and with `--record` it keeps each tag's commit so a tag that later moves is reported.
 
+### In pull requests
+
+`bombsquad gate` reports what a pull request newly runs: new entry points and findings in the repository, and what each dependency version its lockfiles newly pin gains from the registry. As a GitHub Action:
+
+```yaml
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: danielguillaumont/bomb-squad@<commit SHA>
+        with:
+          fail-on: high
+```
+
+It writes the report to the job summary and outputs the paths of Markdown, JSON and SARIF files. [`gate.yml`](.github/workflows/gate.yml) shows how to post the Markdown as a comment from a separate job, the only one with write access.
+
 ## How it stays safe
 
 The input is data, never code:

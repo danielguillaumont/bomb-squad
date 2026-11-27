@@ -41,6 +41,8 @@ The input is the bytes of every scanned file and of pasted text, including workf
 | A decompression bomb exhausts disk or memory | Unpacking stops at 20,000 members or 500 MB of decompressed bytes, counted while reading. | In place |
 | Unpacked malware on a development machine | Archives are unpacked to a temporary folder that is deleted afterwards, and never run. Antivirus may still quarantine files there. Benchmarks over malware datasets run only on Linux CI. | Partial |
 | Code scanning results are uploaded from CI | The upload job alone has `security-events: write`, uses `github/codeql-action/upload-sarif` pinned by SHA, and does not run for pull requests from forks. | In place |
+| A pull request attacks the gate that reviews it | The gate runs on `pull_request`, never `pull_request_target`, so it gets a read-only token and no secrets on fork pull requests. The pull request's code is only parsed. uv runs from the Action's own folder, so the repository's uv settings are not read. The base is checked out with LFS downloads off. | In place |
+| The gate's comment is used to inject content or notify people | One job, with only `pull-requests: write`, posts the comment. It downloads the report as data and runs nothing from the pull request. Untrusted text is escaped or put in code spans, and `@` cannot mention anyone. Fork pull requests get no comment, only the job summary. | In place |
 | Antivirus quarantines test fixtures, breaking checkouts | Fixtures that look like malware are ROT13-encoded in the tests and decoded in memory. | In place |
 
 ## Later phases

@@ -327,9 +327,10 @@ def test_third_party_actions_by_tag_and_self_hosted_runners(tmp_path):
 
 
 def test_this_repository_follows_its_own_rules():
-    report = scan([ROOT / ".github"])
+    report = scan([ROOT / ".github", ROOT / "action.yml"])
     assert {e.kind for e in report.entry_points} == {
-        "workflow job test", "workflow job code-scanning", "workflow job actionlint"}
+        "workflow job test", "workflow job code-scanning", "workflow job actionlint",
+        "workflow job review", "workflow job comment", "composite action"}
     assert report.findings == []
 
 
