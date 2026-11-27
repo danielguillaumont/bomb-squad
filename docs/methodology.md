@@ -106,7 +106,7 @@ Markdown is split into front matter, fenced code blocks, inline code and HTML co
 These run on every text file in the scan, whatever its language:
 
 - **BS-UC-001:** direction-changing controls, Unicode tag characters, runs of four or more variation selectors or private-use characters (HIGH), and zero-width characters (REVIEW). A byte order mark at the start of a file, single emoji variation selectors, subdivision flag emoji (a black flag, two to seven tag letters or digits, then the cancel tag) and zero-width non-joiners next to letters of scripts that need them (Persian, Indic and others) are ignored.
-- **BS-OB-001:** code after 100 or more spaces or tabs on a line. Leading indentation is ignored when it is under 200 characters, or within 100 characters of the line above, as in deeply nested data. Markdown and plain-text files are skipped, because rendering collapses whitespace, except agent instruction files, which agents read raw.
+- **BS-OB-001:** code after 100 or more spaces or tabs on a line. Leading indentation is ignored when it is under 200 characters, or within 100 characters of the line above, as in deeply nested data. The rest of the line must be able to run: two words, or a word and an operator such as `(`, `=`, `;` or `|`. A lone word or punctuation is not reported, such as a docstring wrapped after a run of spaces or a caret line under an error message. Markdown and plain-text files are skipped, because rendering collapses whitespace, except agent instruction files, which agents read raw.
 
 ## PowerShell
 
