@@ -23,6 +23,12 @@ on:
           Selections of earlier runs to leave out, as SEED:COUNT pairs separated by commas
           (2026:200,2026:5 for a held-out sample). Exact only on the same dataset commit.
         default: ""
+      version-pairs:
+        description: >-
+          Also diff each benign release against the release before it, as the pull-request
+          gate reviews an update, and count the false alarms.
+        type: boolean
+        default: true
       detonate:
         description: >-
           Also detonate packages in the sandbox: none, benign (the popular releases only), or
@@ -143,6 +149,7 @@ jobs:
           SEED: ${{ inputs.seed }}
           LEAVE_OUT: ${{ inputs.leave-out }}
           DETONATE: ${{ inputs.detonate }}
+          VERSION_PAIRS: ${{ inputs.version-pairs }}
         run: |
           set -euo pipefail
           if ! [[ "$DETONATE" =~ ^(none|benign|all)$ ]]; then
@@ -151,8 +158,10 @@ jobs:
           fi
           leave_out=()
           for pair in ${LEAVE_OUT//,/ }; do leave_out+=(--exclude-selection "$pair"); done
+          pairs=()
+          if [[ "$VERSION_PAIRS" == "true" ]]; then pairs+=(--version-pairs); fi
           uv run --locked python -m benchmark run --detonate "$DETONATE" --selected data/selected.json \
-            --seed "$SEED" "${leave_out[@]}" \
+            --seed "$SEED" "${leave_out[@]}" "${pairs[@]}" \
             --dataset data/dataset --dataset-commit "$DATASET_COMMIT" \
             --dataset-date "$DATASET_DATE" --guarddog guarddog \
             --guarddog-version "$GUARDDOG_VERSION" \
