@@ -73,6 +73,20 @@ def test_missing_path_is_an_error(capsys):
     assert "not found" in capsys.readouterr().err
 
 
+def test_malformed_assembly_qualified_type_names_do_not_stop_the_scan(tmp_path, capsys):
+    # On .NET (pwsh), reading TypeName.FullName parses the assembly part and throws on
+    # some malformed names; two malicious npm samples stopped whole scans this way.
+    odd = ["[Foo, a/b]", '[Foo, "x"]', "[Foo, a=b=c]", "[Foo, a,b=]", "[Foo, ,]",
+           "[Foo, Version=1.2.3.4.5]", "[Foo, Culture=zz-qq-ww]", "[Foo, a b c]"]
+    (tmp_path / "odd.ps1").write_text("".join(f"$x = {t}::Bar()\n" for t in odd),
+                                      encoding="utf-8")
+    (tmp_path / "ok.ps1").write_text("Remove-Item C:\\x\n", encoding="utf-8")
+    assert main(["scan", str(tmp_path), "--format", "json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert {f["rule_id"] for f in report["findings"] if f["path"].endswith("ok.ps1")} == {
+        "BS-FS-001"}
+
+
 def test_decode_keeps_bytes_meaning():
     assert decode("Get-Date\r\n".encode("utf-16"))[0] == "Get-Date\r\n"
     assert decode(b"\xef\xbb\xbfls")[1] == "utf-8-sig"

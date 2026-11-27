@@ -162,6 +162,12 @@ class _Scan:
             item.imports = list(dict.fromkeys(
                 p for module, level in py.imports
                 for p in self.resolve_python_import(key, module, level)))
+            for relative, held in py.exec_files:
+                target = (key.parent / relative).resolve()
+                if target.is_file() and self.inside_roots(target):
+                    item.imports.append(target)  # analysed as part of what runs this
+                else:
+                    item.hits.append(held)
             self.results[item.shown].notes.extend(py.notes)
         elif language == "shell":
             sh = analyze_shell(text)

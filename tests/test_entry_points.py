@@ -279,6 +279,32 @@ def test_a_published_package_keeps_levels_only_for_what_installing_runs(tmp_path
     assert len(as_package.entry_points) == len(as_project.entry_points)
 
 
+def test_setup_py_that_runs_its_own_version_file(tmp_path):
+    root = build(tmp_path, {
+        "setup.py": (
+            "import os\n"
+            "here = os.path.abspath(os.path.dirname(__file__))\n"
+            "version = {}\n"
+            "with open(os.path.join(here, 'demo', 'version.py')) as fp:\n"
+            "    exec(fp.read(), version)\n"
+            "path = os.path.join('demo', 'about.py')\n"
+            "with open(path, 'rb') as f:\n"
+            "    exec(compile(f.read(), path, 'exec'))\n"
+            "exec(open(os.environ['X']).read())\n"  # not a known file: still reported
+            "def compile(x):\n    return x\n"
+            "compile(version)\n"  # the file's own compile, not the built-in
+        ),
+        "demo/version.py": "__version__ = '1.0'\n",
+        "demo/about.py": "import socket\n",
+    })
+    report = scan([root])
+    [entry] = report.entry_points
+    assert sorted(t.rsplit("/", 1)[-1] for t in entry.targets) == [
+        "about.py", "setup.py", "version.py"]
+    assert [f.region.line for f in report.findings if f.rule.id == "BS-DE-006"] == [9]
+    assert ids_at(report, "about.py") == {"BS-NET-003"}
+
+
 def test_local_modules_that_setup_py_imports_are_followed(tmp_path):
     root = build(tmp_path, {
         "setup.py": "from setuptools import setup\nfrom demo.build import hook\nsetup()\n",
