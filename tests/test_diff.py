@@ -93,6 +93,9 @@ class Registry:
                 "_npmUser": {"name": spec.get("publisher", "alice"), "email": "a@example.invalid"},
                 "maintainers": [{"name": n, "email": f"{n}@example.invalid"}
                                 for n in spec.get("maintainers", ["alice"])]}
+            for key in ("repository", "gitHead"):
+                if key in spec:
+                    document["versions"][version][key] = spec[key]
             document["time"][version] = spec["time"]
         self.urls[f"https://registry.npmjs.org/{name}"] = json.dumps(document).encode()
 

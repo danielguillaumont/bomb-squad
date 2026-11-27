@@ -21,7 +21,9 @@ from bombsquad import __version__
 
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI = "https://pypi.org"
-ALLOWED_HOSTS = frozenset({"registry.npmjs.org", "pypi.org", "files.pythonhosted.org"})
+ALLOWED_HOSTS = frozenset({"registry.npmjs.org", "pypi.org", "files.pythonhosted.org",
+                           "api.github.com", "codeload.github.com"})
+REGISTRY_HOSTS = frozenset({"registry.npmjs.org", "files.pythonhosted.org"})
 MAX_METADATA_BYTES = 200 * 1024 * 1024  # full npm documents of large packages are big
 MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
 TIMEOUT_SECONDS = 60
@@ -90,6 +92,8 @@ class Release:
     publisher: str | None = None  # the account that published it, where the registry says
     maintainers: list[str] | None = None
     repository: str | None = None
+    directory: str | None = None  # the package's folder inside the repository (npm)
+    git_head: str | None = None  # the commit npm recorded at publish time
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -110,6 +114,8 @@ def verify(artifact: Artifact, data: bytes) -> None:
 
 def download(artifact: Artifact, fetch: Fetch = http_get) -> bytes:
     check_url(artifact.url)
+    if urllib.parse.urlsplit(artifact.url).hostname not in REGISTRY_HOSTS:
+        raise FetchError(f"{artifact.filename} is not served by the registry: {artifact.url}")
     data = fetch(artifact.url, MAX_ARTIFACT_BYTES)
     verify(artifact, data)
     return data
@@ -122,6 +128,11 @@ def _time(value: object) -> datetime | None:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _directory(value: object) -> str | None:
+    folder = value.get("directory") if isinstance(value, dict) else None
+    return folder.strip("/") if isinstance(folder, str) and folder.strip("/") else None
 
 
 def _repository(value: object) -> str | None:
@@ -172,7 +183,10 @@ def npm_releases(name: str, versions: list[str], fetch: Fetch = http_get) -> lis
             maintainers=sorted({p.get("name") for p in people if isinstance(p, dict)
                                 and isinstance(p.get("name"), str)})
             if isinstance(people, list) else None,
-            repository=_repository(manifest.get("repository")), notes=notes))
+            repository=_repository(manifest.get("repository")),
+            directory=_directory(manifest.get("repository")),
+            git_head=manifest.get("gitHead") if isinstance(manifest.get("gitHead"), str)
+            else None, notes=notes))
     return out
 
 

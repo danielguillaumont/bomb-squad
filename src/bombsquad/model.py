@@ -89,6 +89,19 @@ class FileResult:
 
 
 @dataclass
+class Signal:
+    """A fact about how a version was published, or where it came from, as opposed to
+    what its code does."""
+
+    id: str
+    level: Level
+    detail: str
+
+    def to_dict(self) -> dict:
+        return {"signal": self.id, "level": self.level.value, "detail": self.detail}
+
+
+@dataclass
 class EntryPoint:
     """Something that runs without anyone choosing to run it."""
 
