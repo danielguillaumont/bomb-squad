@@ -6,8 +6,8 @@ import hashlib
 import re
 from pathlib import Path
 
+from bombsquad.catalogue import ALL_RULES as RULES
 from bombsquad.model import Finding, Level, ScanReport
-from bombsquad.powershell.rules import RULES
 
 SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 INFORMATION_URI = "https://github.com/danielguillaumont/bomb-squad"

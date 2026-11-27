@@ -16,19 +16,20 @@ class InputError(Exception):
     """A path that cannot be scanned."""
 
 
-def collect_files(paths: Iterable[Path]) -> list[Path]:
-    """Expand directories into the PowerShell files they contain, in a stable order."""
-    files: list[Path] = []
+def collect_files(paths: Iterable[Path]) -> list[tuple[Path, bool]]:
+    """Every file under the given paths, in a stable order, each marked True when it was
+    named on the command line rather than found in a directory."""
+    files: list[tuple[Path, bool]] = []
     for path in paths:
         if path.is_dir():
             for root, dirs, names in os.walk(path):
                 dirs[:] = sorted(d for d in dirs if d not in SKIPPED_DIRS)
-                for name in sorted(names):
-                    candidate = Path(root, name)
-                    if candidate.suffix.lower() in POWERSHELL_SUFFIXES:
-                        files.append(candidate)
+                # Symlinked files are skipped: a link to ~/.aws/credentials inside a scanned
+                # repository would otherwise be read, and could surface in evidence.
+                files.extend((Path(root, name), False) for name in sorted(names)
+                             if not Path(root, name).is_symlink())
         elif path.is_file():
-            files.append(path)
+            files.append((path, True))
         else:
             raise InputError(f"not found: {path}")
     return files

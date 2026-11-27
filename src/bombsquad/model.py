@@ -88,6 +88,34 @@ class FileResult:
         }
 
 
+@dataclass
+class EntryPoint:
+    """Something that runs without anyone choosing to run it."""
+
+    surface: str  # npm | python | ...
+    kind: str  # e.g. "postinstall script", ".pth import line"
+    trigger: str  # when it runs
+    path: str
+    region: Region
+    runs: str  # the command or code, as written
+    targets: list[str] = field(default_factory=list)  # files analysed because of it
+
+    def describe(self) -> str:
+        return f"runs on {self.trigger}: {self.kind} in {self.path}:{self.region.line}"
+
+    def to_dict(self) -> dict:
+        return {
+            "surface": self.surface,
+            "kind": self.kind,
+            "trigger": self.trigger,
+            "path": self.path,
+            "line": self.region.line,
+            "column": self.region.column,
+            "runs": self.runs,
+            "targets": list(self.targets),
+        }
+
+
 REPORT_LIMITATIONS = (
     "Static analysis only: nothing in the input was run, imported or installed.",
     "Findings are operations the code could perform, not proof that it would.",
@@ -103,6 +131,8 @@ class ScanReport:
     files: list[FileResult]
     findings: list[Finding]
     parser: dict | None = None
+    entry_points: list[EntryPoint] = field(default_factory=list)
+    files_read: int = 0
 
     def highest_level(self) -> Level | None:
         if not self.findings:
@@ -115,6 +145,8 @@ class ScanReport:
             "tool": {"name": "bombsquad", "version": self.tool_version},
             "parser": self.parser,
             "limitations": list(REPORT_LIMITATIONS),
+            "files_read": self.files_read,
+            "entry_points": [e.to_dict() for e in self.entry_points],
             "files": [f.to_dict() for f in self.files],
             "findings": [f.to_dict() for f in self.findings],
         }

@@ -8,7 +8,9 @@ import re
 import shlex
 from dataclasses import dataclass, field
 
-from bombsquad.model import FileResult, Finding, Level
+from bombsquad.catalogue import ALL_RULES as RULES
+from bombsquad.code.common import credential_reference
+from bombsquad.model import FileResult, Finding, Level, Region
 from bombsquad.powershell import names
 from bombsquad.powershell.parser import (
     Command,
@@ -17,7 +19,6 @@ from bombsquad.powershell.parser import (
     Span,
     parse_documents,
 )
-from bombsquad.powershell.rules import RULES
 
 MAX_DEPTH = 3
 BATCH_SIZE = 100
@@ -71,10 +72,22 @@ class Child:
 @dataclass(frozen=True)
 class Context:
     path: str
-    anchor: Span | None
+    anchor: Region | None
     via: tuple[str, ...]
     depth: int
     quiet: bool = False
+    tag: object = None
+
+
+@dataclass(frozen=True)
+class Source:
+    """PowerShell to analyse: a whole file, or code embedded in another file."""
+
+    path: str
+    text: str
+    anchor: Region | None = None  # where embedded code sits in its file
+    via: tuple[str, ...] = ()
+    tag: object = None  # returned with each finding, for the caller's bookkeeping
 
 
 def _clip(text: str) -> str:
@@ -275,6 +288,11 @@ class _DocumentAnalysis:
                 self.children.append(
                     Child(cmd.span, text, f"text passed to Invoke-Expression at line "
                                           f"{cmd.span.line}"))
+        elif name in ("Get-ChildItem", "Get-Item"):
+            path = (_path_argument(cmd) or "").lower().replace("\\", "/").rstrip("/*")
+            if path in ("env:", "env:/"):
+                self.hit("BS-ENV-001", cmd.span, cmd.text, [*via, "lists the Env: drive"],
+                         limitations)
         elif name in ("Invoke-WebRequest", "Invoke-RestMethod", "Start-BitsTransfer"):
             self.downloads.append(cmd.span)
         elif name == "Add-Type":
@@ -399,6 +417,8 @@ class _DocumentAnalysis:
             if literal:
                 self.children.append(Child(inv.span, literal,
                                            f"text passed to InvokeScript at line {inv.span.line}"))
+        elif member == "getenvironmentvariables":
+            self.hit("BS-ENV-001", inv.span, inv.text, ["reads every environment variable"])
         elif member in ("load", "loadfile", "loadfrom", "unsafeloadfrom") and type_name.endswith(
                 "reflection.assembly"):
             self.hit("BS-DE-004", inv.span, inv.text)
@@ -458,9 +478,13 @@ class _DocumentAnalysis:
     def tampering_strings(self) -> None:
         for s in self.doc.strings:
             lower = s.value.lower()
+            via = [f"string built from literals: {_clip(s.value)}"] if s.folded else []
             if any(token in lower for token in AMSI_TOKENS):
-                via = [f"string built from literals: {_clip(s.value)}"] if s.folded else []
                 self.hit("BS-AV-001", s.span, _slice(self.doc.text, s.span), via)
+            reference = credential_reference(s.value)
+            if reference:
+                self.hit("BS-CR-001", s.span, _slice(self.doc.text, s.span),
+                         [*via, f"names {reference}"])
 
     def dedupe(self) -> list[Hit]:
         """Keep one hit per rule where one hit's span contains another's."""
@@ -491,7 +515,7 @@ def analyze_document(doc: ParsedDocument) -> tuple[list[Hit], list[Child]]:
 
 def _finding(h: Hit, ctx: Context) -> Finding:
     rule = RULES[h.rule_id]
-    region = (ctx.anchor or h.span).region
+    region = ctx.anchor or h.span.region
     return Finding(
         rule=rule,
         path=ctx.path,
@@ -506,10 +530,18 @@ def _finding(h: Hit, ctx: Context) -> Finding:
 def analyze_sources(sources: list[tuple[str, str]], results: dict[str, FileResult]
                     ) -> tuple[dict, list[Finding]]:
     """Analyse (path, text) pairs. Updates `results` and returns parser info and findings."""
+    parser_info, tagged = analyze_tagged([Source(path, text) for path, text in sources], results)
+    return parser_info, [f for f, _ in tagged]
+
+
+def analyze_tagged(sources: list[Source], results: dict[str, FileResult]
+                   ) -> tuple[dict, list[tuple[Finding, object]]]:
+    """Analyse sources, returning each finding with the tag of the source it came from."""
     parser_info: dict = {}
-    findings: list[Finding] = []
+    findings: list[tuple[Finding, object]] = []
     pending: list[tuple[str, str, Context]] = [
-        (str(i), text, Context(path, None, (), 0)) for i, (path, text) in enumerate(sources)
+        (str(i), s.text, Context(s.path, s.anchor, s.via, 0, tag=s.tag))
+        for i, s in enumerate(sources)
     ]
     while pending:
         next_round: list[tuple[str, str, Context]] = []
@@ -532,11 +564,12 @@ def analyze_sources(sources: list[tuple[str, str]], results: dict[str, FileResul
                     elif ctx.quiet:
                         continue  # decoded base64 that is not PowerShell
                     else:
+                        what = ctx.via[-1] if ctx.via else "embedded PowerShell"
                         result.notes.append(
-                            f"Content ({ctx.via[-1]}) has parse errors. Rules were applied to "
+                            f"Content ({what}) has parse errors. Rules were applied to "
                             "the parts the parser could read.")
                 hits, children = analyze_document(doc)
-                findings.extend(_finding(h, ctx) for h in hits)
+                findings.extend((_finding(h, ctx), ctx.tag) for h in hits)
                 if children and ctx.depth >= MAX_DEPTH:
                     result.notes.append(
                         f"Content nested more than {MAX_DEPTH} levels deep was not analysed.")
@@ -546,9 +579,9 @@ def analyze_sources(sources: list[tuple[str, str]], results: dict[str, FileResul
                         child.origin + " of that content")
                     next_round.append((
                         f"{doc.id}.{n}", child.text,
-                        Context(ctx.path, ctx.anchor or child.anchor, (*ctx.via, origin),
-                                ctx.depth + 1, child.quiet),
+                        Context(ctx.path, ctx.anchor or child.anchor.region,
+                                (*ctx.via, origin), ctx.depth + 1, child.quiet, ctx.tag),
                     ))
         pending = next_round
-    findings.sort(key=lambda f: (f.path, f.region.line, f.region.column, f.rule.id))
+    findings.sort(key=lambda t: (t[0].path, t[0].region.line, t[0].region.column, t[0].rule.id))
     return parser_info, findings
