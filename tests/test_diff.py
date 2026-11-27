@@ -249,15 +249,31 @@ def test_cli_diff_of_two_archives(tmp_path, capsys):
     ("package/index.js", "package/index.js"),
     ("./package//lib/./a.js", "package/lib/a.js"),
     ("package/../../evil.js", None),
-    ("/etc/passwd", None),
-    ("C:/Windows/evil.dll", None),
     ("package\\..\\evil.js", None),
-    ("package/con.js", None),
-    ("package/a:b.js", None),
-    ("package/trailing.", None),
+    ("..", None),
+    # Installers drop leading slashes and drive letters; names Windows cannot hold are
+    # renamed so the file is still scanned.
+    ("/etc/passwd", "etc/passwd"),
+    ("C:/Windows/evil.dll", "Windows/evil.dll"),
+    ("package/con.js", "package/_con.js"),
+    ("package/a:b.js", "package/a_b.js"),
+    ("mad-3.0.2./index.js", "mad-3.0.2_/index.js"),
+    ("package/...", "package/_"),
 ])
 def test_safe_names(name, expected):
     assert safe_name(name) == expected
+
+
+def test_unpacking_renames_unportable_members(tmp_path):
+    data = tarball({"pkg-1.0./setup.py": "x = 1\n", "pkg-1.0./a|b.py": "y = 2\n"})
+    root, notes = unpack(data, "demo.tar.gz", tmp_path / "out")
+    assert sorted(p.name for p in root.rglob("*") if p.is_file()) == ["a_b.py", "setup.py"]
+    assert len(notes) == 2 and all("was unpacked as" in n for n in notes)
+    empty = io.BytesIO()
+    with zipfile.ZipFile(empty, "w") as archive:
+        archive.writestr("only-a-folder/", "")
+    root, notes = unpack(empty.getvalue(), "x.zip", tmp_path / "empty")
+    assert root == (tmp_path / "empty").resolve() and not list(root.iterdir())
 
 
 def test_unpacking_skips_links_and_escapes(tmp_path):

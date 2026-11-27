@@ -1,9 +1,11 @@
 """Unpack a package archive (npm tarball, sdist, wheel) into a folder for scanning.
 
-Only regular files are written. Links, devices, absolute paths, `..`, drive letters and
-names Windows cannot hold are skipped and reported, so nothing lands outside the folder and
-the same archive unpacks the same way on every OS. Member counts and sizes are capped,
-counting the bytes actually decompressed. Nothing in the archive is run.
+Only regular files are written. Links, devices and paths that climb out with `..` are
+skipped and reported. Leading slashes and drive letters are dropped, as npm's and Python's
+unpackers drop them, and names Windows cannot hold are renamed and reported, so every file
+an installer would write is scanned, nothing lands outside the folder, and the same archive
+unpacks the same way on every OS. Member counts and sizes are capped, counting the bytes
+actually decompressed. Nothing in the archive is run.
 """
 
 from __future__ import annotations
@@ -24,16 +26,25 @@ class ArchiveError(Exception):
     """An archive that cannot be unpacked safely."""
 
 
+def _parts(name: str) -> list[str]:
+    name = re.sub(r"^[A-Za-z]:", "", name.replace("\\", "/"))
+    return [p for p in name.split("/") if p not in ("", ".")]
+
+
+def _portable(part: str) -> str:
+    part = _BAD_CHARS.sub("_", part)
+    if part != part.rstrip(". "):
+        part = part.rstrip(". ") + "_"
+    return "_" + part if _RESERVED.match(part) else part
+
+
 def safe_name(name: str) -> str | None:
-    """A relative path that stays inside the folder, or None."""
-    name = name.replace("\\", "/")
-    if name.startswith("/") or re.match(r"^[A-Za-z]:", name):
+    """A relative path that stays inside the folder and that every OS can hold, or None
+    for a path that climbs out with `..` or names nothing."""
+    parts = _parts(name)
+    if not parts or ".." in parts:
         return None
-    parts = [p for p in name.split("/") if p not in ("", ".")]
-    if not parts or any(p == ".." or _BAD_CHARS.search(p) or _RESERVED.match(p) or
-                        p != p.rstrip(". ") for p in parts):
-        return None
-    return "/".join(parts)
+    return "/".join(_portable(p) for p in parts)
 
 
 class _Writer:
@@ -44,11 +55,14 @@ class _Writer:
         self.count = 0
         self.seen: set[str] = set()
 
-    def skip(self, name: str, why: str) -> None:
+    def note(self, text: str) -> None:
         if len(self.notes) < 50:
-            self.notes.append(f"{name!r} was not unpacked: {why}.")
+            self.notes.append(text)
         elif len(self.notes) == 50:
-            self.notes.append("Further skipped members are not listed.")
+            self.notes.append("Further skipped or renamed members are not listed.")
+
+    def skip(self, name: str, why: str) -> None:
+        self.note(f"{name!r} was not unpacked: {why}.")
 
     def write(self, raw: str, stream) -> None:
         self.count += 1
@@ -56,8 +70,11 @@ class _Writer:
             raise ArchiveError(f"more than {MAX_MEMBERS} files")
         name = safe_name(raw)
         if name is None:
-            self.skip(raw, "its path is absolute, leaves the folder or is not a valid name")
+            self.skip(raw, "its path leaves the folder")
             return
+        if name != "/".join(_parts(raw)) or re.match(r"^(?:/|\\|[A-Za-z]:)", raw):
+            self.note(f"{raw!r} was unpacked as {name!r}: absolute paths and names Windows "
+                      "cannot hold are rewritten.")
         if name.lower() in self.seen:
             self.skip(raw, "another member has the same name, ignoring case")
             return
@@ -115,6 +132,7 @@ def unpack(data: bytes, filename: str, dest: Path, password: bytes | None = None
         # RuntimeError: encrypted without the right password; NotImplementedError: an
         # encryption or compression method zipfile does not support.
         raise ArchiveError(f"{filename}: {exc}") from None
+    writer.dest.mkdir(parents=True, exist_ok=True)  # an archive with no files to write
     children = list(writer.dest.iterdir())
     root = children[0] if len(children) == 1 and children[0].is_dir() else writer.dest
     return root, writer.notes

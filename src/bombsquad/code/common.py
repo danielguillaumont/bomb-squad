@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 from bombsquad.model import Level, Region
@@ -33,6 +34,23 @@ class Snippet:
     # snippet is a verbatim block of the file. Findings then point at the exact line;
     # otherwise they point at `region`.
     offset: tuple[int, int] | None = None
+
+
+def command_line(words: list[str]) -> str:
+    """An argument list as one shell command line, quoted so the shell analyzer reads the
+    same words back: single quotes, or double quotes for a word that holds single quotes
+    and nothing the shell would expand inside double quotes."""
+    out = []
+    for word in words:
+        if word and re.fullmatch(r"[\w@%+=:,./-]+", word):
+            out.append(word)
+        elif "'" not in word:
+            out.append(f"'{word}'")
+        elif not re.search(r'["$`\\!]', word):
+            out.append(f'"{word}"')
+        else:
+            out.append("'" + word.replace("'", "'\"'\"'") + "'")
+    return " ".join(out)
 
 
 def clip(text: str) -> str:
@@ -94,12 +112,42 @@ def _kind(ch: str) -> str | None:
     return None
 
 
+_BLACK_FLAG, _CANCEL_TAG, _ZWNJ = 0x1F3F4, 0xE007F, 0x200C
+
+
+def _in_script(ch: str) -> bool:
+    """A letter or mark of a script from Hebrew onwards, where the zero-width non-joiner
+    is part of normal spelling (Persian, Indic and Southeast Asian scripts among them)."""
+    return ord(ch) >= 0x0590 and unicodedata.category(ch)[0] in "LM"
+
+
+def _expected(line: str) -> set[int]:
+    """Positions of characters that are part of ordinary text: tag characters in a flag
+    emoji (U+1F3F4, tags, U+E007F), and a zero-width non-joiner next to a letter of a
+    script that uses it."""
+    ok: set[int] = set()
+    for i, ch in enumerate(line):
+        if ord(ch) == _BLACK_FLAG:
+            j = i + 1
+            while j < len(line) and (0xE0061 <= ord(line[j]) <= 0xE007A or
+                                     0xE0030 <= ord(line[j]) <= 0xE0039):
+                j += 1
+            # Subdivision codes are short (gbeng, usca); a longer run is not a flag.
+            if j < len(line) and ord(line[j]) == _CANCEL_TAG and 2 <= j - i - 1 <= 7:
+                ok.update(range(i + 1, j + 1))
+        elif ord(ch) == _ZWNJ and (i > 0 and _in_script(line[i - 1]) or
+                                   i + 1 < len(line) and _in_script(line[i + 1])):
+            ok.add(i)
+    return ok
+
+
 def hidden_characters(text: str, positions: Positions) -> list[CodeHit]:
     """Report invisible and direction-changing characters, one hit per affected line.
 
     Single variation selectors and private-use characters are common in emoji and icon
     fonts, so only runs of four or more are reported. A byte order mark at the start of
-    a file is ignored.
+    a file, flag emoji built from tag characters, and zero-width non-joiners inside words
+    of scripts that need them are ignored.
     """
     hits: list[CodeHit] = []
     for line_no in range(1, len(positions.line_starts) + 1):
@@ -109,9 +157,12 @@ def hidden_characters(text: str, positions: Positions) -> list[CodeHit]:
         found: dict[str, int] = {}
         first: int | None = None
         run_kind, run_len = None, 0
+        expected = _expected(line)
         for i, ch in enumerate(line):
             kind = _kind(ch)
             if kind == "invisible" and ord(ch) == 0xFEFF and line_no == 1 and i == 0:
+                kind = None
+            if i in expected:
                 kind = None
             if kind in ("selector", "private"):
                 run_len = run_len + 1 if run_kind == kind else 1
@@ -145,13 +196,24 @@ def hidden_characters(text: str, positions: Positions) -> list[CodeHit]:
 _PADDING = re.compile(r"[ \t]{100,}(?=\S)")
 
 
+def _previous_indent(text: str, positions: Positions, line_no: int) -> int:
+    """The leading whitespace of the nearest non-blank line above, or 0."""
+    for number in range(line_no - 1, 0, -1):
+        line = positions.line_text(number)
+        if line.strip():
+            return len(line) - len(line.lstrip(" \t"))
+    return 0
+
+
 def whitespace_padding(text: str, positions: Positions) -> list[CodeHit]:
     hits: list[CodeHit] = []
     for match in _PADDING.finditer(text):
         line_no = positions.region(match.start(), match.start()).line
         line_start = positions.line_starts[line_no - 1]
-        if text[line_start:match.start()].strip() == "" and len(match.group()) < 200:
-            continue  # deep indentation, not padding
+        if text[line_start:match.start()].strip() == "" and (
+                len(match.group()) < 200 or
+                len(match.group()) - _previous_indent(text, positions, line_no) < 100):
+            continue  # deep indentation, or nesting that deepens step by step: not padding
         hidden_start = match.end()
         line_end = text.find("\n", hidden_start)
         line_end = len(text) if line_end < 0 else line_end

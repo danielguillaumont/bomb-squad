@@ -75,6 +75,7 @@ Requires Python 3.12. PowerShell files and command lines also need PowerShell: P
 uv tool install git+https://github.com/danielguillaumont/bomb-squad
 bombsquad scan .\some-package               # files or directories
 Get-Clipboard | bombsquad scan -             # check a pasted command before running it
+bombsquad scan .\unpacked-pkg --package      # as a published package: workflows and hooks in it are info
 bombsquad scan . --format sarif -o bombsquad.sarif --fail-on high
 bombsquad diff npm:some-package@1.4.2..1.4.3   # what an update newly gains
 bombsquad diff pypi:some-package@2.0..2.1 --format json

@@ -24,8 +24,8 @@ from bombsquad.code.javascript import analyze_javascript
 from bombsquad.code.python import analyze_python
 from bombsquad.code.shell import analyze_shell
 from bombsquad.discovery import LANGUAGE_BY_SUFFIX, Discovery
-from bombsquad.inventory import discover, is_detected
-from bombsquad.model import EntryPoint, FileResult, Finding, Region, ScanReport
+from bombsquad.inventory import discover, is_detected, surface
+from bombsquad.model import EntryPoint, FileResult, Finding, Level, Region, ScanReport
 from bombsquad.powershell.analyze import Source, analyze_tagged
 from bombsquad.powershell.parser import ParserUnavailable
 from bombsquad.sources import (
@@ -52,6 +52,23 @@ TEXT_SUFFIXES = frozenset({
 TEXT_NAMES = frozenset({"makefile", "dockerfile", "justfile", ".npmrc", ".yarnrc", ".cursorrules",
                         ".windsurfrules", ".clinerules"})
 
+NOT_RUN_FROM_PACKAGE = ("Found in a published package, where installing it does not run "
+                        "this. It runs only where the package's files are used as a "
+                        "project or repository, so it is reported at info.")
+
+
+NOT_REACHED_IN_PACKAGE = ("Found in a published package, in a PowerShell file that no entry "
+                          "point runs, so installing does not run it. It is reported at info.")
+
+
+def runs_from_package(entry: EntryPoint) -> bool:
+    """Whether installing a package, or starting Python with it installed, runs this entry
+    point. Workflows, git hooks, editor and agent settings, and conftest.py inside a
+    published package do not run: they belong to the project the package was built from."""
+    return entry.surface == "npm" or (entry.surface == "python" and entry.kind != "conftest.py")
+
+
+PROSE_SUFFIXES = frozenset({".md", ".markdown", ".txt", ".rst"})
 SECRET_RULES = frozenset({"BS-CR-001", "BS-ENV-001", "BS-AG-003"})
 NETWORK_RULES = frozenset({"BS-NET-001", "BS-NET-002", "BS-NET-003", "BS-AG-004"})
 
@@ -79,7 +96,8 @@ class _Tagged:
 
 
 class _Scan:
-    def __init__(self) -> None:
+    def __init__(self, package: bool = False) -> None:
+        self.package = package
         self.results: dict[str, FileResult] = {}
         self.files: dict[Path, _File] = {}
         self.texts: dict[Path, str] = {}
@@ -138,13 +156,22 @@ class _Scan:
         self.result(item.shown, language)
         if language == "javascript":
             js = analyze_javascript(text, item.shown)
-            item.hits = js.hits
+            item.hits, item.snippets = js.hits, js.snippets
             item.imports = [p for p in (self.resolve_import(key, spec)
                                         for spec in js.relative_imports) if p]
             self.results[item.shown].notes.extend(js.notes)
         elif language == "python":
             py = analyze_python(text)
-            item.hits = py.hits
+            item.hits, item.snippets = py.hits, py.snippets
+            item.imports = list(dict.fromkeys(
+                p for module, level in py.imports
+                for p in self.resolve_python_import(key, module, level)))
+            for relative, held in py.exec_files:
+                target = (key.parent / relative).resolve()
+                if target.is_file() and self.inside_roots(target):
+                    item.imports.append(target)  # analysed as part of what runs this
+                else:
+                    item.hits.append(held)
             self.results[item.shown].notes.extend(py.notes)
         elif language == "shell":
             sh = analyze_shell(text)
@@ -161,6 +188,35 @@ class _Scan:
                     self.inside_roots(candidate)):
                 return candidate
         return None
+
+    def resolve_python_import(self, importer: Path, module: str, level: int) -> list[Path]:
+        """Local files an import runs: each package's __init__.py on the way and the
+        module itself. Absolute imports are looked up from the importer's folder upwards,
+        as the folder of the script Python runs is first on its path."""
+        if level:
+            bases = [importer.parents[level - 1]] if level <= len(importer.parents) else []
+        else:
+            bases = []
+            folder = importer.parent
+            while self.inside_roots(folder) and len(bases) < MAX_IMPORT_DEPTH:
+                bases.append(folder)
+                folder = folder.parent
+        parts = [p for p in module.split(".") if p] if module else []
+        for base in bases:
+            found = [base / "__init__.py"] if level and (base / "__init__.py").is_file() else []
+            folder = base
+            for i, part in enumerate(parts):
+                if (folder / part / "__init__.py").is_file():
+                    folder = folder / part
+                    found.append(folder / "__init__.py")
+                elif i == len(parts) - 1 and (folder / f"{part}.py").is_file():
+                    found.append(folder / f"{part}.py")
+                else:
+                    break
+            found = [f.resolve() for f in found if self.inside_roots(f.resolve())]
+            if found:
+                return found
+        return []
 
     def follow(self, entry: EntryPoint, start: Path, language: str) -> None:
         """Analyse an entry point's target and the local files it imports."""
@@ -191,7 +247,7 @@ class _Scan:
                         f"Imports more than {MAX_IMPORT_DEPTH} levels from {entry.path} "
                         "were not followed.")
                 continue
-            frontier.extend((p, "javascript", depth + 1) for p in item.imports)
+            frontier.extend((p, lang, depth + 1) for p in item.imports)
 
     def add_powershell_file(self, path: Path, entry: EntryPoint | None) -> None:
         shown = display_path(path)
@@ -265,7 +321,11 @@ class _Scan:
         if text is None:
             return
         positions = Positions(text)
-        hits = [*hidden_characters(text, positions), *whitespace_padding(text, positions)]
+        hits = hidden_characters(text, positions)
+        # Rendered Markdown and plain prose collapse whitespace, so padding hides nothing
+        # from a reader there; agent instruction files are read raw, so they are checked.
+        if key.suffix.lower() not in PROSE_SUFFIXES or surface(key) == "agent":
+            hits += whitespace_padding(text, positions)
         if not hits:
             return
         shown = display_path(key)
@@ -315,14 +375,33 @@ class _Scan:
                    f"network: {net.rule.title.lower()} at {net.path}:{net.region.line} "
                    f"({clip(net.evidence)[:120]})"]
             if entry is not None:
-                out.append(Finding(rule, entry.path, entry.region, clip(entry.runs), rule.level,
-                                   [entry.describe(), *via]))
+                finding = Finding(rule, entry.path, entry.region, clip(entry.runs), rule.level,
+                                  [entry.describe(), *via])
+                if self.package and not runs_from_package(entry):
+                    _not_run(finding)
+                out.append(finding)
             else:
-                out.append(Finding(rule, secret.path, secret.region, secret.evidence,
-                                   rule.level, via, ["No entry point was found that runs this "
-                                                     "file; it was scanned because it was "
-                                                     "named or is PowerShell."]))
+                finding = Finding(rule, secret.path, secret.region, secret.evidence,
+                                  rule.level, via, ["No entry point was found that runs this "
+                                                    "file; it was scanned because it was "
+                                                    "named or is PowerShell."])
+                if self.package:
+                    self.unreached_in_package(finding)
+                out.append(finding)
         return out
+
+    def unreached_in_package(self, finding: Finding) -> None:
+        """In a published package, a finding no entry point reaches keeps its level only
+        when it is about hidden content (BS-UC-001, BS-OB-001), which misleads a reviewer
+        whether or not the file runs. Settings of a workflow, hook, editor or agent file
+        and PowerShell files that nothing runs drop to info."""
+        if finding.rule.id in ("BS-UC-001", "BS-OB-001"):
+            return
+        path = Path(finding.path)
+        if surface(path) not in (None, "package"):
+            _not_run(finding)
+        elif path.suffix.lower() in POWERSHELL_SUFFIXES:
+            _not_run(finding, NOT_REACHED_IN_PACKAGE)
 
     # Whole scan --------------------------------------------------------------------------
 
@@ -416,6 +495,13 @@ class _Scan:
                             "syntax such as && and ternaries. Install pwsh to parse it as "
                             "PowerShell 7.")
 
+        if self.package:
+            for t in self.tagged:
+                if t.entries:
+                    if not any(runs_from_package(e) for e in t.entries):
+                        _not_run(t.finding)
+                else:
+                    self.unreached_in_package(t.finding)
         findings = _dedupe([t.finding for t in self.tagged]) + self.correlate()
         if self.found.expressions:
             for f in findings:
@@ -440,6 +526,12 @@ def _restore(text: str, expressions: dict[str, str]) -> str:
     return text
 
 
+def _not_run(finding: Finding, note: str = NOT_RUN_FROM_PACKAGE) -> None:
+    finding.level = Level.INFO
+    if note not in finding.limitations:
+        finding.limitations.append(note)
+
+
 def _dedupe(findings: list[Finding]) -> list[Finding]:
     """Drop exact repeats: the same rule at the same place with the same evidence."""
     seen: set[tuple] = set()
@@ -453,9 +545,11 @@ def _dedupe(findings: list[Finding]) -> list[Finding]:
     return out
 
 
-def scan(paths: list[Path] | None = None, stdin_text: str | None = None) -> ScanReport:
-    """Scan files and directories, and optionally pasted PowerShell."""
-    return _Scan().run(paths or [], stdin_text)
+def scan(paths: list[Path] | None = None, stdin_text: str | None = None,
+         package: bool = False) -> ScanReport:
+    """Scan files and directories, and optionally pasted PowerShell. `package`: the paths
+    are a published package, so only what installing it runs keeps its level."""
+    return _Scan(package).run(paths or [], stdin_text)
 
 
 __all__ = ["STDIN_PATH", "scan"]

@@ -25,6 +25,13 @@ function Get-Span($extent) {
     }
 }
 
+# A type name as written. FullName parses an assembly-qualified name such as
+# [Foo, Bar=...] and throws on a malformed one, so the plain name is the fallback.
+function Get-TypeName($typeName) {
+    try { return [string]$typeName.FullName } catch { }
+    try { return [string]$typeName.Name } catch { return '' }
+}
+
 # Returns a folded string for an expression built only from literals, or $null.
 function Get-Folded($node) {
     if ($null -eq $node) { return $null }
@@ -49,7 +56,7 @@ function Get-Folded($node) {
             return $null
         }
         'ConvertExpressionAst' {
-            $tn = $node.Type.TypeName.FullName.ToLowerInvariant()
+            $tn = (Get-TypeName $node.Type.TypeName).ToLowerInvariant()
             if ($tn -eq 'string') { return Get-Folded $node.Child }
             if ($tn -eq 'char') {
                 $c = $node.Child
@@ -122,7 +129,7 @@ function Get-FoldedList($node) {
     } elseif ($node -is [System.Management.Automation.Language.CommandExpressionAst]) {
         return Get-FoldedList $node.Expression
     } elseif ($node -is [System.Management.Automation.Language.ConvertExpressionAst]) {
-        $tn = $node.Type.TypeName.FullName.ToLowerInvariant()
+        $tn = (Get-TypeName $node.Type.TypeName).ToLowerInvariant()
         if ($tn -eq 'char[]') {
             $codes = Get-FoldedList $node.Child
             if ($null -eq $codes) { return $null }
@@ -223,7 +230,7 @@ function ConvertTo-Document($doc) {
     $invocations = @(foreach ($m in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] }, $true)) {
         $typeName = $null
         if ($m.Expression -is [System.Management.Automation.Language.TypeExpressionAst]) {
-            $typeName = $m.Expression.TypeName.FullName
+            $typeName = Get-TypeName $m.Expression.TypeName
         }
         # A list keeps a $null for each argument that is not a literal, so positions hold.
         $argValues = New-Object System.Collections.Generic.List[object]
@@ -259,7 +266,7 @@ function ConvertTo-Document($doc) {
     foreach ($t in $ast.FindAll({ param($n)
             $n -is [System.Management.Automation.Language.TypeExpressionAst] -or
             $n -is [System.Management.Automation.Language.TypeConstraintAst] }, $true)) {
-        $strings.Add([ordered]@{ value = $t.TypeName.FullName; span = (Get-Span $t.Extent); folded = $false })
+        $strings.Add([ordered]@{ value = (Get-TypeName $t.TypeName); span = (Get-Span $t.Extent); folded = $false })
     }
 
     $assignments = @(foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true)) {
@@ -290,7 +297,27 @@ $raw = [Console]::In.ReadToEnd()
 $requestJson = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($raw.Trim()))
 $request = ConvertFrom-Json -InputObject $requestJson
 
-$documents = @(foreach ($doc in @($request.documents)) { ConvertTo-Document $doc })
+# One document that the walk cannot handle is reported as a parse error of that
+# document, so it cannot stop the others from being analysed.
+$documents = @(foreach ($doc in @($request.documents)) {
+    try { ConvertTo-Document $doc }
+    catch {
+        [ordered]@{
+            id           = $doc.id
+            parse_errors = @([ordered]@{
+                message  = "Bomb Squad could not read this code's syntax tree: $($_.Exception.Message)"
+                error_id = 'BombSquadWalkFailed'
+                span     = [ordered]@{ start = 0; end = 0; line = 1; column = 1; end_line = 1; end_column = 1 }
+            })
+            commands     = @()
+            invocations  = @()
+            strings      = @()
+            assignments  = @()
+            functions    = @()
+            usings       = @()
+        }
+    }
+})
 $response = [ordered]@{
     parser    = [ordered]@{
         edition = [string]$PSVersionTable.PSEdition

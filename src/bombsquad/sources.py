@@ -39,7 +39,9 @@ def decode(data: bytes) -> tuple[str, str]:
     """Decode script bytes the way PowerShell would, keeping line endings as they are.
 
     Returns the text and the encoding used. BOM-less files that are not valid UTF-8
-    are read as Windows-1252, which is how Windows PowerShell 5.1 reads them.
+    are read as Windows-1252, which is how Windows PowerShell 5.1 reads them. Bytes that
+    do not fit the encoding a BOM names, such as an odd-length UTF-16 file, become U+FFFD
+    so the rest of the file is still analysed.
     """
     for bom, name in (
         (codecs.BOM_UTF8, "utf-8-sig"),
@@ -49,7 +51,7 @@ def decode(data: bytes) -> tuple[str, str]:
         (codecs.BOM_UTF16_BE, "utf-16"),
     ):
         if data.startswith(bom):
-            return data.decode(name), name
+            return data.decode(name, errors="replace"), name
     try:
         return data.decode("utf-8"), "utf-8"
     except UnicodeDecodeError:

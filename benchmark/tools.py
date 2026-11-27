@@ -28,7 +28,9 @@ def _run(command: list[str], timeout: int) -> tuple[str | None, str | None, floa
     except OSError as exc:
         return None, f"could not start: {exc}", time.monotonic() - start
     elapsed = time.monotonic() - start
-    if done.returncode not in (0, 1):
+    # Exit 1 means "found something" to both tools, but it is also what Python exits with
+    # on an uncaught exception, so output without a JSON object is an error too.
+    if done.returncode not in (0, 1) or "{" not in done.stdout:
         tail = done.stderr.strip().splitlines()[-1:] or [f"exit {done.returncode}"]
         return done.stdout, f"exit {done.returncode}: {tail[0][:300]}", elapsed
     return done.stdout, None, elapsed
@@ -51,6 +53,10 @@ def parse_bombsquad(text: str) -> dict:
         "levels": [level for level in LEVELS if level in levels],
         "rules": sorted({f.get("rule_id") for f in data.get("findings", [])
                          if isinstance(f.get("rule_id"), str)}),
+        "rules_by_level": {level: sorted({f.get("rule_id") for f in data.get("findings", [])
+                                          if f.get("level") == level
+                                          and isinstance(f.get("rule_id"), str)})
+                           for level in LEVELS if level in levels},
         "surfaces": sorted({e.get("surface") for e in data.get("entry_points", [])
                             if isinstance(e.get("surface"), str)}),
         "not_analysed": sum(1 for f in data.get("files", [])
@@ -63,18 +69,24 @@ def parse_guarddog(text: str) -> dict:
     results = data.get("results") if isinstance(data.get("results"), dict) else {}
     issues = data.get("issues")
     errors = data.get("errors") if isinstance(data.get("errors"), dict) else {}
+    # GuardDog 3 correlates rule matches into a 0-10 risk score labelled low, suspicious
+    # or high_risk. Its exit code still counts any matched rule.
+    risk = data.get("risk_score") if isinstance(data.get("risk_score"), dict) else {}
+    score, label = risk.get("score"), risk.get("label")
     return {
         "issues": issues if isinstance(issues, int) else 0,
         "rules": sorted(name for name, found in results.items() if found),
         "rule_errors": sorted(errors),
+        "score": score if isinstance(score, int | float) else None,
+        "label": label if isinstance(label, str) else None,
     }
 
 
 def bombsquad(root: Path, timeout: int = TIMEOUT_SECONDS) -> dict:
     out, error, seconds = _run([sys.executable, "-m", "bombsquad", "scan", str(root),
-                                "--format", "json"], timeout)
+                                "--package", "--format", "json"], timeout)
     result: dict = {"seconds": round(seconds, 2), "error": error}
-    if out and error is None:
+    if error is None:
         try:
             result.update(parse_bombsquad(out))
         except ValueError as exc:
@@ -87,7 +99,7 @@ def guarddog(executable: str, ecosystem: str, root: Path,
     out, error, seconds = _run([executable, ecosystem, "scan", str(root),
                                 "--output-format", "json"], timeout)
     result: dict = {"seconds": round(seconds, 2), "error": error}
-    if out and error is None:
+    if error is None:
         try:
             result.update(parse_guarddog(out))
         except ValueError as exc:

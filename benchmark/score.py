@@ -10,8 +10,11 @@ from pathlib import Path
 DETECTORS = (
     ("bombsquad", "high", "Bomb Squad, a high finding"),
     ("bombsquad", "review", "Bomb Squad, a review or high finding"),
-    ("guarddog", "any", "GuardDog, any rule"),
+    ("guarddog", "high_risk", "GuardDog, high risk"),
+    ("guarddog", "suspicious", "GuardDog, suspicious or high risk"),
+    ("guarddog", "any", "GuardDog, any rule (its exit code)"),
 )
+GUARDDOG_LABELS = {"high_risk": {"high_risk"}, "suspicious": {"suspicious", "high_risk"}}
 SPLITS = ("retrospective", "after-cutoff")
 
 
@@ -35,8 +38,14 @@ def flagged(row: dict, tool: str, threshold: str) -> bool | None:
     if result.get("error"):
         return None
     if tool == "guarddog":
-        return result.get("issues", 0) > 0
-    levels = set(result.get("levels", []))
+        if threshold == "any":
+            return result.get("issues", 0) > 0
+        if result.get("label") is None:
+            return None  # no risk score in the output
+        return result["label"] in GUARDDOG_LABELS[threshold]
+    if "levels" not in result:
+        return None  # no result was read
+    levels = set(result["levels"])
     return "high" in levels if threshold == "high" else bool(levels & {"high", "review"})
 
 

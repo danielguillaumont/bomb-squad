@@ -33,7 +33,9 @@ An entry point is code that runs without anyone choosing to run it. Each one in 
 - Lefthook scripts in `.lefthook/<hook>/`, pre-commit `script` hooks, a JavaScript action's `pre`, `main` and `post`, and husky hook files are targets directly. A JavaScript action's scripts may be anywhere in the scanned folder, because an action in a subfolder often runs `../lib/index.js` and the runner downloads the whole repository.
 - Agent hook commands, MCP server commands and the shell code blocks in agent instructions follow the same rule. `$CLAUDE_PROJECT_DIR` and similar variables are resolved to the project, and a skill's commands are also resolved from the skill's folder. A `NODE_OPTIONS=--require` file in agent settings is a target too.
 - Targets' relative `require` and `import` calls are followed, up to five levels and 500 files. Bare package names are not followed.
+- Python targets' imports of modules inside the scanned folder are followed the same way, with each package's `__init__.py` on the way, so a `setup.py` that imports `mypkg.build` has `mypkg/__init__.py` and `mypkg/build.py` checked too. Absolute imports are looked up from the importing file's folder upwards; installed packages are not followed. `exec(f.read())` or `exec(compile(f.read(), …))` of a file opened by a path written in the code (string literals, `os.path.join`, `/`, and folders built from `__file__`) is followed the same way, whatever the file's extension, instead of being reported as BS-DE-006; when the file is not in the scan, BS-DE-006 stands. Functions the file defines itself named `exec`, `eval` or `compile` are not the built-ins.
 - Code embedded with `node -e`/`-p`, `python -c`, `sh -c` or a `pwsh`/`powershell` command line is analysed in its own language, up to three levels deep. Its findings point at the line in the file that embeds it.
+- A command line written out literally in a process call is analysed as shell: `os.system`, `os.popen`, `subprocess.*` (a string or a list of strings, with `sys.executable` read as `python`) and `asyncio` subprocesses in Python; `exec`, `execSync`, `spawn`, `execFile` and their sync forms, and `Bun.spawn`, in JavaScript. A command built at run time is reported only as a process start.
 - JavaScript, Python and shell that no entry point reaches is not analysed unless it is named on the command line. PowerShell is analysed wherever it is.
 - Findings in reached files have a `via` that starts with the entry point that reaches them.
 
@@ -103,8 +105,8 @@ Markdown is split into front matter, fenced code blocks, inline code and HTML co
 
 These run on every text file in the scan, whatever its language:
 
-- **BS-UC-001:** direction-changing controls, Unicode tag characters, runs of four or more variation selectors or private-use characters (HIGH), and zero-width characters (REVIEW). A byte order mark at the start of a file and single emoji variation selectors are ignored.
-- **BS-OB-001:** code after 100 or more spaces or tabs on a line. Leading indentation under 200 characters is ignored.
+- **BS-UC-001:** direction-changing controls, Unicode tag characters, runs of four or more variation selectors or private-use characters (HIGH), and zero-width characters (REVIEW). A byte order mark at the start of a file, single emoji variation selectors, subdivision flag emoji (a black flag, two to seven tag letters or digits, then the cancel tag) and zero-width non-joiners next to letters of scripts that need them (Persian, Indic and others) are ignored.
+- **BS-OB-001:** code after 100 or more spaces or tabs on a line. Leading indentation is ignored when it is under 200 characters, or within 100 characters of the line above, as in deeply nested data. Markdown and plain-text files are skipped, because rendering collapses whitespace, except agent instruction files, which agents read raw.
 
 ## PowerShell
 
@@ -162,7 +164,7 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 - Code in modules, assemblies or other scripts the script loads.
 - Whether the code is reachable, for example `if ($false) { … }`. A finding means the code is present, not that it runs.
 - Behaviour of native tools beyond the arguments listed in each rule.
-- Code in installed dependencies, and Python imports: only JavaScript relative imports are followed.
+- Code in installed dependencies, and dynamic imports (`importlib`, `__import__`, `require` of a computed path).
 - Whether collected values reach a network call: BS-EX-001 is co-occurrence, not data flow.
 - In workflows: values that reach a script through `env:`, step outputs or files; the repository's default token permissions and whether it is public; and the code of reusable workflows, actions and container images fetched from elsewhere. BS-GHA-006 looks only at the step's own bash or sh script.
 - Remote pre-commit hooks, lefthook remotes and `extends`, husky v4 and `simple-git-hooks` configuration in `package.json`, and editor settings outside the repository.
@@ -177,7 +179,8 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 
 - **Fetching:** the npm package document or the PyPI JSON API gives each version's artifacts and hashes. Requests go only to `registry.npmjs.org`, `pypi.org` and `files.pythonhosted.org` over HTTPS, redirects included, with size limits. An artifact whose SHA-512 (npm, from `dist.integrity`) or SHA-256 (PyPI) differs from the registry's is not opened. When npm gives only a SHA-1 `shasum`, that is used and noted.
 - **Which artifacts:** the npm tarball; for PyPI, the sdist and one wheel, preferring a pure-Python `none-any` wheel. Platform-specific wheels other than the one chosen are not compared.
-- **Unpacking:** regular files only, written under a temporary folder that is deleted afterwards. Links, devices, absolute paths, `..`, drive letters, names Windows reserves or cannot hold, and names that differ only in case are skipped and listed in the report's notes. More than 20,000 members or 500 MB decompressed stops the diff.
+- **Unpacking:** regular files only, written under a temporary folder that is deleted afterwards. Links, devices, paths that climb out with `..`, and names that differ only in case are skipped and listed in the report's notes. Leading slashes and drive letters are dropped, as npm's and Python's unpackers drop them, and names Windows reserves or cannot hold are renamed (`a:b.js` to `a_b.js`), so a file is renamed in the notes rather than hidden from the scan. More than 20,000 members or 500 MB decompressed stops the diff.
+- **Published packages:** a registry release or a package archive is scanned as a package. Workflows, git hooks, editor and agent settings and `conftest.py` inside it are still listed, but their findings are reported at info with a note, because installing the package does not run them. So are findings in PowerShell files that no entry point runs. Hidden characters and whitespace padding keep their level wherever they are, because they mislead a reviewer whether or not the file runs. `bombsquad scan --package` does the same for a folder.
 - **Matching:** entry points match by surface, kind and file, and are reported as changed when their command changes. Findings match by rule, file and evidence, ignoring line numbers and whitespace, so code that only moved is not reported again. A finding that appears twice in the new version and once in the old one is reported once as new.
 - **Minified lines:** a JavaScript, TypeScript, Python, shell or PowerShell file that has a line of 1,000 characters or more in the new version and none in the old one, or is new and has one.
 - **Publish signals:**
@@ -240,12 +243,13 @@ Not measured yet. Detection rates will come only from the benchmark in [Phase 4]
   - The date in a sample's name is when DataDog found it, not when it was published.
 - **Benign set:** a seeded sample from the 1,000 most-downloaded packages per ecosystem.
   - The lists come from `npm-high-impact` 1.13.0 (npm) and hugovk/top-pypi-packages at commit `29c0d4c38c28` of 2026-11-01 (PyPI).
-  - For each package, the highest stable version published on or before the dataset commit's date is downloaded and checked as `bombsquad diff` does. For PyPI, that is the sdist and one wheel.
+  - For each package, the highest stable version published on or before the dataset commit's date is downloaded and checked as `bombsquad diff` does. For PyPI, that is the sdist and one wheel. A package that has only published pre-releases gets its highest pre-release.
+  - Releases over the 100 MB download limit, such as GPU wheels, cannot be checked and are left out.
   - A popular release is assumed benign; a compromised one in the sample would count as a false positive.
-- **Time split:** rules were frozen on 2026-11-27. Packages DataDog found after that date are the `after-cutoff` set; the rest are `retrospective`. No rule was written after looking at these samples, but many rules follow public write-ups of campaigns that the retrospective set includes, so only `after-cutoff` figures measure detection of the unknown.
+- **Time split:** the cutoff is the commit date of the Bomb Squad commit being run. Packages DataDog found after it are the `after-cutoff` set, which the rules could not have been written for; the rest are `retrospective`. Many rules follow public write-ups of campaigns in the retrospective set, and rules were changed after seeing the rule counts of an earlier run on it, so only `after-cutoff` figures measure detection of the unknown.
 - **Detectors:**
-  - Bomb Squad flags a package with a high finding, or, as a second detector, with a review or high finding.
-  - GuardDog 3.2.0, with its dependencies as of 2026-11-20, flags it when its JSON output reports at least one issue.
+  - Bomb Squad runs `scan --package`, as `bombsquad diff` scans a release, and flags a package with a high finding, or, as a second detector, with a review or high finding. Output without a result, such as a crash, counts as an error.
+  - GuardDog 3.2.0, with its dependencies as of 2026-11-20, at three thresholds: its risk label `high_risk`, its label `suspicious` or `high_risk`, and any matched rule (the criterion of its exit code). GuardDog 3 labels a package from a 0–10 risk score that pairs capabilities with threat indicators.
   - GuardDog is given the folder, so its registry-metadata rules do not run. Bomb Squad's `scan` reads no registry metadata either.
   - Each tool runs in its own process with a 300-second limit. A timeout or crash counts as an error for that tool and is reported, not counted as a miss or a pass.
 - **Scores:** recall on malicious packages, false positives per 1,000 benign releases, and precision on this mix, per ecosystem and split. Recall is also broken down by the kind of entry point Bomb Squad found, with the same counts for GuardDog. Every rate is given with its numerator and denominator.
