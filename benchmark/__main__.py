@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from benchmark import benign, incidents, samples, score, tools
+from benchmark import benign, detonation, incidents, samples, score, tools
 from bombsquad import __version__
 from bombsquad.registry import http_get
 
@@ -86,7 +86,14 @@ def _evaluate(row: dict, args, sample: samples.Sample | None) -> dict:
             return row
         row["bombsquad"] = tools.bombsquad(root)
         row["guarddog"] = tools.guarddog(args.guarddog, row["ecosystem"], root)
+        if args.detonate == "all" or (args.detonate == "benign" and sample is None):
+            with _DETONATIONS:
+                row["detonation"] = detonation.detonate(row, root, Path(work), sample is None,
+                                                        http_get, args.detonate_timeout)
     return row
+
+
+_DETONATIONS = threading.Semaphore(2)  # each runs two containers
 
 
 def _run(args) -> int:
@@ -105,10 +112,16 @@ def _run(args) -> int:
                         f"{benign.PYPI_LIST_REPO}@{benign.PYPI_LIST_COMMIT[:12]}",
         "benign_per_ecosystem": args.benign_per_ecosystem, "benign_top": args.benign_top,
         "benign_as_of": args.as_of,
+        "detonate": args.detonate,
     }
     if args.exclude_selection:
         meta["left_out"] = ("packages chosen with seed:count "
                             + ", ".join(args.exclude_selection))
+    if args.detonate != "none":
+        from bombsquad.detonate import runner
+        meta["detonate_timeout"] = args.detonate_timeout
+        for kind in ("npm", "pypi", "sink"):  # once, before the workers share them
+            runner.build_image(kind)
     with tempfile.TemporaryDirectory(prefix="bench-lists-") as work:
         benign_rows = _benign_packages(args, Path(work)) if args.benign_per_ecosystem else []
     jobs: list[tuple[dict, samples.Sample | None]] = [
@@ -207,6 +220,11 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--exclude-selection", action="append", default=[], metavar="SEED:COUNT",
                    help="leave out the benign packages this seed and count would choose")
     r.add_argument("--workers", type=int, default=4)
+    r.add_argument("--detonate", choices=("none", "benign", "all"), default="none",
+                   help="also detonate the benign packages, or every package, in the sandbox "
+                        "(Linux with Docker)")
+    r.add_argument("--detonate-timeout", type=int, default=detonation.TIMEOUT_SECONDS,
+                   metavar="SECONDS")
     r.add_argument("--output", "-o", type=Path, required=True)
 
     c = sub.add_parser("score", help="compute the scores from a results file")

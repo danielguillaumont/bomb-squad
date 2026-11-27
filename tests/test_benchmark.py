@@ -13,6 +13,7 @@ import io
 import json
 import random
 import struct
+import tarfile
 import zlib
 from datetime import UTC, date, datetime
 
@@ -362,3 +363,72 @@ def test_rates_are_shown_from_their_counts():
     assert score._cell(score._rate(90, 114)) == "78.9% (90/114)"
     assert score._cell(score._rate(100, 185)) == "54.1% (100/185)"
     assert score._cell(score._rate(0, 0)) == "n/a (0)"
+
+
+# Detonation in the benchmark ------------------------------------------------------------------
+
+def test_a_sample_without_an_archive_is_packed_as_an_sdist(tmp_path):
+    from benchmark import detonation
+
+    root = tmp_path / "sample" / "pkg"
+    (root / "demo").mkdir(parents=True)
+    (root / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    (root / "demo" / "__init__.py").write_text("", encoding="utf-8")
+    name, data = detonation.sample_artifact("pypi", "demo", "1.0", root, tmp_path)
+    assert name == "demo-1.0.tar.gz"
+    with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+        assert sorted(tar.getnames()) == ["demo-1.0/demo/__init__.py", "demo-1.0/setup.py"]
+    (tmp_path / "sample" / "demo-1.0-py3-none-any.whl").write_bytes(b"PK")
+    assert detonation.sample_artifact("pypi", "demo", "1.0", root, tmp_path) == (
+        "demo-1.0-py3-none-any.whl", b"PK")
+    assert detonation.sample_artifact("npm", "@s/x", "1.0", root, tmp_path)[0] == "s_x-1.0.tgz"
+
+
+def test_detonation_rows_keep_counts_not_content(tmp_path):
+    from benchmark import detonation
+    from bombsquad.detonate import runner
+    from tests.test_detonate import NPM_TRACE
+
+    def fake_run(ecosystem, name, version, artifact_name, data, unpacked, canaries, timeout):
+        assert artifact_name == "demo-1.0.0.tgz" and unpacked == tmp_path
+        return runner.RunResult(NPM_TRACE, [{"kind": "dns", "name": "c2.example.invalid"}],
+                                False, False)
+
+    row = {"ecosystem": "npm", "name": "demo", "version": "1.0.0",
+           "bombsquad": {"rules": ["BS-NET-003"]}}
+    result = detonation.detonate(row, tmp_path, tmp_path, False, None, run=fake_run)
+    assert result["error"] is None and result["flagged"] is True
+    assert result["seen"] == ["network", "credentials read", "programs started", "persistence"]
+    assert result["gaps"] == ["credentials read", "programs started", "persistence"]
+    assert result["dns_names"] == 1 and "c2.example.invalid" not in json.dumps(result)
+
+    def broken(*args):
+        raise runner.DetonationError("the sandbox recorded no trace")
+
+    assert detonation.detonate(row, tmp_path, tmp_path, False, None, run=broken)[
+        "error"].startswith("DetonationError")
+
+
+def test_detonation_is_scored_only_where_it_ran():
+    def detonated(set_, levels, flagged, seen=("network",), error=None):
+        r = row(set_, "npm", levels, 0)
+        r["detonation"] = {"flagged": flagged, "seen": list(seen), "error": error,
+                           "seconds": 4.0, "timed_out": False}
+        return r
+
+    rows = [detonated("malicious", [], True), detonated("malicious", ["review"], False),
+            detonated("malicious", [], False, seen=()), row("malicious", "npm", [], 0),
+            detonated("benign", [], False), detonated("benign", [], False, seen=())]
+    assert score.score({}, rows)["results"][-1]["tool"] == "guarddog"  # not detonated
+    scores = score.score({"detonate": "all"}, rows)
+    get = {(r["tool"], r["threshold"]): r for r in scores["results"]
+           if r["split"] == "retrospective" and r["ecosystem"] == "npm"}
+    assert get[("detonation", "flagged")]["recall"] == {"count": 1, "of": 3, "rate": 0.3333}
+    assert get[("detonation", "any")]["false_positives"]["count"] == 1
+    assert get[("combined", "review")]["recall"]["count"] == 2
+    assert get[("bombsquad", "review")]["recall"]["of"] == 4  # static still sees all four
+    [cost] = [c for c in scores["detonation_cost"] if c["set"] == "malicious"
+              and c["ecosystem"] == "npm"]
+    assert cost == {"ecosystem": "npm", "set": "malicious", "packages": 3, "errors": 0,
+                    "timed_out": 0, "median_seconds": 4.0, "total_seconds": 12.0}
+    assert "### Detonation cost" in score.markdown(scores)
