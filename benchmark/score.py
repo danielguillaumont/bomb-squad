@@ -108,7 +108,9 @@ def score(meta: dict, rows: list[dict]) -> dict:
 def _cell(rate: dict) -> str:
     if not rate["of"]:
         return "n/a (0)"
-    return f"{100 * rate['rate']:.1f}% ({rate['count']}/{rate['of']})"
+    # From the counts: formatting the stored, already rounded rate rounds twice, and
+    # 100/185 (54.05...%) would show as 54.0%.
+    return f"{100 * rate['count'] / rate['of']:.1f}% ({rate['count']}/{rate['of']})"
 
 
 def markdown(scores: dict) -> str:
