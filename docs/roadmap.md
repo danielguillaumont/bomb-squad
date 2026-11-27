@@ -59,9 +59,9 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 | npm | install | `preinstall`, `install`, `postinstall`, `prepare` scripts and the scripts they call; `binding.gyp` | 1a ✅ |
 | Python | install, interpreter start, test | `setup.py`, in-tree build backends, `.pth`, `sitecustomize.py`, `conftest.py` | 1a ✅ |
 | Scripts | when called by any of the above | JavaScript, TypeScript, Python, shell, PowerShell | 1a ✅ |
-| GitHub Actions | push, PR, schedule | `.github/workflows/*`, composite `action.yml` | 1b |
-| Editors | folder open, container start | `.vscode/tasks.json` (`runOn: folderOpen`), `.devcontainer/*` lifecycle commands | 1b |
-| Git hooks | commit, push | `.husky/`, `lefthook.yml`, `.pre-commit-config.yaml` | 1b |
+| GitHub Actions | push, PR, schedule | `.github/workflows/*`, composite `action.yml` | 1b ✅ |
+| Editors | folder open, container start | `.vscode/tasks.json` (`runOn: folderOpen`), `.devcontainer/*` lifecycle commands | 1b ✅ |
+| Git hooks | commit, push | `.husky/`, `lefthook.yml`, `.pre-commit-config.yaml` | 1b ✅ |
 | AI agents | agent start, tool call | `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json` hooks, `.cursor/rules`, `.github/copilot-instructions.md`, MCP configs, `SKILL.md`, agent `.env` files | 1c |
 
 ### 1a: npm, Python and the code they run ✅
@@ -80,18 +80,26 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 **Exit met:** `tests/test_entry_points.py` has fixtures modelled on the `preinstall` stealer, `.pth` and `conftest.py` techniques above, plus negatives (a prebuild-style install that only spawns a build, code no entry point reaches, targets outside the package).
 
-### 1b: workflows, editors and git hooks
+### 1b: workflows, editors and git hooks ✅
 
-- Workflow rules are deliberately narrow, covering only trust-boundary cases that lead to execution:
-  - `pull_request_target` or `workflow_run` with a checkout of untrusted code;
-  - `${{ github.event.* }}` interpolated into `run:`;
-  - missing or write-all permissions and `id-token: write`;
-  - third-party actions referenced by tag;
-  - self-hosted runners on public repos;
-  - secrets sent to the network from a step (the GhostAction pattern).
+- **Entry points:**
+  - each GitHub Actions workflow job, and composite, JavaScript and Docker actions in `action.yml`;
+  - VS Code tasks with `runOn: folderOpen`, and the tasks they depend on;
+  - dev container lifecycle commands, with `initializeCommand` reported because it runs on the host (BS-EP-003);
+  - husky hooks, lefthook commands, scripts and jobs, and pre-commit local hooks and remote hook repositories.
+- **Workflow rules** were kept narrow, covering only trust-boundary cases that lead to execution or credential exposure:
+  - `pull_request_target`, `workflow_run` or `issue_comment` with a checkout or fetch of the pull request's code (BS-GHA-001);
+  - attacker-controlled `${{ github.event.* }}` fields expanded into `run:` or `github-script` (BS-GHA-002);
+  - `write-all` or missing permissions (BS-GHA-003), and `id-token: write` (BS-GHA-004);
+  - self-hosted runners (BS-GHA-005);
+  - secrets sent to the network from a step, the GhostAction pattern (BS-GHA-006);
+  - third-party actions, reusable workflows, container images, pre-commit repositories and lefthook remotes referenced by tag or branch (BS-PIN-001).
 
   For a full audit, zizmor is the reference.
-- `run:` steps, editor tasks, devcontainer lifecycle commands and git hooks go through the 1a shell and script analysis.
+- **Analysis:** `run:` steps, task commands, lifecycle commands and hooks go through the 1a analysis in the language of their shell, with findings on the exact line of a `run: |` block. Files they run are followed. A file passed only as data (`cat x.sh`) is no longer a target, for npm scripts too.
+- **Parsing:** YAML is composed into nodes and never constructed into objects. VS Code's JSON with comments is read by Bomb Squad's own reader, which keeps positions.
+
+**Exit met:** `tests/test_repo_entry_points.py` has fixtures modelled on GhostAction, ChainDrop and PolinRider, the pull-request trust-boundary cases, and each git hook tool, plus negatives (base-branch `pull_request_target`, values passed through `env:`, header-only deploy tokens, tasks that do not run on open, data-only file arguments). This repository's own workflows produce no findings.
 
 ### 1c: agent files and code scanning
 

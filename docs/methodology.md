@@ -14,10 +14,20 @@ An entry point is code that runs without anyone choosing to run it. Each one in 
 | `sitecustomize.py`, `usercustomize.py` | every Python start, once on the path |
 | `setup.py`, in-tree build backends (`backend-path`) | building or installing from source |
 | `conftest.py` | running pytest in or below its directory |
+| Each job in `.github/workflows/*.yml` | the workflow's events |
+| `action.yml`: composite steps, JavaScript `pre`/`main`/`post`, Docker image | any workflow step that uses the action |
+| `.vscode/tasks.json` tasks with `runOptions.runOn: folderOpen`, and the tasks they `dependsOn` | opening the folder in a VS Code-based editor, once the workspace is trusted |
+| `devcontainer.json` `initializeCommand` | on the host, whenever the dev container is created or started |
+| `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, `postAttachCommand` | inside the dev container |
+| `.husky/<hook>` | the git operation, once husky is installed (its `prepare` script does this on `npm install`) |
+| `lefthook.yml` commands, scripts and jobs | the git operation, once `lefthook install` has run |
+| `.pre-commit-config.yaml` local hooks and remote hook repositories | `git commit` and other installed stages, once `pre-commit install` has run |
 
 ### Reachability
 
-- An npm hook's command is analysed as shell. Each word that names a JavaScript, TypeScript, Python, shell or PowerShell file inside the package directory makes that file a target.
+- An npm hook's command, a workflow `run:` step, a task or lifecycle command and a git hook command are analysed as shell, or in the language of the step's `shell:` (bash, sh, pwsh, powershell, python). Workflow steps on a `windows` runner default to pwsh, and VS Code shell tasks under `windows` to PowerShell. `cmd` is not analysed and the report says so.
+- A JavaScript, TypeScript, Python, shell or PowerShell file inside the package or repository becomes a target when a command runs it: as the command itself, as the script given to an interpreter (`node`, `python`, `bash`, `pwsh -File` and others), or through `uv run`, `poetry run` or `npx`. A file only passed as data, as in `cat x.sh` or `shellcheck x.sh`, is not a target. `${{ github.workspace }}`, `${{ github.action_path }}` and `${workspaceFolder}` are resolved for this.
+- Lefthook scripts in `.lefthook/<hook>/`, pre-commit `script` hooks, a JavaScript action's `pre`, `main` and `post`, and husky hook files are targets directly.
 - Targets' relative `require` and `import` calls are followed, up to five levels and 500 files. Bare package names are not followed.
 - Code embedded with `node -e`/`-p`, `python -c`, `sh -c` or a `pwsh`/`powershell` command line is analysed in its own language, up to three levels deep. Its findings point at the line in the file that embeds it.
 - JavaScript, Python and shell that no entry point reaches is not analysed unless it is named on the command line. PowerShell is analysed wherever it is.
@@ -26,6 +36,29 @@ An entry point is code that runs without anyone choosing to run it. Each one in 
 ### Correlation
 
 BS-EX-001 is reported once per entry point when the code it reaches both collects secrets (BS-CR-001 or BS-ENV-001) and has network access (BS-NET-001, -002 or -003). It sits at the entry point and names one finding of each kind. It does not prove that the collected values reach the network call; there is no data flow between files.
+
+GitHub Actions entry points are left out of BS-EX-001. Workflows and actions use tokens and the network by design, and the official toolkit bundled into JavaScript actions reads the OIDC token variables, so the combination says little there. BS-GHA-006 takes its place for workflow steps.
+
+## GitHub Actions
+
+Workflows and `action.yml` are composed into YAML nodes with PyYAML's safe loader and never constructed into objects. `${{ }}` expressions are replaced with placeholders of the same length before a script is parsed, because GitHub substitutes them before the shell starts. Evidence shows the original expression. Findings in a `run: |` block point at the exact line and column.
+
+The rules are deliberately narrow. For a full audit, zizmor is the reference.
+
+- **BS-GHA-001 (high):** a workflow triggered by `pull_request_target`, `workflow_run` or `issue_comment` checks out the pull request's code. That means `actions/checkout` with a `ref` or `repository` taken from the pull request's head, `refs/pull/…` or the `workflow_run` head, or a `run:` step that does `gh pr checkout` or a `git fetch` or `checkout` of those refs.
+- **BS-GHA-002:** a `${{ }}` expression in `run:` or in `actions/github-script`'s `script` that reads event text. It is high for the fields anyone outside the repository can set: issue, pull request and discussion titles and bodies, comment and review bodies, commit messages and author names and emails, wiki page names, the head branch and label, and the `workflow_run` head branch, title and commit. It is review for other `github.event` fields, except numbers, hashes, states, logins, URLs and `github.event.repository`. Workflow inputs are not reported. Values passed through `env:` and quoted in the script are the safe pattern and are not reported.
+- **BS-GHA-003:** `permissions: write-all` (review), or jobs with no permissions block at either level (info, once per workflow). Workflows triggered only by `workflow_call` take the caller's permissions and are not reported as missing.
+- **BS-GHA-004 (review):** `id-token: write`.
+- **BS-GHA-005 (review):** `runs-on` with the `self-hosted` label. The scan cannot tell whether the repository is public.
+- **BS-GHA-006:** a bash or sh step that uses a secret, through `${{ secrets.* }}`, `${{ github.token }}` or an `env:` variable set from one, and runs a network tool. It is high when the step uses `toJSON(secrets)`, collects the whole environment, or puts a secret in a request body (`-d`, `--data*`, `-F`, `--json`, `--post-data` and similar), in a URL query, or in data piped into the tool. It is review otherwise, for example for a token in an `Authorization` header or a webhook URL kept as a secret.
+- **BS-PIN-001 (review):** a third-party action, reusable workflow or `docker://` image referenced by a tag or branch rather than a full commit SHA or `sha256` digest. Actions owned by `actions/` and `github/` are not reported. The same rule covers pre-commit `rev` values and lefthook `remotes`.
+
+## Editors and git hooks
+
+- `.vscode/tasks.json` and `devcontainer.json` allow comments and trailing commas. They are read by Bomb Squad's own JSONC reader, which keeps each key's position and stops at 200 levels of nesting.
+- **BS-EP-002 (review):** a VS Code task with `runOn: folderOpen`. Its command and arguments, its `windows`, `linux` and `osx` variants, the tasks it `dependsOn`, and the `package.json` script of an `npm` task are analysed.
+- **BS-EP-003 (review):** a dev container `initializeCommand`, which runs on the host. Every lifecycle command is analysed, in string, array and parallel-object form.
+- Husky hook files, lefthook `run` commands, scripts and nested job groups, and pre-commit local hooks are analysed as shell. pre-commit `pygrep` and `fail` hooks are not commands and are skipped. Hooks that run in a container image are listed and not analysed.
 
 ## JavaScript, TypeScript, Python and shell
 
@@ -84,7 +117,7 @@ There is no other data flow: values that pass through functions, loops or other 
 
 ### Rules
 
-`bombsquad rules` lists all 28 rules, 17 of them for PowerShell. Each finding includes:
+`bombsquad rules` lists all 37 rules, 17 of them for PowerShell. Each finding includes:
 
 - the rule's effect;
 - its limits;
@@ -101,6 +134,9 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 - Behaviour of native tools beyond the arguments listed in each rule.
 - Code in installed dependencies, and Python imports: only JavaScript relative imports are followed.
 - Whether collected values reach a network call: BS-EX-001 is co-occurrence, not data flow.
+- In workflows: values that reach a script through `env:`, step outputs or files; the repository's default token permissions and whether it is public; and the code of reusable workflows, actions and container images fetched from elsewhere. BS-GHA-006 looks only at the step's own bash or sh script.
+- Remote pre-commit hooks, lefthook remotes and `extends`, husky v4 and `simple-git-hooks` configuration in `package.json`, and editor settings outside the repository.
+- A file that GitHub, VS Code or a hook tool accepts but these readers reject is reported as not read, and nothing in it is analysed.
 
 ## Accuracy
 

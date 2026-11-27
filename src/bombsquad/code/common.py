@@ -29,6 +29,10 @@ class Snippet:
     text: str
     region: Region  # where the snippet sits in its file
     origin: str
+    # (line delta, column delta) from the snippet's own positions to the file's, when the
+    # snippet is a verbatim block of the file. Findings then point at the exact line;
+    # otherwise they point at `region`.
+    offset: tuple[int, int] | None = None
 
 
 def clip(text: str) -> str:

@@ -4,7 +4,7 @@
 
 Bomb Squad reviews third-party code before it runs. Version 2 is being built step by step ([roadmap](docs/roadmap.md)).
 
-It first lists the **entry points**: code that runs without anyone choosing to run it. Today that covers npm install hooks and Python's `.pth` files, `setup.py`, in-tree build backends, `sitecustomize` and `conftest.py`. Workflows, editor tasks, git hooks and agent configs come next. It then reads the code each entry point reaches and reports what that code could do, with the exact source, how it was reached, and what the analysis could not see. **It never runs anything it scans.**
+It first lists the **entry points**: code that runs without anyone choosing to run it. Today that covers npm install hooks; Python's `.pth` files, `setup.py`, in-tree build backends, `sitecustomize` and `conftest.py`; GitHub Actions workflows and actions; VS Code tasks that run when a folder opens; dev container lifecycle commands; and husky, lefthook and pre-commit hooks. Agent configs come next. It then reads the code each entry point reaches and reports what that code could do, with the exact source, how it was reached, and what the analysis could not see. **It never runs anything it scans.**
 
 ```text
 $ bombsquad scan demo-package
@@ -26,9 +26,19 @@ demo-package/package.json
 
 ## What it finds
 
-28 rules, listed by `bombsquad rules`.
+37 rules, listed by `bombsquad rules`.
 
-**In code an entry point reaches** (JavaScript and TypeScript, Python, shell, and code embedded with `node -e`, `python -c`, `sh -c` or a PowerShell command line):
+**In GitHub Actions**, a deliberately narrow set of trust-boundary rules (zizmor is the reference for a full audit):
+
+- `pull_request_target`, `workflow_run` or `issue_comment` workflows that check out the pull request's code;
+- issue titles, comment bodies, branch names and other attacker-controlled text expanded into `run:` or `github-script`;
+- secrets sent to the network from a step, the shape of the GhostAction workflows;
+- `write-all` or missing token permissions, `id-token: write`, and self-hosted runners;
+- third-party actions, reusable workflows, images and hook repositories referenced by a tag or branch instead of a commit SHA.
+
+**In editor and hook configuration:** VS Code tasks that run when the folder opens, dev container commands that run on the host, and git hooks, with their commands analysed like any other entry point.
+
+**In code an entry point reaches** (JavaScript and TypeScript, Python, shell, and code embedded with `node -e`, `python -c`, `sh -c` or a PowerShell command line, including workflow `run:` steps):
 
 - network access, and downloads piped into a shell;
 - credential files and token variables (`~/.npmrc`, `~/.aws/credentials`, `GITHUB_TOKEN`), and code that collects the whole environment;
@@ -68,6 +78,7 @@ The input is data, never code:
 
 - PowerShell is parsed by `Parser.ParseInput` in a separate process, in an empty working directory. `using module` and `using assembly` statements are blanked first, because the parser opens the files they name.
 - JavaScript, TypeScript and shell are parsed with tree-sitter, and Python with the standard library's `ast`. Nothing is imported or evaluated.
+- YAML is composed into nodes with PyYAML's safe loader and never constructed into objects. VS Code's JSON with comments is read by Bomb Squad's own reader.
 - Only files inside the scanned directories are followed, and symlinked files are skipped.
 
 See the [threat model](docs/threat-model.md) for the rest, and [methodology](docs/methodology.md) for what each rule matches and its limits.
@@ -78,4 +89,4 @@ See the [threat model](docs/threat-model.md) for the rest, and [methodology](doc
 
 v1 matched 12 PowerShell command names and `iex` by exact name. The constructs it missed are now regression tests in [`tests/test_powershell_rules.py`](tests/test_powershell_rules.py). Its six-finding sample still produces the same six findings.
 
-**Built with:** Python · PowerShell AST · tree-sitter · pytest · ruff · uv · GitHub Actions. [Development](docs/development.md).
+**Built with:** Python · PowerShell AST · tree-sitter · PyYAML · pytest · ruff · uv · GitHub Actions. [Development](docs/development.md).

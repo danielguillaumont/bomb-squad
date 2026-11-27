@@ -23,7 +23,8 @@ from bombsquad.code.common import CodeHit, Snippet, clip, hidden_characters, whi
 from bombsquad.code.javascript import analyze_javascript
 from bombsquad.code.python import analyze_python
 from bombsquad.code.shell import analyze_shell
-from bombsquad.inventory import LANGUAGE_BY_SUFFIX, Discovery, discover, is_detected
+from bombsquad.discovery import LANGUAGE_BY_SUFFIX, Discovery
+from bombsquad.inventory import discover, is_detected
 from bombsquad.model import EntryPoint, FileResult, Finding, Region, ScanReport
 from bombsquad.powershell.analyze import Source, analyze_tagged
 from bombsquad.sources import (
@@ -208,9 +209,18 @@ class _Scan:
 
     def snippet(self, shown: str, snippet: Snippet, entries: tuple[EntryPoint, ...],
                 via: tuple[str, ...], anchor: Region | None, depth: int) -> None:
-        """Analyse code embedded in a file. Findings point at where it is embedded."""
+        """Analyse code embedded in a file. Findings point at where it is embedded: the
+        exact line when the snippet is a verbatim block of the file, else its anchor."""
         anchor = anchor or snippet.region
         via = (*via, snippet.origin)
+
+        def place(region: Region) -> Region:
+            if snippet.offset is None:
+                return anchor
+            lines, columns = snippet.offset
+            return Region(region.line + lines, region.column + columns,
+                          region.end_line + lines, region.end_column + columns)
+
         self.result(shown, "unknown")
         if snippet.language == "powershell":
             self.powershell.append(Source(shown, snippet.text, anchor, via, entries))
@@ -229,14 +239,14 @@ class _Scan:
             sh = analyze_shell(snippet.text)
             hits, snippets = sh.hits, sh.snippets
         for h in hits:
-            self.add(h, shown, entries, via, anchor, unit=shown)
+            self.add(h, shown, entries, via, place(h.region), unit=shown)
         if snippets and depth >= MAX_SNIPPET_DEPTH:
             self.results[shown].notes.append(
                 f"Code nested more than {MAX_SNIPPET_DEPTH} levels deep at line {anchor.line} "
                 "was not analysed.")
             return
         for inner in snippets:
-            self.snippet(shown, inner, entries, via, anchor, depth + 1)
+            self.snippet(shown, inner, entries, via, place(inner.region), depth + 1)
 
     # Findings ----------------------------------------------------------------------------
 
@@ -270,12 +280,20 @@ class _Scan:
 
     def correlate(self) -> list[Finding]:
         """One BS-EX-001 per entry point (or unreached file) that reads secrets and has
-        network access somewhere in the code it runs."""
+        network access somewhere in the code it runs.
+
+        GitHub Actions entry points are left out: workflows and actions use tokens and the
+        network by design, and the official toolkit reads the OIDC token variables. There,
+        BS-GHA-006 looks at secrets sent from a step's own script instead."""
         units: dict[object, list[Finding]] = {}
         anchors: dict[object, EntryPoint | None] = {}
         for t in self.tagged:
             if t.entries:
+                if all(e.surface == "github-actions" for e in t.entries):
+                    continue
                 for entry in t.entries:
+                    if entry.surface == "github-actions":
+                        continue
                     units.setdefault(id(entry), []).append(t.finding)
                     anchors[id(entry)] = entry
             else:
@@ -344,7 +362,7 @@ class _Scan:
             for s in item.snippets:
                 self.snippet(item.shown, s, entries, via, None, 1)
         for shown, hit, entry in self.found.hits:
-            self.add(hit, shown, (entry,), (), None, unit=shown)
+            self.add(hit, shown, (entry,) if entry else (), (), None, unit=shown)
         for shown, s, entry in self.found.snippets:
             self.snippet(shown, s, (entry,), (entry.describe(),), None, 1)
         for shown, note in self.found.notes:
@@ -386,6 +404,10 @@ class _Scan:
                             "PowerShell 7.")
 
         findings = _dedupe([t.finding for t in self.tagged]) + self.correlate()
+        if self.found.expressions:
+            for f in findings:
+                f.evidence = _restore(f.evidence, self.found.expressions)
+                f.via = [_restore(step, self.found.expressions) for step in f.via]
         findings.sort(key=lambda f: (f.path, f.region.line, f.region.column, f.rule.id))
         for f in findings:
             if f.path not in self.results:
@@ -394,6 +416,15 @@ class _Scan:
         return ScanReport(__version__, ordered, findings,
                           {"name": "PowerShell", **parser_info} if parser_info else None,
                           self.found.entry_points, self.files_read)
+
+
+def _restore(text: str, expressions: dict[str, str]) -> str:
+    """Put back the ${{ }} expressions that placeholders stood in for while parsing."""
+    if "_BS" not in text:
+        return text
+    for token in sorted((t for t in expressions if t in text), key=len, reverse=True):
+        text = text.replace(token, expressions[token])
+    return text
 
 
 def _dedupe(findings: list[Finding]) -> list[Finding]:
