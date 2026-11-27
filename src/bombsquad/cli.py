@@ -97,6 +97,13 @@ def _write(text: str, output: Path | None) -> None:
     sys.stdout.write(text)
 
 
+def _write_json(value: object, output: Path | None) -> None:
+    """A file gets UTF-8. Standard output gets ASCII with JSON escapes: piped, it is
+    encoded in the console's code page, which on Windows cannot hold every character and
+    would make the JSON invalid."""
+    _write(json.dumps(value, indent=2, ensure_ascii=output is None) + "\n", output)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
 
@@ -119,9 +126,9 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_ERROR
 
     if args.format == "json":
-        _write(json.dumps(report.to_dict(), indent=2, ensure_ascii=False) + "\n", args.output)
+        _write_json(report.to_dict(), args.output)
     elif args.format == "sarif":
-        _write(json.dumps(to_sarif(report), indent=2, ensure_ascii=False) + "\n", args.output)
+        _write_json(to_sarif(report), args.output)
     else:
         _write(render(report), args.output)
 
@@ -151,7 +158,7 @@ def _diff(args) -> int:
         print(f"bombsquad: {exc}", file=sys.stderr)
         return EXIT_ERROR
     if args.format == "json":
-        _write(json.dumps(report.to_dict(), indent=2, ensure_ascii=False) + "\n", args.output)
+        _write_json(report.to_dict(), args.output)
     else:
         _write(render_diff(report), args.output)
     if args.fail_on != "never":
@@ -171,7 +178,7 @@ def _gate(args) -> int:
         print(f"bombsquad: {exc}", file=sys.stderr)
         return EXIT_ERROR
     if args.format == "json":
-        _write(json.dumps(report.to_dict(), indent=2, ensure_ascii=False) + "\n", args.output)
+        _write_json(report.to_dict(), args.output)
     elif args.format == "markdown":
         _write(render_markdown(report), args.output)
     else:

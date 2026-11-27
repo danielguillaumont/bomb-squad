@@ -95,3 +95,24 @@ def test_decode_keeps_bytes_meaning():
     # package) is read with replacement characters instead of stopping the scan.
     text, encoding = decode(b"\xff\xfea\x00b\x00\n")
     assert encoding == "utf-16" and text.startswith("ab")
+
+
+def test_json_on_standard_output_is_ascii_and_files_are_utf8(tmp_path, capsys, monkeypatch):
+    # Piped on Windows, standard output is encoded in the console's code page, which cannot
+    # hold every character: JSON written there must survive any code page.
+    text = "x = 'caf" + chr(0xE9) + " " + chr(0x1F3F4) + "'; eval(x" + chr(0x200B) + ")\n"
+    (tmp_path / "setup.py").write_text(text, encoding="utf-8")
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252"))
+    for fmt in ("json", "sarif"):
+        assert main(["scan", str(tmp_path), "--format", fmt]) == 0
+        sys.stdout.flush()
+        data = raw.getvalue()
+        raw.seek(0)
+        raw.truncate()
+        assert data.isascii()
+        assert chr(0x1F3F4) in json.dumps(json.loads(data.decode("ascii")), ensure_ascii=False)
+    monkeypatch.undo()
+    out = tmp_path / "report.json"
+    assert main(["scan", str(tmp_path), "--format", "json", "-o", str(out)]) == 0
+    assert chr(0xE9) in out.read_text(encoding="utf-8")
