@@ -258,8 +258,10 @@ def test_a_published_package_keeps_levels_only_for_what_installing_runs(tmp_path
     root = build(tmp_path, {
         "setup.py": exfiltrate,
         "tests/conftest.py": exfiltrate,
-        ".github/workflows/ci.yml": ("on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n"
+        ".github/workflows/ci.yml": ("on: push\npermissions:\n  id-token: write\n"
+                                     "jobs:\n  test:\n    runs-on: ubuntu-latest\n"
                                      "    steps:\n      - uses: example-org/setup-tool@v1\n"),
+        "tools/clean.ps1": "Remove-Item C:\\x\n",
     })
 
     def levels(report, suffix):
@@ -271,6 +273,10 @@ def test_a_published_package_keeps_levels_only_for_what_installing_runs(tmp_path
     assert levels(as_project, "ci.yml") - {Level.INFO}
     assert levels(as_package, "conftest.py") == {Level.INFO}
     assert levels(as_package, "ci.yml") == {Level.INFO}
+    assert levels(as_project, "clean.ps1") - {Level.INFO}
+    assert levels(as_package, "clean.ps1") == {Level.INFO}
+    assert {f.rule.id for f in as_package.findings if f.path.endswith("ci.yml")} >= {
+        "BS-GHA-004", "BS-PIN-001"}
     assert levels(as_package, "setup.py") == levels(as_project, "setup.py")
     assert Level.HIGH in levels(as_package, "setup.py")
     [pinned] = [f for f in as_package.findings if f.path.endswith("ci.yml")

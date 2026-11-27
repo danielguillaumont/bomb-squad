@@ -57,6 +57,10 @@ NOT_RUN_FROM_PACKAGE = ("Found in a published package, where installing it does 
                         "project or repository, so it is reported at info.")
 
 
+NOT_REACHED_IN_PACKAGE = ("Found in a published package, in a PowerShell file that no entry "
+                          "point runs, so installing does not run it. It is reported at info.")
+
+
 def runs_from_package(entry: EntryPoint) -> bool:
     """Whether installing a package, or starting Python with it installed, runs this entry
     point. Workflows, git hooks, editor and agent settings, and conftest.py inside a
@@ -377,11 +381,27 @@ class _Scan:
                     _not_run(finding)
                 out.append(finding)
             else:
-                out.append(Finding(rule, secret.path, secret.region, secret.evidence,
-                                   rule.level, via, ["No entry point was found that runs this "
-                                                     "file; it was scanned because it was "
-                                                     "named or is PowerShell."]))
+                finding = Finding(rule, secret.path, secret.region, secret.evidence,
+                                  rule.level, via, ["No entry point was found that runs this "
+                                                    "file; it was scanned because it was "
+                                                    "named or is PowerShell."])
+                if self.package:
+                    self.unreached_in_package(finding)
+                out.append(finding)
         return out
+
+    def unreached_in_package(self, finding: Finding) -> None:
+        """In a published package, a finding no entry point reaches keeps its level only
+        when it is about hidden content (BS-UC-001, BS-OB-001), which misleads a reviewer
+        whether or not the file runs. Settings of a workflow, hook, editor or agent file
+        and PowerShell files that nothing runs drop to info."""
+        if finding.rule.id in ("BS-UC-001", "BS-OB-001"):
+            return
+        path = Path(finding.path)
+        if surface(path) not in (None, "package"):
+            _not_run(finding)
+        elif path.suffix.lower() in POWERSHELL_SUFFIXES:
+            _not_run(finding, NOT_REACHED_IN_PACKAGE)
 
     # Whole scan --------------------------------------------------------------------------
 
@@ -477,8 +497,11 @@ class _Scan:
 
         if self.package:
             for t in self.tagged:
-                if t.entries and not any(runs_from_package(e) for e in t.entries):
-                    _not_run(t.finding)
+                if t.entries:
+                    if not any(runs_from_package(e) for e in t.entries):
+                        _not_run(t.finding)
+                else:
+                    self.unreached_in_package(t.finding)
         findings = _dedupe([t.finding for t in self.tagged]) + self.correlate()
         if self.found.expressions:
             for f in findings:
@@ -503,10 +526,10 @@ def _restore(text: str, expressions: dict[str, str]) -> str:
     return text
 
 
-def _not_run(finding: Finding) -> None:
+def _not_run(finding: Finding, note: str = NOT_RUN_FROM_PACKAGE) -> None:
     finding.level = Level.INFO
-    if NOT_RUN_FROM_PACKAGE not in finding.limitations:
-        finding.limitations.append(NOT_RUN_FROM_PACKAGE)
+    if note not in finding.limitations:
+        finding.limitations.append(note)
 
 
 def _dedupe(findings: list[Finding]) -> list[Finding]:
