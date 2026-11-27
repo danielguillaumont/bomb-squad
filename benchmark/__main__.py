@@ -33,7 +33,11 @@ def _select(args) -> int:
 
 def _benign_packages(args, work: Path) -> list[dict]:
     as_of = datetime.fromisoformat(args.as_of).replace(tzinfo=UTC)
-    lists = {"npm": benign.npm_popular(http_get, work), "pypi": benign.pypi_popular(http_get)}
+    # The workflow fetches the PyPI list with its own token: unauthenticated GitHub API
+    # requests from shared runners hit the rate limit.
+    pypi = (benign.pypi_names_from(args.pypi_list.read_text(encoding="utf-8"))
+            if args.pypi_list else benign.pypi_popular(http_get))
+    lists = {"npm": benign.npm_popular(http_get, work), "pypi": pypi}
     out = []
     for ecosystem, names in lists.items():
         for name in benign.sample_names(names, args.benign_top, args.benign_per_ecosystem,
@@ -142,6 +146,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--guarddog-version")
     r.add_argument("--benign-per-ecosystem", type=int, default=200)
     r.add_argument("--benign-top", type=int, default=1000)
+    r.add_argument("--pypi-list", type=Path,
+                   help=f"{benign.PYPI_LIST_FILE} at {benign.PYPI_LIST_REPO} commit "
+                        f"{benign.PYPI_LIST_COMMIT[:12]}, already downloaded")
     r.add_argument("--as-of", required=True, help="ISO date: benign releases current then")
     r.add_argument("--seed", type=int, default=2026)
     r.add_argument("--workers", type=int, default=4)

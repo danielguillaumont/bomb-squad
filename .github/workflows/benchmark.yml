@@ -94,6 +94,20 @@ jobs:
           sed 's|^|/|' ../paths.txt | git sparse-checkout set --no-cone --stdin
           git checkout -q FETCH_HEAD
 
+      - name: Fetch the pinned PyPI popularity list
+        # With the job's read-only token: unauthenticated GitHub API requests from shared
+        # runners hit the rate limit.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          read -r repo commit file < <(uv run --locked python -c \
+            "from benchmark import benign as b; print(b.PYPI_LIST_REPO, b.PYPI_LIST_COMMIT, b.PYPI_LIST_FILE)" \
+            | tr -d '\r')
+          gh api -H "Accept: application/vnd.github.raw" \
+            "repos/$repo/contents/$file?ref=$commit" > data/top-pypi.json
+          wc -c < data/top-pypi.json
+
       - name: Run both tools
         env:
           DATASET_COMMIT: ${{ inputs.dataset-commit }}
@@ -105,6 +119,7 @@ jobs:
             --dataset-date "$DATASET_DATE" --guarddog guarddog \
             --guarddog-version "$GUARDDOG_VERSION" \
             --benign-per-ecosystem "$BENIGN_PER_ECOSYSTEM" --as-of "$DATASET_DATE" \
+            --pypi-list data/top-pypi.json \
             --workers 4 -o data/results.jsonl
 
       - name: Score
