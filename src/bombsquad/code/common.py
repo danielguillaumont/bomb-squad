@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 from bombsquad.model import Level, Region
@@ -111,12 +112,42 @@ def _kind(ch: str) -> str | None:
     return None
 
 
+_BLACK_FLAG, _CANCEL_TAG, _ZWNJ = 0x1F3F4, 0xE007F, 0x200C
+
+
+def _in_script(ch: str) -> bool:
+    """A letter or mark of a script from Hebrew onwards, where the zero-width non-joiner
+    is part of normal spelling (Persian, Indic and Southeast Asian scripts among them)."""
+    return ord(ch) >= 0x0590 and unicodedata.category(ch)[0] in "LM"
+
+
+def _expected(line: str) -> set[int]:
+    """Positions of characters that are part of ordinary text: tag characters in a flag
+    emoji (U+1F3F4, tags, U+E007F), and a zero-width non-joiner next to a letter of a
+    script that uses it."""
+    ok: set[int] = set()
+    for i, ch in enumerate(line):
+        if ord(ch) == _BLACK_FLAG:
+            j = i + 1
+            while j < len(line) and (0xE0061 <= ord(line[j]) <= 0xE007A or
+                                     0xE0030 <= ord(line[j]) <= 0xE0039):
+                j += 1
+            # Subdivision codes are short (gbeng, usca); a longer run is not a flag.
+            if j < len(line) and ord(line[j]) == _CANCEL_TAG and 2 <= j - i - 1 <= 7:
+                ok.update(range(i + 1, j + 1))
+        elif ord(ch) == _ZWNJ and (i > 0 and _in_script(line[i - 1]) or
+                                   i + 1 < len(line) and _in_script(line[i + 1])):
+            ok.add(i)
+    return ok
+
+
 def hidden_characters(text: str, positions: Positions) -> list[CodeHit]:
     """Report invisible and direction-changing characters, one hit per affected line.
 
     Single variation selectors and private-use characters are common in emoji and icon
     fonts, so only runs of four or more are reported. A byte order mark at the start of
-    a file is ignored.
+    a file, flag emoji built from tag characters, and zero-width non-joiners inside words
+    of scripts that need them are ignored.
     """
     hits: list[CodeHit] = []
     for line_no in range(1, len(positions.line_starts) + 1):
@@ -126,9 +157,12 @@ def hidden_characters(text: str, positions: Positions) -> list[CodeHit]:
         found: dict[str, int] = {}
         first: int | None = None
         run_kind, run_len = None, 0
+        expected = _expected(line)
         for i, ch in enumerate(line):
             kind = _kind(ch)
             if kind == "invisible" and ord(ch) == 0xFEFF and line_no == 1 and i == 0:
+                kind = None
+            if i in expected:
                 kind = None
             if kind in ("selector", "private"):
                 run_len = run_len + 1 if run_kind == kind else 1

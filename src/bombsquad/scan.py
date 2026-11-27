@@ -24,7 +24,7 @@ from bombsquad.code.javascript import analyze_javascript
 from bombsquad.code.python import analyze_python
 from bombsquad.code.shell import analyze_shell
 from bombsquad.discovery import LANGUAGE_BY_SUFFIX, Discovery
-from bombsquad.inventory import discover, is_detected
+from bombsquad.inventory import discover, is_detected, surface
 from bombsquad.model import EntryPoint, FileResult, Finding, Level, Region, ScanReport
 from bombsquad.powershell.analyze import Source, analyze_tagged
 from bombsquad.powershell.parser import ParserUnavailable
@@ -64,6 +64,7 @@ def runs_from_package(entry: EntryPoint) -> bool:
     return entry.surface == "npm" or (entry.surface == "python" and entry.kind != "conftest.py")
 
 
+PROSE_SUFFIXES = frozenset({".md", ".markdown", ".txt", ".rst"})
 SECRET_RULES = frozenset({"BS-CR-001", "BS-ENV-001", "BS-AG-003"})
 NETWORK_RULES = frozenset({"BS-NET-001", "BS-NET-002", "BS-NET-003", "BS-AG-004"})
 
@@ -310,7 +311,11 @@ class _Scan:
         if text is None:
             return
         positions = Positions(text)
-        hits = [*hidden_characters(text, positions), *whitespace_padding(text, positions)]
+        hits = hidden_characters(text, positions)
+        # Rendered Markdown and plain prose collapse whitespace, so padding hides nothing
+        # from a reader there; agent instruction files are read raw, so they are checked.
+        if key.suffix.lower() not in PROSE_SUFFIXES or surface(key) == "agent":
+            hits += whitespace_padding(text, positions)
         if not hits:
             return
         shown = display_path(key)
