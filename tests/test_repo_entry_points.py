@@ -330,7 +330,8 @@ def test_this_repository_follows_its_own_rules():
     report = scan([ROOT / ".github", ROOT / "action.yml"])
     assert {e.kind for e in report.entry_points} == {
         "workflow job test", "workflow job code-scanning", "workflow job actionlint",
-        "workflow job review", "workflow job comment", "composite action"}
+        "workflow job review", "workflow job comment", "composite action",
+        "workflow job benchmark"}
     assert report.findings == []
 
 

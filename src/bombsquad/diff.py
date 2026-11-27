@@ -282,6 +282,29 @@ def diff_registry(spec: str, fetch: Fetch = http_get, now: datetime | None = Non
     return diff_release(ecosystem, name, old_version, new_version, fetch, now, source, record)
 
 
+def unpack_release(release: Release, folder: Path, fetch: Fetch = http_get
+                   ) -> tuple[Path, list[str]]:
+    """Download each of the release's artifacts, check it against the registry's hash, and
+    unpack it into `folder/<kind>` (npm-tarball, sdist, wheel). Returns the folder to scan:
+    the one artifact's folder, or `folder` when there are several. Nothing is run."""
+    notes: list[str] = []
+    for artifact in release.artifacts:
+        data = download(artifact, fetch)  # checked against the registry's hash
+        kind = artifact.kind.replace(" ", "-")
+        raw = folder / f".{kind}"
+        raw.mkdir()
+        unpacked, skipped = unpack(data, artifact.filename, raw)
+        # sdists wrap their files in name-version/; a fixed folder name lets two versions'
+        # paths line up.
+        unpacked.rename(folder / kind)
+        if raw.exists():
+            raw.rmdir()
+        notes += [f"{artifact.filename}: {n}" for n in skipped]
+    root = folder / release.artifacts[0].kind.replace(" ", "-") if len(
+        release.artifacts) == 1 else folder
+    return root, notes
+
+
 def diff_release(ecosystem: str, name: str, old_version: str | None, new_version: str,
                  fetch: Fetch = http_get, now: datetime | None = None, source: bool = False,
                  record: Path | None = None) -> DiffReport:
@@ -303,21 +326,7 @@ def diff_release(ecosystem: str, name: str, old_version: str | None, new_version
                 continue
             folder = Path(work, label)
             folder.mkdir()
-            notes: list[str] = []
-            for artifact in release.artifacts:
-                data = download(artifact, fetch)  # checked against the registry's hash
-                kind = artifact.kind.replace(" ", "-")
-                raw = folder / f".{kind}"
-                raw.mkdir()
-                unpacked, skipped = unpack(data, artifact.filename, raw)
-                # sdists wrap their files in name-version/; a fixed folder name lets the
-                # two versions' paths line up.
-                unpacked.rename(folder / kind)
-                if raw.exists():
-                    raw.rmdir()
-                notes += [f"{artifact.filename}: {n}" for n in skipped]
-            root = folder / release.artifacts[0].kind.replace(" ", "-") if len(
-                release.artifacts) == 1 else folder
+            root, notes = unpack_release(release, folder, fetch)
             sides.append(scan_side(f"{name}@{release.version}" if ecosystem == "npm" else
                                    f"{name} {release.version}", root, release, notes))
         report = compare(f"{ecosystem}:{name}", sides[0], sides[1], now)

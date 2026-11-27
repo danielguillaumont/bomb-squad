@@ -227,4 +227,28 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 
 ## Accuracy
 
-Not measured yet. Detection rates will come only from the benchmark in [Phase 4](roadmap.md#phase-4-benchmark-against-guarddog): time-split, compared with GuardDog on the same packages, with denominators and dataset dates.
+Not measured yet. Detection rates will come only from the benchmark in [Phase 4](roadmap.md#phase-4-benchmark-against-guarddog), and every figure states its counts, the dataset commit and date, and GuardDog's result on the same packages.
+
+### How the benchmark works
+
+`.github/workflows/benchmark.yml` runs `python -m benchmark` on a GitHub-hosted Linux runner, started by hand. Nothing in it runs on a development machine.
+
+- **Malicious set:** the DataDog malicious-software-packages-dataset at a pinned commit.
+  - The repository is fetched without file contents. Samples are chosen from its file listing, and only the chosen ones are downloaded.
+  - One version is chosen per package name, so a campaign of near-identical versions counts once, and then a seeded sample per ecosystem.
+  - Samples are decrypted and unpacked with the same rules as registry packages, and any package archive inside is unpacked too. Both tools get the same folder: the shallowest one with a `package.json` (npm), or with `setup.py`, `pyproject.toml`, `setup.cfg` or `PKG-INFO` (PyPI).
+  - The date in a sample's name is when DataDog found it, not when it was published.
+- **Benign set:** a seeded sample from the 1,000 most-downloaded packages per ecosystem.
+  - The lists come from `npm-high-impact` 1.13.0 (npm) and hugovk/top-pypi-packages at commit `29c0d4c38c28` of 2026-11-01 (PyPI).
+  - For each package, the highest stable version published on or before the dataset commit's date is downloaded and checked as `bombsquad diff` does. For PyPI, that is the sdist and one wheel.
+  - A popular release is assumed benign; a compromised one in the sample would count as a false positive.
+- **Time split:** rules were frozen on 2026-11-27. Packages DataDog found after that date are the `after-cutoff` set; the rest are `retrospective`. No rule was written after looking at these samples, but many rules follow public write-ups of campaigns that the retrospective set includes, so only `after-cutoff` figures measure detection of the unknown.
+- **Detectors:**
+  - Bomb Squad flags a package with a high finding, or, as a second detector, with a review or high finding.
+  - GuardDog 3.2.0, with its dependencies as of 2026-11-20, flags it when its JSON output reports at least one issue.
+  - GuardDog is given the folder, so its registry-metadata rules do not run. Bomb Squad's `scan` reads no registry metadata either.
+  - Each tool runs in its own process with a 300-second limit. A timeout or crash counts as an error for that tool and is reported, not counted as a miss or a pass.
+- **Scores:** recall on malicious packages, false positives per 1,000 benign releases, and precision on this mix, per ecosystem and split. Recall is also broken down by the kind of entry point Bomb Squad found, with the same counts for GuardDog. Every rate is given with its numerator and denominator.
+  - Precision depends on the ratio of malicious to benign packages here, which is not the ratio in the wild.
+  - Most of the dataset was found by GuardDog, which favours it.
+- **What is kept:** the uploaded results hold package names, versions, rule IDs, levels and timings. Evidence and sample content are not kept.
