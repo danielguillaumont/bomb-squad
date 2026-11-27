@@ -15,6 +15,14 @@ on:
       benign-per-ecosystem:
         description: Benign releases per ecosystem
         default: "200"
+      seed:
+        description: Sampling seed
+        default: "2026"
+      leave-out:
+        description: >-
+          Selections of earlier runs to leave out, as SEED:COUNT pairs separated by commas
+          (2026:200,2026:5 for a held-out sample). Exact only on the same dataset commit.
+        default: ""
 
 permissions:
   contents: read
@@ -82,10 +90,19 @@ jobs:
         env:
           PER_ECOSYSTEM: ${{ inputs.per-ecosystem }}
           CUTOFF: ${{ steps.rules.outputs.cutoff }}
+          SEED: ${{ inputs.seed }}
+          LEAVE_OUT: ${{ inputs.leave-out }}
         run: |
+          set -euo pipefail
+          if ! [[ "$SEED" =~ ^[0-9]+$ && "$LEAVE_OUT" =~ ^([0-9]+:[0-9]+(,[0-9]+:[0-9]+)*)?$ ]]; then
+            echo "::error::seed must be a number and leave-out SEED:COUNT pairs"
+            exit 2
+          fi
+          leave_out=()
+          for pair in ${LEAVE_OUT//,/ }; do leave_out+=(--exclude-selection "$pair"); done
           uv run --locked python -m benchmark select --listing data/listing.txt \
-            --per-ecosystem "$PER_ECOSYSTEM" --cutoff "$CUTOFF" \
-            -o data/selected.json --paths data/paths.txt
+            --per-ecosystem "$PER_ECOSYSTEM" --cutoff "$CUTOFF" --seed "$SEED" \
+            "${leave_out[@]}" -o data/selected.json --paths data/paths.txt
           uv run --locked python -m benchmark incidents --listing data/listing.txt \
             --paths data/incident-paths.txt
           cat data/incident-paths.txt >> data/paths.txt
@@ -116,8 +133,14 @@ jobs:
           DATASET_COMMIT: ${{ inputs.dataset-commit }}
           DATASET_DATE: ${{ steps.dataset.outputs.date }}
           BENIGN_PER_ECOSYSTEM: ${{ inputs.benign-per-ecosystem }}
+          SEED: ${{ inputs.seed }}
+          LEAVE_OUT: ${{ inputs.leave-out }}
         run: |
+          set -euo pipefail
+          leave_out=()
+          for pair in ${LEAVE_OUT//,/ }; do leave_out+=(--exclude-selection "$pair"); done
           uv run --locked python -m benchmark run --selected data/selected.json \
+            --seed "$SEED" "${leave_out[@]}" \
             --dataset data/dataset --dataset-commit "$DATASET_COMMIT" \
             --dataset-date "$DATASET_DATE" --guarddog guarddog \
             --guarddog-version "$GUARDDOG_VERSION" \

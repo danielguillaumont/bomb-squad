@@ -18,17 +18,33 @@ from bombsquad import __version__
 from bombsquad.registry import http_get
 
 
+def _exclusions(specs: list[str]) -> list[tuple[int, int]]:
+    """`SEED:COUNT` pairs: the selections of earlier runs, to leave out."""
+    out = []
+    for spec in specs:
+        seed, _, count = spec.partition(":")
+        if not (seed.isdigit() and count.isdigit()):
+            raise SystemExit(f"--exclude-selection takes SEED:COUNT, not {spec!r}")
+        out.append((int(seed), int(count)))
+    return out
+
+
 def _select(args) -> int:
     listing = args.listing.read_text(encoding="utf-8").splitlines()
-    chosen = samples.select(samples.parse_listing(listing), args.per_ecosystem, args.seed,
-                            date.fromisoformat(args.cutoff))
+    parsed = samples.parse_listing(listing)
+    exclude: frozenset[tuple[str, str]] = frozenset()
+    for seed, count in _exclusions(args.exclude_selection):
+        exclude |= samples.chosen_names(parsed, count, seed)
+    chosen = samples.select(parsed, args.per_ecosystem, args.seed,
+                            date.fromisoformat(args.cutoff), exclude)
     document = {"seed": args.seed, "cutoff": args.cutoff, "per_ecosystem": args.per_ecosystem,
+                "excluded": {"selections": args.exclude_selection, "packages": len(exclude)},
                 "samples": [s.to_dict() for s in chosen]}
     args.output.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     if args.paths:
         args.paths.write_text("".join(s.path + "\n" for s in chosen), encoding="utf-8")
     counts = {e: sum(1 for s in chosen if s.ecosystem == e) for e in samples.ECOSYSTEMS}
-    print(f"selected {len(chosen)} samples: {counts}")
+    print(f"selected {len(chosen)} samples: {counts}, leaving out {len(exclude)} packages")
     return 0
 
 
@@ -41,8 +57,11 @@ def _benign_packages(args, work: Path) -> list[dict]:
     lists = {"npm": benign.npm_popular(http_get, work), "pypi": pypi}
     out = []
     for ecosystem, names in lists.items():
+        exclude = frozenset(n for seed, count in _exclusions(args.exclude_selection)
+                            for n in benign.sample_names(names, args.benign_top, count, seed,
+                                                         ecosystem))
         for name in benign.sample_names(names, args.benign_top, args.benign_per_ecosystem,
-                                        args.seed, ecosystem):
+                                        args.seed, ecosystem, exclude):
             row = {"set": "benign", "ecosystem": ecosystem, "name": name}
             try:
                 row["version"] = benign.release_on(ecosystem, name, as_of, http_get)
@@ -87,6 +106,9 @@ def _run(args) -> int:
         "benign_per_ecosystem": args.benign_per_ecosystem, "benign_top": args.benign_top,
         "benign_as_of": args.as_of,
     }
+    if args.exclude_selection:
+        meta["left_out"] = ("packages chosen with seed:count "
+                            + ", ".join(args.exclude_selection))
     with tempfile.TemporaryDirectory(prefix="bench-lists-") as work:
         benign_rows = _benign_packages(args, Path(work)) if args.benign_per_ecosystem else []
     jobs: list[tuple[dict, samples.Sample | None]] = [
@@ -165,6 +187,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--cutoff", required=True, help="ISO date the rules were frozen")
     s.add_argument("--output", "-o", type=Path, required=True)
     s.add_argument("--paths", type=Path, help="also write the sample paths, one per line")
+    s.add_argument("--exclude-selection", action="append", default=[], metavar="SEED:COUNT",
+                   help="leave out the packages this seed and count would choose")
 
     r = sub.add_parser("run", help="run both tools on the selected and benign packages")
     r.add_argument("--selected", type=Path, required=True)
@@ -180,6 +204,8 @@ def main(argv: list[str] | None = None) -> int:
                         f"{benign.PYPI_LIST_COMMIT[:12]}, already downloaded")
     r.add_argument("--as-of", required=True, help="ISO date: benign releases current then")
     r.add_argument("--seed", type=int, default=2026)
+    r.add_argument("--exclude-selection", action="append", default=[], metavar="SEED:COUNT",
+                   help="leave out the benign packages this seed and count would choose")
     r.add_argument("--workers", type=int, default=4)
     r.add_argument("--output", "-o", type=Path, required=True)
 
