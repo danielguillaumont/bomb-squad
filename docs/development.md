@@ -21,7 +21,7 @@ Set `BOMBSQUAD_POWERSHELL` to pick a specific PowerShell executable.
 | `src/bombsquad/cli.py` | The `bombsquad scan` and `bombsquad rules` commands |
 | `src/bombsquad/scan.py` | Finds files and builds the report |
 | `src/bombsquad/inventory.py`, `discovery.py` | Finds entry points and the files they run |
-| `src/bombsquad/repo/` | Workflows and actions, editor tasks and dev containers, git hooks, their rules, and the YAML and JSONC readers |
+| `src/bombsquad/repo/` | Workflows and actions, editor tasks and dev containers, git hooks, agent files and MCP configs, their rules, and the YAML, JSONC and Markdown readers |
 | `src/bombsquad/code/` | The JavaScript, Python and shell analyzers and their rules |
 | `src/bombsquad/powershell/dump_ast.ps1` | Parses PowerShell and writes out the syntax tree. It never evaluates input. |
 | `src/bombsquad/powershell/parser.py` | Blanks `using` statements, runs the dumper, and reads its output |

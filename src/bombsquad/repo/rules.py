@@ -1,5 +1,5 @@
 """Rules for repository configuration: GitHub Actions workflows, editor and container
-start-up commands, and pinned third-party code.
+start-up commands, agent instructions and configurations, and pinned third-party code.
 
 The workflow rules are deliberately narrow: each one is a trust-boundary case that leads
 to code execution or credential exposure. zizmor is the reference for a full audit.
@@ -8,6 +8,9 @@ to code execution or credential exposure. zizmor is the reference for a full aud
 from bombsquad.model import Level, Rule
 
 _PUBLIC = ("Whether the repository is public is not known to the scan.",)
+_INSTRUCTIONS = ("Instructions are matched line by line against fixed phrasings; reworded, "
+                 "translated or split instructions are missed, and quoted examples are "
+                 "reported.",)
 
 RULES: dict[str, Rule] = {r.id: r for r in (
     Rule(
@@ -91,5 +94,92 @@ RULES: dict[str, Rule] = {r.id: r for r in (
         "dev container is created or started, so it can read the developer's files and "
         "credentials.",
         "Check what the command runs; most dev containers do not need one.",
+    ),
+    Rule(
+        "BS-AG-001", "agent", "Tells the agent to act without confirmation", Level.REVIEW,
+        "Agent instructions or flags tell the agent to skip confirmation or permission "
+        "prompts, so the commands and edits that follow are not shown to anyone first. "
+        "Instruction-file poisoning relies on this.",
+        "Check which actions the instruction covers, and keep confirmation for commands, "
+        "network access and file writes outside the project.",
+        _INSTRUCTIONS,
+    ),
+    Rule(
+        "BS-AG-002", "agent", "Tells the agent to hide what it does or ignore its other "
+                              "instructions",
+        Level.HIGH,
+        "Agent instructions tell the agent to keep actions from the user or to set aside "
+        "its other instructions. Legitimate project instructions rarely need either.",
+        "Remove the instruction and review what else the file asks the agent to do.",
+        _INSTRUCTIONS,
+    ),
+    Rule(
+        "BS-AG-003", "credentials", "Tells the agent to read credentials", Level.REVIEW,
+        "Agent instructions ask the agent to read, print or send a credential file or "
+        "token variable, such as ~/.aws/credentials or GITHUB_TOKEN. An agent that follows "
+        "them puts the secret into its context and its output.",
+        "Confirm why the agent needs the credential; agents rarely do.",
+        _INSTRUCTIONS,
+    ),
+    Rule(
+        "BS-AG-004", "network", "Tells the agent to fetch from or send to a URL",
+        Level.REVIEW,
+        "Agent instructions tell the agent to fetch, run or follow content from a URL, or to "
+        "send something to one. Whoever controls that page can change what the agent is told "
+        "to do at any time, and whatever is sent leaves the machine.",
+        "Check the URL. Copy what the agent needs into the repository instead of linking "
+        "it.",
+        _INSTRUCTIONS,
+    ),
+    Rule(
+        "BS-AG-005", "auto-execution", "Runs a command on agent events", Level.REVIEW,
+        "An agent configuration runs a shell command on its own: a hook on session start, "
+        "prompts or tool calls, a status line, a credential helper, or a command expanded "
+        "when a slash command or skill is used. Worms such as ChainDrop plant agent settings "
+        "for this.",
+        "Check what the command runs before opening the project with the agent.",
+        ("Hooks in user-level settings outside the repository are not seen.",),
+    ),
+    Rule(
+        "BS-AG-006", "agent", "Approves agent or task actions in advance", Level.REVIEW,
+        "A setting approves tool calls, shell commands, MCP servers or automatic tasks before "
+        "anyone sees them, such as bypassPermissions, an allow rule for every shell command, "
+        "enableAllProjectMcpServers or chat.tools.autoApprove. Instructions planted in the "
+        "repository then run without a prompt.",
+        "Remove the setting from the repository; each person can approve what they trust.",
+        ("Settings outside the repository, which can override these, are not seen.",),
+    ),
+    Rule(
+        "BS-AG-007", "network", "Redirects the agent's network traffic", Level.REVIEW,
+        "A variable sends the agent's or its tools' API traffic to another host, or turns "
+        "off TLS certificate checks. Requests to a model API carry the API key and the "
+        "conversation, including code and anything the agent has read.",
+        "Check who runs the host; a proxy belongs in each person's own settings.",
+    ),
+    Rule(
+        "BS-AG-008", "auto-execution", "Makes programs load code through an environment "
+                                       "variable",
+        Level.HIGH,
+        "A variable such as NODE_OPTIONS=--require, BASH_ENV, LD_PRELOAD or PERL5OPT makes "
+        "every program of that kind load extra code at start, including the agent, MCP "
+        "servers and every tool they run.",
+        "Remove the variable, and review the code it loads.",
+    ),
+    Rule(
+        "BS-MCP-001", "pinning", "Launches an MCP server package without a pinned version",
+        Level.REVIEW,
+        "npx, uvx and similar launchers fetch the newest matching release each time the "
+        "agent starts the server, so a hijacked or typo-squatted release runs as soon as it "
+        "is published. A container image without a digest has the same problem.",
+        "Pin an exact version (pkg@1.2.3, pkg==1.2.3) or an image digest.",
+        ("An exact version can still be republished on registries that allow it; npm and "
+         "PyPI do not.",),
+    ),
+    Rule(
+        "BS-MCP-002", "pinning", "Launches an archived reference MCP server", Level.REVIEW,
+        "The server is one of the reference MCP servers that modelcontextprotocol moved to "
+        "its archived repository (github.com/modelcontextprotocol/servers-archived). Archived "
+        "servers receive no security fixes.",
+        "Replace it with a maintained server for the same service.",
     ),
 )}

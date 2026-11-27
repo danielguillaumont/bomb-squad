@@ -22,12 +22,16 @@ An entry point is code that runs without anyone choosing to run it. Each one in 
 | `.husky/<hook>` | the git operation, once husky is installed (its `prepare` script does this on `npm install`) |
 | `lefthook.yml` commands, scripts and jobs | the git operation, once `lefthook install` has run |
 | `.pre-commit-config.yaml` local hooks and remote hook repositories | `git commit` and other installed stages, once `pre-commit install` has run |
+| Agent instructions: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md` and `.github/instructions`, prompts and agents, Cursor, Windsurf, Cline, Roo Code and Kiro rules, `.junie/guidelines.md`, Claude Code commands, subagents and rules, `SKILL.md` | every session of the agent that reads them, or when the command, subagent or skill is used |
+| Claude Code hooks, `statusLine` and credential helpers in `.claude/settings.json`, and a plugin's `hooks/hooks.json`; Cursor `.cursor/hooks.json`; Gemini CLI hooks; Codex `notify` | the agent event they are attached to, once the folder is trusted |
+| MCP servers in `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.gemini/settings.json`, `.codex/config.toml`, `opencode.json`, `claude_desktop_config.json` and others | the agent's start, once the server is approved or the folder trusted |
 
 ### Reachability
 
 - An npm hook's command, a workflow `run:` step, a task or lifecycle command and a git hook command are analysed as shell, or in the language of the step's `shell:` (bash, sh, pwsh, powershell, python). Workflow steps on a `windows` runner default to pwsh, and VS Code shell tasks under `windows` to PowerShell. `cmd` is not analysed and the report says so.
 - A JavaScript, TypeScript, Python, shell or PowerShell file inside the package or repository becomes a target when a command runs it: as the command itself, as the script given to an interpreter (`node`, `python`, `bash`, `pwsh -File` and others), or through `uv run`, `poetry run` or `npx`. A file only passed as data, as in `cat x.sh` or `shellcheck x.sh`, is not a target. `${{ github.workspace }}`, `${{ github.action_path }}` and `${workspaceFolder}` are resolved for this.
 - Lefthook scripts in `.lefthook/<hook>/`, pre-commit `script` hooks, a JavaScript action's `pre`, `main` and `post`, and husky hook files are targets directly.
+- Agent hook commands, MCP server commands and the shell code blocks in agent instructions follow the same rule. `$CLAUDE_PROJECT_DIR` and similar variables are resolved to the project, and a skill's commands are also resolved from the skill's folder. A `NODE_OPTIONS=--require` file in agent settings is a target too.
 - Targets' relative `require` and `import` calls are followed, up to five levels and 500 files. Bare package names are not followed.
 - Code embedded with `node -e`/`-p`, `python -c`, `sh -c` or a `pwsh`/`powershell` command line is analysed in its own language, up to three levels deep. Its findings point at the line in the file that embeds it.
 - JavaScript, Python and shell that no entry point reaches is not analysed unless it is named on the command line. PowerShell is analysed wherever it is.
@@ -35,7 +39,7 @@ An entry point is code that runs without anyone choosing to run it. Each one in 
 
 ### Correlation
 
-BS-EX-001 is reported once per entry point when the code it reaches both collects secrets (BS-CR-001 or BS-ENV-001) and has network access (BS-NET-001, -002 or -003). It sits at the entry point and names one finding of each kind. It does not prove that the collected values reach the network call; there is no data flow between files.
+BS-EX-001 is reported once per entry point when the code it reaches both collects secrets (BS-CR-001, BS-ENV-001 or BS-AG-003) and has network access (BS-NET-001, -002 or -003, or BS-AG-004). It sits at the entry point and names one finding of each kind. It does not prove that the collected values reach the network call; there is no data flow between files.
 
 GitHub Actions entry points are left out of BS-EX-001. Workflows and actions use tokens and the network by design, and the official toolkit bundled into JavaScript actions reads the OIDC token variables, so the combination says little there. BS-GHA-006 takes its place for workflow steps.
 
@@ -59,6 +63,32 @@ The rules are deliberately narrow. For a full audit, zizmor is the reference.
 - **BS-EP-002 (review):** a VS Code task with `runOn: folderOpen`. Its command and arguments, its `windows`, `linux` and `osx` variants, the tasks it `dependsOn`, and the `package.json` script of an `npm` task are analysed.
 - **BS-EP-003 (review):** a dev container `initializeCommand`, which runs on the host. Every lifecycle command is analysed, in string, array and parallel-object form.
 - Husky hook files, lefthook `run` commands, scripts and nested job groups, and pre-commit local hooks are analysed as shell. pre-commit `pygrep` and `fail` hooks are not commands and are skipped. Hooks that run in a container image are listed and not analysed.
+
+## AI coding agents
+
+### Instruction files
+
+Markdown is split into front matter, fenced code blocks, inline code and HTML comments. Nothing is rendered, so every position is the file's own.
+
+- Prose, front matter and HTML comments are matched line by line, one clause at a time, against fixed phrasings. A clause that negates the instruction is not reported: "never read `~/.ssh`" is a safety rule, and so is "never push without asking", which negates twice.
+  - **BS-AG-001 (review):** skip confirmation or permission prompts ("without asking for confirmation", "don't ask for approval"), or flags such as `--dangerously-skip-permissions`, `--yolo` and `bypassPermissions`.
+  - **BS-AG-002 (high):** ignore previous, system or safety instructions; do not tell or notify the user; act without the user noticing; hide something from the user.
+  - **BS-AG-003 (review):** read, print, copy or send a credential file or token variable, from the same list as BS-CR-001.
+  - **BS-AG-004 (review):** fetch, download, run, follow, send or post together with a URL, except `localhost` and other loopback hosts. A plain link is not reported.
+- A match inside an HTML comment, which rendered Markdown does not show, is reported as high. So is a match in text hidden as Unicode tag characters, which are decoded for the check; BS-UC-001 reports the characters as well.
+- Fenced code blocks are analysed in their language: no language or `sh`, `bash`, `console` and similar as shell, `powershell` and `pwsh` as PowerShell, `python`, `js` and `ts`. In terminal sessions, only lines after a `$ ` prompt are read. Inline code with a space in it is analysed as shell. Findings point at the exact line and column.
+- In Claude Code commands and skills, `` !`command` `` runs when the command or skill is used. It is reported as BS-AG-005 and analysed as shell. An `allowed-tools` value that allows every shell command is BS-AG-006.
+- `@path` imports in `CLAUDE.md` and `GEMINI.md` are followed up to five levels, inside the project only, and the imported files are checked as part of the same entry point.
+
+### Configurations
+
+- **BS-AG-005 (review):** every command hook, status line, credential helper (`apiKeyHelper`, `awsAuthRefresh`, `awsCredentialExport`, `otelHeadersHelper`) and Codex `notify` command. Each is its own entry point, with its event as the trigger, and its command is analysed as shell.
+- **BS-AG-006 (review):** `defaultMode: bypassPermissions`, an allow rule for every `Bash` command, `enableAllProjectMcpServers` and `enabledMcpjsonServers`, a Codex `approval_policy` of `never`, and in `.vscode/settings.json` `chat.tools.autoApprove`, `chat.tools.global.autoApprove` and `task.allowAutomaticTasks: on`.
+- **BS-AG-007 (review):** in agent settings and `.env` files, `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` and similar endpoint variables, proxy variables, and variables that turn off TLS certificate checks. The evidence leaves out user names, passwords and query strings.
+- **BS-AG-008 (high):** `NODE_OPTIONS` with `--require`, `--import` or a loader, `BASH_ENV`, `LD_PRELOAD`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `PERL5OPT`, `RUBYOPT -r`, and Java agent options, in agent settings, MCP server environments and `.env` files.
+- **BS-MCP-001 (review):** an MCP server started with `npx`, `bunx`, `pnpm dlx`, `yarn dlx`, `uvx`, `uv tool run` or `pipx run` without an exact version, or with `docker run` without an image digest. `cmd /c` is looked through. Local paths are not reported, and git sources count as pinned only with a full commit SHA.
+- **BS-MCP-002 (review):** the npm and PyPI packages of the reference servers in [modelcontextprotocol/servers-archived](https://github.com/modelcontextprotocol/servers-archived): `@modelcontextprotocol/server-` `aws-kb-retrieval`, `brave-search`, `everart`, `gdrive`, `github`, `gitlab`, `google-maps`, `postgres`, `puppeteer`, `redis` and `slack`, and `mcp-server-sentry` and `mcp-server-sqlite`. `mcp-server-git` is still maintained in the main repository and is not reported.
+- Remote MCP servers are listed as entry points with their URL, without the query string, and are not analysed.
 
 ## JavaScript, TypeScript, Python and shell
 
@@ -117,7 +147,7 @@ There is no other data flow: values that pass through functions, loops or other 
 
 ### Rules
 
-`bombsquad rules` lists all 37 rules, 17 of them for PowerShell. Each finding includes:
+`bombsquad rules` lists all 47 rules, 17 of them for PowerShell. Each finding includes:
 
 - the rule's effect;
 - its limits;
@@ -137,6 +167,9 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 - In workflows: values that reach a script through `env:`, step outputs or files; the repository's default token permissions and whether it is public; and the code of reusable workflows, actions and container images fetched from elsewhere. BS-GHA-006 looks only at the step's own bash or sh script.
 - Remote pre-commit hooks, lefthook remotes and `extends`, husky v4 and `simple-git-hooks` configuration in `package.json`, and editor settings outside the repository.
 - A file that GitHub, VS Code or a hook tool accepts but these readers reject is reported as not read, and nothing in it is analysed.
+- In agent instructions: anything phrased differently from the fixed phrasings, split across lines, written in another language, or only implied. Quoted examples of bad instructions are reported like real ones. Whether an agent would follow an instruction is not known.
+- Agent settings outside the repository (user and enterprise settings), which can add hooks or override approvals, and the code of MCP servers fetched from registries or images.
+- Embedded PowerShell when no PowerShell is installed: it is noted as not analysed. A PowerShell file named on the command line still needs PowerShell.
 
 ## Accuracy
 

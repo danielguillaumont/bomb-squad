@@ -4,7 +4,7 @@
 
 Bomb Squad reviews third-party code before it runs. Version 2 is being built step by step ([roadmap](docs/roadmap.md)).
 
-It first lists the **entry points**: code that runs without anyone choosing to run it. Today that covers npm install hooks; Python's `.pth` files, `setup.py`, in-tree build backends, `sitecustomize` and `conftest.py`; GitHub Actions workflows and actions; VS Code tasks that run when a folder opens; dev container lifecycle commands; and husky, lefthook and pre-commit hooks. Agent configs come next. It then reads the code each entry point reaches and reports what that code could do, with the exact source, how it was reached, and what the analysis could not see. **It never runs anything it scans.**
+It first lists the **entry points**: code that runs without anyone choosing to run it. Today that covers npm install hooks; Python's `.pth` files, `setup.py`, in-tree build backends, `sitecustomize` and `conftest.py`; GitHub Actions workflows and actions; VS Code tasks that run when a folder opens; dev container lifecycle commands; husky, lefthook and pre-commit hooks; and AI coding agents' instruction files, hooks, MCP servers and settings. It then reads the code each entry point reaches and reports what that code could do, with the exact source, how it was reached, and what the analysis could not see. **It never runs anything it scans.**
 
 ```text
 $ bombsquad scan demo-package
@@ -26,7 +26,7 @@ demo-package/package.json
 
 ## What it finds
 
-37 rules, listed by `bombsquad rules`.
+47 rules, listed by `bombsquad rules`.
 
 **In GitHub Actions**, a deliberately narrow set of trust-boundary rules (zizmor is the reference for a full audit):
 
@@ -37,6 +37,14 @@ demo-package/package.json
 - third-party actions, reusable workflows, images and hook repositories referenced by a tag or branch instead of a commit SHA.
 
 **In editor and hook configuration:** VS Code tasks that run when the folder opens, dev container commands that run on the host, and git hooks, with their commands analysed like any other entry point.
+
+**In AI coding agents' files** (`AGENTS.md`, `CLAUDE.md`, Copilot and Cursor rules, skills, slash commands, `.claude/settings.json`, `.mcp.json` and other MCP configs):
+
+- instructions to skip confirmation, to hide actions from the user or ignore other instructions, to read credentials, or to fetch from or send to a URL, with stronger findings when they hide in an HTML comment or invisible Unicode tags;
+- the code blocks in those files, analysed like any other code;
+- hooks, status lines, credential helpers and `` !`command` `` lines that run shell commands on agent events;
+- settings that approve tool calls, shell commands, MCP servers or automatic tasks in advance, redirect the agent's API traffic, or make programs load code through `NODE_OPTIONS`, `LD_PRELOAD` and similar;
+- MCP servers launched through `npx`, `uvx` or `docker run` without a pinned version, and the archived reference servers.
 
 **In code an entry point reaches** (JavaScript and TypeScript, Python, shell, and code embedded with `node -e`, `python -c`, `sh -c` or a PowerShell command line, including workflow `run:` steps):
 
@@ -78,7 +86,7 @@ The input is data, never code:
 
 - PowerShell is parsed by `Parser.ParseInput` in a separate process, in an empty working directory. `using module` and `using assembly` statements are blanked first, because the parser opens the files they name.
 - JavaScript, TypeScript and shell are parsed with tree-sitter, and Python with the standard library's `ast`. Nothing is imported or evaluated.
-- YAML is composed into nodes with PyYAML's safe loader and never constructed into objects. VS Code's JSON with comments is read by Bomb Squad's own reader.
+- YAML is composed into nodes with PyYAML's safe loader and never constructed into objects. VS Code's JSON with comments is read by Bomb Squad's own reader. Markdown is split into prose, code and comments without rendering it.
 - Only files inside the scanned directories are followed, and symlinked files are skipped.
 
 See the [threat model](docs/threat-model.md) for the rest, and [methodology](docs/methodology.md) for what each rule matches and its limits.
