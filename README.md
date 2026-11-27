@@ -69,16 +69,16 @@ Every finding carries its source location, the evidence, how it was reached and 
 
 ## How accurate it is
 
-Measured against GuardDog 3.2.0 on the same packages, in one run on 2026-11-27. The packages were 200 npm and 200 PyPI samples from the DataDog malicious-software-packages-dataset at commit `72c723be5470` (2026-11-05), and 200 npm and 195 PyPI releases of popular packages. Bomb Squad's figures are at a review or high finding; GuardDog's are at its `suspicious` or `high_risk` label.
+Measured against GuardDog 3.2.0 on the same packages, in a held-out run on 2026-11-27 whose protocol was fixed before it ran. The packages were 200 npm and 200 PyPI samples from the DataDog malicious-software-packages-dataset at commit `72c723be5470` (2026-11-05), and 200 npm and 197 PyPI releases of popular packages. None of them was used while the rules were tuned. Bomb Squad's figures are at a review or high finding; GuardDog's are at its `suspicious` or `high_risk` label.
 
 | | Malicious found, Bomb Squad | Malicious found, GuardDog | Popular releases flagged, Bomb Squad | Popular releases flagged, GuardDog |
 |---|---|---|---|---|
-| npm | 45.0% (90/200) | 66.0% (132/200) | 1.5% (3/200) | 2.0% (4/200) |
-| PyPI | 65.5% (131/200) | 91.0% (182/200) | 11.8% (23/195) | 15.9% (31/195) |
+| npm | 53.0% (106/200) | 70.0% (140/200) | 3.0% (6/200) | 0.5% (1/200) |
+| PyPI | 71.5% (143/200) | 88.5% (177/200) | 8.6% (17/197) | 14.7% (29/197) |
 
-GuardDog finds more. Bomb Squad looks only at what runs on install and the code it reaches. It flags none of the 84 npm and 24 PyPI samples where it found no install-time entry point, such as payloads that run on import or require. On npm samples with an install-time entry point, it finds 79.0% (90/114) to GuardDog's 73.7% (84/114). 64 of the PyPI samples share one pattern that both tools catch. Without them, the PyPI figures are 49.3% (67/136) for Bomb Squad and 86.8% (118/136) for GuardDog.
+GuardDog finds more. Bomb Squad looks only at what runs on install and the code it reaches. It flags none of the 73 npm and 15 PyPI samples where it found no install-time entry point, such as payloads that run on import or require. On npm samples with an install-time entry point, it finds 84.8% (106/125) to GuardDog's 80.8% (101/125). 76 of the PyPI samples share one pattern that both tools catch. Without them, the PyPI figures are 54.0% (67/124) for Bomb Squad and 81.5% (101/124) for GuardDog.
 
-These figures are in-sample: Bomb Squad's rules changed after earlier runs on the same samples, and the dataset was mostly found by GuardDog. There is no after-cutoff measure yet. The [write-up](docs/research/guarddog-benchmark.md) has the full tables, where Bomb Squad loses, and the pins.
+The sample is held out by package, not by campaign: the same PyPI pattern was in the development sample, which shaped the rules. The dataset was mostly found by GuardDog, and there is no after-cutoff measure yet. The [write-up](docs/research/guarddog-benchmark.md) has the full tables for both samples, where Bomb Squad loses, its false positives checked by hand, and the pins.
 
 ## Use it
 

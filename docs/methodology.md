@@ -230,7 +230,7 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 
 ## Accuracy
 
-Detection rates come only from the benchmark below. Every figure states its counts, the dataset commit and date, and GuardDog's result on the same packages. The current figures are in the [write-up](research/guarddog-benchmark.md). They are retrospective and in-sample, because the time-split set is empty for the pinned dataset commit.
+Detection rates come only from the benchmark below. Every figure states its counts, the dataset commit and date, and GuardDog's result on the same packages. The current figures are in the [write-up](research/guarddog-benchmark.md): a development sample, which is in-sample, and a [held-out sample](research/guarddog-benchmark.md#held-out-sample). Both are retrospective, because the time-split set is empty for the pinned dataset commit.
 
 ### How the benchmark works
 

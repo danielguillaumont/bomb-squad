@@ -182,8 +182,9 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 - `action.yml` is a composite Action that writes Markdown, JSON and SARIF.
 - `.github/workflows/gate.yml` runs it on this repository's pull requests. The job that runs it has read-only contents. A separate job, with only `pull-requests: write`, posts or updates one comment from the report and runs nothing from the pull request.
 - Dependabot opens weekly update pull requests for actions and `uv.lock`, after a seven-day cooldown.
+- Exploit Atlas runs the gate on its pull requests since 2026-11-27 ([exploit-atlas pull request 175](https://github.com/danielguillaumont/exploit-atlas/pull/175)).
 
-**Not yet:** Exploit Atlas, and the week of reviewed dependency pull requests.
+**In progress:** the week of reviewed dependency pull requests on both repositories, from 2026-11-27.
 
 **Exit:** a week of real dependency PRs on both repos. Every comment is reviewed by hand, and the false alarms are counted and listed.
 
@@ -200,9 +201,9 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 **Development runs:** six runs on a branch found faults in the harness and in Bomb Squad, fixed in one pull request before any figure was used. Among them: GuardDog was scored by any matched rule instead of its risk label, crashes were scored as clean scans, and repository files inside published packages were scored as if installing ran them. Rules changed after seeing those runs' rule counts on the retrospective set. The [write-up](research/guarddog-benchmark.md#development-runs) lists them.
 
-**Measured:** [the write-up](research/guarddog-benchmark.md), from Actions run 46066816294 on `main` (2026-11-27). It includes where Bomb Squad loses. The README's accuracy figures are taken from it.
+**Measured:** [the write-up](research/guarddog-benchmark.md), from two Actions runs on `main` (2026-11-27). Run 46066816294 is the development sample, which shaped the rules. Run 46075004726 is the held-out sample: seed 2027, leaving out the development runs' packages, under a protocol fixed before it ran. The README's accuracy figures are from the held-out run. The write-up includes where Bomb Squad loses in both.
 
-**Not yet:** the held-out run (seed 2027, leaving out the development runs' packages; protocol in [methodology](methodology.md#how-the-benchmark-works)), consecutive version pairs for the diff engine, and OpenSSF malicious-packages reports. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit. Until then every figure is retrospective and in-sample.
+**Not yet:** consecutive version pairs for the diff engine, and OpenSSF malicious-packages reports. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit. Until then every figure is retrospective, and the held-out sample is held out by package, not by campaign.
 
 **Exit (Phase 4) met:** the write-up is published, and every accuracy figure in the README is computed from it. The time split is still to be measured.
 
