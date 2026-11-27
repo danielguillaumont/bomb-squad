@@ -171,6 +171,23 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 - Agent settings outside the repository (user and enterprise settings), which can add hooks or override approvals, and the code of MCP servers fetched from registries or images.
 - Embedded PowerShell when no PowerShell is installed: it is noted as not analysed. A PowerShell file named on the command line still needs PowerShell.
 
+## Version diff
+
+`bombsquad diff npm:<name>@<old>..<new>`, `pypi:<name>@<old>..<new>`, or two local folders or archives.
+
+- **Fetching:** the npm package document or the PyPI JSON API gives each version's artifacts and hashes. Requests go only to `registry.npmjs.org`, `pypi.org` and `files.pythonhosted.org` over HTTPS, redirects included, with size limits. An artifact whose SHA-512 (npm, from `dist.integrity`) or SHA-256 (PyPI) differs from the registry's is not opened. When npm gives only a SHA-1 `shasum`, that is used and noted.
+- **Which artifacts:** the npm tarball; for PyPI, the sdist and one wheel, preferring a pure-Python `none-any` wheel. Platform-specific wheels other than the one chosen are not compared.
+- **Unpacking:** regular files only, written under a temporary folder that is deleted afterwards. Links, devices, absolute paths, `..`, drive letters, names Windows reserves or cannot hold, and names that differ only in case are skipped and listed in the report's notes. More than 20,000 members or 500 MB decompressed stops the diff.
+- **Matching:** entry points match by surface, kind and file, and are reported as changed when their command changes. Findings match by rule, file and evidence, ignoring line numbers and whitespace, so code that only moved is not reported again. A finding that appears twice in the new version and once in the old one is reported once as new.
+- **Minified lines:** a JavaScript, TypeScript, Python, shell or PowerShell file that has a line of 1,000 characters or more in the new version and none in the old one, or is new and has one.
+- **Publish signals:**
+  - `publisher-changed` and `maintainers-changed` (review): npm's `_npmUser` and `maintainers` for each version. Only names are kept; email addresses are not. PyPI does not publish who uploaded a release.
+  - `provenance-missing` (review): npm `dist.attestations`, or a PyPI attestation bundle from the integrity API, on every artifact of the old version and on none of the new one. Provenance shows where a package was built, not that its code is benign.
+  - `repository-changed` (review): the declared repository URL differs.
+  - `recent-release` (review) within seven days of the scan, otherwise `release-age` (info). These are registry publish times.
+- `--fail-on` applies to new findings and signals only.
+- Not yet compared: the artifact against its source repository, and tags or history (step 2b).
+
 ## Accuracy
 
 Not measured yet. Detection rates will come only from the benchmark in [Phase 4](roadmap.md#phase-4-benchmark-against-guarddog): time-split, compared with GuardDog on the same packages, with denominators and dataset dates.
