@@ -35,6 +35,10 @@ ENV_SERIALIZERS = frozenset({
 })
 DECODERS = re.compile(r"atob\(|base64|fromcharcode|inflate|gunzip|decompress|['\"]hex['\"]",
                       re.IGNORECASE)
+# Literals a value is held in on its way to a call: `{ env: process.env }`, `[...]`,
+# `{ ...process.env }`, `(process.env)`.
+VALUE_WRAPPERS = frozenset({"pair", "object", "array", "spread_element",
+                            "parenthesized_expression"})
 TS_SUFFIXES = (".ts", ".mts", ".cts")
 TSX_SUFFIXES = (".tsx",)
 
@@ -111,6 +115,10 @@ class _Analysis:
         self.result = JsResult()
         self.aliases: dict[str, str] = {}  # local name -> module or module.member
         self.seen: set[tuple[str, int]] = set()
+        self.env_holders: set[str] = set()  # variables holding process.env, whole or in a value
+        # Calls that serialise or send, with the variables in their arguments, checked
+        # against env_holders once every variable is known.
+        self.sink_calls: list[tuple[object, str, set[str]]] = []
 
     def region(self, node):
         return self.positions.region_utf8(node.start_point[0] + 1, node.start_point[1],
@@ -186,6 +194,7 @@ class _Analysis:
         if function is None:
             return
         name = self.resolve(function)
+        self.note_sink_call(node, name, args)
         first = args.named_children[0] if args is not None and args.named_children else None
         if _text(function) == "require" and first is not None:
             raw = _string_value(first)
@@ -274,6 +283,50 @@ class _Analysis:
         if how:
             self.hit("BS-ENV-001", parent.parent if parent.type == "arguments" else parent,
                      [f"process.env {how}"])
+            return
+        # Held in a value (an object, array or spread) that a call serialises or sends, or
+        # that a variable keeps. A child process's `{ env: process.env }` is neither.
+        holder, inner = parent, node
+        while holder is not None and holder.type in VALUE_WRAPPERS:
+            inner, holder = holder, holder.parent
+        if holder is None:
+            return
+        if holder.type == "arguments" and holder.parent is not None:
+            callee = holder.parent.child_by_field_name("function")
+            sink = self.sink(self.resolve(callee)) if callee is not None else None
+            if sink:
+                self.hit("BS-ENV-001", holder.parent, [f"process.env, held in a value, {sink}"])
+        elif holder.type == "variable_declarator" and holder.child_by_field_name("value") == inner:
+            name = holder.child_by_field_name("name")
+            if name is not None and name.type == "identifier":
+                self.env_holders.add(_text(name))
+
+    def sink(self, name: str) -> str | None:
+        """How a call carries its arguments out: serialised, or sent over the network."""
+        if name in ENV_SERIALIZERS:
+            return f"serialised by {name}"
+        if (name in NETWORK_GLOBALS or name == "navigator.sendBeacon"
+                or name.split(".")[0] in NETWORK_MODULES):
+            return f"sent with {name}"
+        return None
+
+    def note_sink_call(self, node, name: str, args) -> None:
+        """Remember the variables a serialising or sending call is given, at any depth of
+        object and array literals, to check once every variable holding process.env is
+        known."""
+        if args is None or not self.sink(name):
+            return
+        names: set[str] = set()
+        stack = list(args.named_children)
+        while stack:
+            child = stack.pop()
+            if child.type in ("identifier", "shorthand_property_identifier"):
+                names.add(_text(child))
+            elif child.type in VALUE_WRAPPERS:
+                key = child.child_by_field_name("key") if child.type == "pair" else None
+                stack.extend(c for c in child.named_children if c != key)
+        if names:
+            self.sink_calls.append((node, name, names))
 
     def run(self) -> JsResult:
         root = self.tree.root_node
@@ -304,6 +357,11 @@ class _Analysis:
                 reference = credential_reference(_text(node))
                 if reference:
                     self.hit("BS-CR-001", node.parent or node, [f"names {reference}"])
+        for call, name, names in self.sink_calls:
+            held = sorted(names & self.env_holders)
+            if held:
+                self.hit("BS-ENV-001", call,
+                         [f"{held[0]} holds process.env, and is {self.sink(name)}"])
         self.result.hits.extend(packed_code(self.text, self.positions))
         return self.result
 
