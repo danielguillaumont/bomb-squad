@@ -51,6 +51,9 @@ The benchmark detonates live malicious samples (`detonate` input `all`) only on 
 1. It checks that workflows from fork pull requests need approval for all outside contributors, and that no earlier detonation VM or runner is left.
 2. It shows the subscription, location and VM size, and asks you to type `yes`.
 3. It creates a resource group with one Ubuntu 24.04 VM (`Standard_D4s_v5` by default) and nothing else. The VM has no managed identity and no inbound rules. Its only outbound traffic to the internet is TCP 80 and 443. Azure deallocates it after `-MaxHours` (7 by default) even if the script has stopped.
+   - It goes in a new resource group of its own, and the script deletes only resource groups it tagged `bombsquad=detonation`. Other resources in the subscription are not touched. The VM has its own network, with no peering to any other.
+   - The region defaults to `canadacentral`. Pass `-Location` for another; the script checks it against the subscription's allowed-regions policy.
+   - On a new subscription it registers the Microsoft.Compute and Microsoft.Network providers first.
 4. At boot, `scripts/detonation-vm.sh` installs Docker, writes `/etc/bombsquad/disposable-vm`, and registers a runner that takes one job and unregisters. The runner is downloaded at a pinned version and checked against its SHA-256. It may update itself from GitHub's releases if GitHub no longer accepts that version.
 5. The script dispatches the benchmark with `detonate=all` and waits for it.
 6. When the run ends, fails or is interrupted, it cancels the run if it has not finished and deletes the resource group and the runner.
@@ -63,7 +66,8 @@ If the window closes during a run, delete what is left:
 
 Before the first run:
 
-- Use a subscription that holds nothing else of value, and check that its terms allow running malware samples for research in your own VM.
+- A subscription that holds nothing else is safest. In a shared one, the VM has no identity and no network peering, so it cannot reach other resources through Azure, only their public endpoints, as any host on the internet can.
+- Check that the subscription's terms allow running malware samples for research in your own VM.
 - Set the fork approval policy, once: `gh api --method PUT repos/danielguillaumont/bomb-squad/actions/permissions/fork-pr-contributor-approval -f approval_policy=all_external_contributors`.
 - The run is billed while the VM exists. `-DryRun` prints what would be done without calling Azure or GitHub.
 

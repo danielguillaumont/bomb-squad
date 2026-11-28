@@ -24,7 +24,8 @@ param(
     [Parameter(Position = 0)]
     [ValidateSet("run", "down")]
     [string] $Command = "run",
-    [string] $Location = "westeurope",
+    # A region the subscription allows; Azure for Students allows only a few.
+    [string] $Location = "canadacentral",
     [string] $Size = "Standard_D4s_v5",
     # Azure deallocates the VM after this long even if this script is no longer running.
     [ValidateRange(1, 24)]
@@ -157,6 +158,13 @@ function Start-Detonation {
                 "repos/$Repo/actions/permissions/fork-pr-contributor-approval " +
                 "-f approval_policy=all_external_contributors")
         }
+        # Subscriptions such as Azure for Students allow only some regions, by policy.
+        $allowed = Invoke-Tool az @("policy", "assignment", "list", "--query",
+            "[].parameters.listOfAllowedLocations.value[]", "--output", "tsv")
+        $regions = @($allowed -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() })
+        if ($regions.Count -gt 0 -and $regions -notcontains $Location) {
+            throw "The subscription does not allow $Location. Pass -Location with one of: $($regions -join ', ')"
+        }
         $left = @(Get-DetonationGroups)
         if ($left.Count -gt 0) {
             throw "A detonation VM is still there ($($left -join ', ')). Run: .\scripts\detonation-vm.ps1 down"
@@ -175,7 +183,7 @@ function Start-Detonation {
     Write-Host "  Location and size:  $Location, $Size"
     Write-Host "  Deallocated after:  $MaxHours hours at most, deleted when the run ends"
     Write-Host "  Benchmark:          $Repo $Workflow at $Ref, detonate=all"
-    Write-Host "The subscription should hold nothing else of value."
+    Write-Host "It goes in a new resource group of its own; nothing else in the subscription is changed."
     if (-not $Yes -and -not $DryRun) {
         if ((Read-Host "Type yes to go on") -ne "yes") { Write-Host "Stopped."; return }
     }
@@ -207,6 +215,12 @@ function Start-Detonation {
         $boot = Join-Path $work "boot.sh"
         Write-BootScript -Path $boot -RunnerName $runnerName -Token $token
         if ($DryRun) { Write-Host "boot script:"; Get-Content $boot | Write-Host }
+
+        # A new subscription has to have these services turned on once. Registering them
+        # changes nothing that already exists.
+        foreach ($provider in "Microsoft.Compute", "Microsoft.Network") {
+            Invoke-Tool az @("provider", "register", "--namespace", $provider, "--wait") | Out-Null
+        }
 
         $now = (Get-Date).ToUniversalTime()
         Invoke-Tool az @("group", "create", "--name", $group, "--location", $Location,
