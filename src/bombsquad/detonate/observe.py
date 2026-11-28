@@ -201,9 +201,12 @@ def observe(trace: Trace, sink_events: list[dict], canaries: Canaries, ecosystem
         elif kind == "tcp":
             data = _decoded(event)
             obs.sink_connections.append({"port": event.get("port"), "bytes": event.get("bytes"),
-                                         "http": event.get("http"), "sni": event.get("sni")})
+                                         "http": event.get("http"), "sni": event.get("sni"),
+                                         "tls": event.get("tls")})
+            via = "TLS" if event.get("tls") == "decrypted" else "TCP"
             for what in found_in(data, canaries.tokens):
-                obs.credentials_sent.append({"secret": what, "via": f"TCP port {event.get('port')}",
+                obs.credentials_sent.append({"secret": what,
+                                             "via": f"{via} port {event.get('port')}",
                                              "host": (event.get("http") or {}).get("host")
                                              or event.get("sni")})
         elif kind == "truncated":

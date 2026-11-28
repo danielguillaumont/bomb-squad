@@ -180,6 +180,7 @@ Each benign release was diffed with `bombsquad diff` against the highest lower v
   - The packages were not inspected further, so this is what was observed, not an explanation of it.
 - **npm:** according to the registry metadata, none of the 200 releases has a `preinstall`, `install` or `postinstall` script, or a `binding.gyp`, so detonation ran none of their code. 22 have a `prepare` script, which a registry install does not run.
 - **PyPI:** 51 sdists did not build in the sandbox, which reaches no package index and has only its preinstalled build backends, so the release's wheel was installed and imported instead. One package, mysqlclient, installed neither way: its sdist did not build, and the wheel tried after it did not install.
+- **TLS:** in this run the sink recorded TLS by server name only, so a fake credential sent over HTTPS would have counted as read, not as sent. The sink has read TLS since.
 
 ## Development runs
 

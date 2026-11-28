@@ -5,23 +5,39 @@ and records each attempt as one JSON line on standard output: DNS names, ports, 
 bytes sent, the HTTP request line and Host header, and the TLS server name. It answers
 nothing useful. It runs in its own container, so the package cannot change what it records.
 
-Standard library only: this file is copied into the sink image and run as `python sink.py`.
+TLS is read too. The sink makes a certificate authority for the run, whose certificate the
+package's container trusts and whose key never leaves the sink. For each server name a
+client asks for, it issues a certificate, completes the handshake, and records what the
+client then sends. A client that does not trust the authority fails the handshake, and only
+its server name is recorded.
+
+Standard library only, plus the `openssl` command for the certificates: this file is copied
+into the sink image and run as `python sink.py`.
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import re
+import secrets
 import socket
+import ssl
 import struct
+import subprocess
 import sys
+import tempfile
 import threading
 import time
+from pathlib import Path
 
 TCP_PORTS = (21, 22, 25, 80, 443, 587, 1337, 3000, 4444, 5000, 6667, 8000, 8080, 8443, 9001)
 MAX_BYTES = 65536  # kept per connection
 MAX_EVENTS = 5000
 READ_SECONDS = 3.0
+MAX_HELLO = 16384 + 5  # one TLS record
+MAX_NAMES = 256  # server names given a certificate; later ones are not decrypted
+HOST_NAME = re.compile(r"(?=.{1,253}\Z)[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?")
 
 _lock = threading.Lock()
 _count = 0
@@ -96,6 +112,107 @@ def serve_dns(address: str) -> None:
             sock.sendto(reply, peer)
 
 
+# TLS ------------------------------------------------------------------------------------------
+
+_CA_CONFIG = """[req]
+distinguished_name = dn
+prompt = no
+[dn]
+CN = Detonation sink CA
+[ca]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+"""
+_LEAF_CONFIG = """[req]
+distinguished_name = dn
+prompt = no
+[dn]
+CN = Detonation sink
+[leaf]
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature
+extendedKeyUsage = serverAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid
+subjectAltName = DNS:{name}
+"""
+
+
+class Authority:
+    """A certificate authority made for one run, and a certificate for each server name.
+
+    Its files live in `folder`, inside the sink's container. Names are checked against
+    HOST_NAME before they reach a configuration file, and `openssl` is given argument lists,
+    never a shell."""
+
+    def __init__(self, folder: Path, openssl: str = "openssl") -> None:
+        self.folder = folder
+        self.openssl = openssl
+        self._lock = threading.Lock()
+        self._contexts: dict[str, ssl.SSLContext] = {}
+        self._key("ca.key")
+        self._key("leaf.key")
+        (folder / "ca.cnf").write_text(_CA_CONFIG, encoding="ascii")
+        self._openssl("req", "-new", "-x509", "-key", "ca.key", "-config", "ca.cnf",
+                      "-extensions", "ca", "-days", "2", "-set_serial", _serial(),
+                      "-out", "ca.pem")
+        self.pem = (folder / "ca.pem").read_text(encoding="ascii")
+
+    def _openssl(self, *args: str) -> None:
+        subprocess.run([self.openssl, *args], cwd=self.folder, check=True,
+                       capture_output=True, timeout=30)
+
+    def _key(self, name: str) -> None:
+        self._openssl("ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", name)
+
+    def context(self, name: str | None) -> ssl.SSLContext | None:
+        """A server context with a certificate for `name`, or None when the name is not a
+        host name or too many names have been seen."""
+        if not name or not HOST_NAME.fullmatch(name):
+            return None
+        name = name.lower().rstrip(".")
+        with self._lock:
+            if name in self._contexts:
+                return self._contexts[name]
+            if len(self._contexts) >= MAX_NAMES:
+                return None
+            stem = f"leaf-{len(self._contexts)}"
+            (self.folder / f"{stem}.cnf").write_text(_LEAF_CONFIG.format(name=name),
+                                                     encoding="ascii")
+            self._openssl("req", "-new", "-key", "leaf.key", "-config", f"{stem}.cnf",
+                          "-out", f"{stem}.csr")
+            self._openssl("x509", "-req", "-in", f"{stem}.csr", "-CA", "ca.pem", "-CAkey",
+                          "ca.key", "-set_serial", _serial(), "-days", "2", "-extfile",
+                          f"{stem}.cnf", "-extensions", "leaf", "-out", f"{stem}.pem")
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(self.folder / f"{stem}.pem", self.folder / "leaf.key")
+            context.set_alpn_protocols(["http/1.1"])
+            self._contexts[name] = context
+            return context
+
+
+def _serial() -> str:
+    return str(secrets.randbits(63) + 1)
+
+
+def peek_hello(conn: socket.socket) -> bytes | None:
+    """The first bytes the client sends, left unread, waiting for a whole TLS record when
+    they start one. None when the client sends nothing in time."""
+    deadline = time.monotonic() + READ_SECONDS
+    while True:
+        try:
+            data = conn.recv(MAX_HELLO, socket.MSG_PEEK)
+        except OSError:
+            return None
+        if not data or data[0] != 0x16 or (
+                len(data) >= 5 and len(data) >= 5 + struct.unpack("!H", data[3:5])[0]):
+            return data
+        if time.monotonic() > deadline:
+            return data
+        time.sleep(0.05)
+
+
 # TCP ------------------------------------------------------------------------------------------
 
 def server_name(data: bytes) -> str | None:
@@ -143,45 +260,79 @@ def _content_length(head: bytes) -> int:
     return 0
 
 
-def handle(conn: socket.socket, port: int, peer: str) -> None:
+def _read(stream: socket.socket) -> bytes:
+    """What the client sends, up to MAX_BYTES; an HTTP request is answered with a 404."""
     data = b""
-    conn.settimeout(READ_SECONDS)
     try:
         while len(data) < MAX_BYTES:
-            chunk = conn.recv(4096)
+            chunk = stream.recv(4096)
             if not chunk:
                 break
             data += chunk
             head, sep, body = data.partition(b"\r\n\r\n")
             if sep and http_request(data) and len(body) >= min(_content_length(head),
                                                                MAX_BYTES):
-                conn.sendall(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n"
-                             b"Connection: close\r\n\r\n")
+                stream.sendall(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n"
+                               b"Connection: close\r\n\r\n")
                 break
     except OSError:
         pass
+    return data
+
+
+def handle(conn: socket.socket, port: int, peer: str,
+           authority: Authority | None = None) -> None:
+    conn.settimeout(READ_SECONDS)
+    data, sni, tls = b"", None, None
+    try:
+        hello = peek_hello(conn)
+        if hello and hello[0] == 0x16:
+            sni = server_name(hello)
+            try:
+                context = authority.context(sni) if authority else None
+            except (OSError, subprocess.SubprocessError, ssl.SSLError):
+                context = None
+            if context is None:
+                tls, data = "not decrypted", _read(conn)
+            else:
+                conn = context.wrap_socket(conn, server_side=True,
+                                           do_handshake_on_connect=False)
+                try:
+                    conn.do_handshake()
+                except OSError:  # ssl.SSLError included: the client refused the certificate
+                    tls, data = "handshake failed", hello
+                else:
+                    tls, data = "decrypted", _read(conn)
+        elif hello:
+            data = _read(conn)
     finally:
         conn.close()
     emit({"kind": "tcp", "port": port, "peer": peer, "bytes": len(data),
-          "http": http_request(data), "sni": server_name(data),
+          "http": http_request(data), "sni": sni or server_name(data), "tls": tls,
           "data": base64.b64encode(data[:MAX_BYTES]).decode()})
 
 
-def serve_tcp(port: int) -> None:
+def serve_tcp(port: int, authority: Authority | None) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("0.0.0.0", port))
     sock.listen(64)
     while True:
         conn, peer = sock.accept()
-        threading.Thread(target=handle, args=(conn, port, peer[0]), daemon=True).start()
+        threading.Thread(target=handle, args=(conn, port, peer[0], authority),
+                         daemon=True).start()
 
 
 def main() -> None:
     address = socket.gethostbyname(socket.gethostname())
+    try:
+        authority: Authority | None = Authority(Path(tempfile.mkdtemp(prefix="sink-")))
+    except (OSError, subprocess.SubprocessError) as error:
+        authority = None
+        emit({"kind": "error", "what": "certificate authority", "error": str(error)[:500]})
     for port in TCP_PORTS:
-        threading.Thread(target=serve_tcp, args=(port,), daemon=True).start()
-    emit({"kind": "ready", "address": address})
+        threading.Thread(target=serve_tcp, args=(port, authority), daemon=True).start()
+    emit({"kind": "ready", "address": address, "ca": authority.pem if authority else None})
     serve_dns(address)
 
 

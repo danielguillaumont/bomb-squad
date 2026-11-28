@@ -8,10 +8,13 @@ from __future__ import annotations
 import base64
 import io
 import json
+import shutil
 import socket
+import ssl
 import struct
 import subprocess
 import tarfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -70,6 +73,81 @@ def test_sink_reads_tls_server_names_and_http_requests():
     assert sink.http_request(request) == {"method": "POST", "target": "/c",
                                           "host": "collector.invalid"}
     assert sink.http_request(b"\x00\x01binary") is None
+
+
+def _sink_connection(authority, client) -> dict:
+    """Run `client(port)` against one connection handled by the sink; return its event."""
+    events: list[dict] = []
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    port = listener.getsockname()[1]
+
+    def serve() -> None:
+        conn, peer = listener.accept()
+        sink.handle(conn, port, peer[0], authority)
+
+    server = threading.Thread(target=serve, daemon=True)
+    original, sink.emit = sink.emit, events.append
+    try:
+        server.start()
+        client(port)
+        server.join(timeout=15)
+    finally:
+        sink.emit = original
+        listener.close()
+    [event] = events
+    return event
+
+
+@pytest.mark.skipif(shutil.which("openssl") is None, reason="needs the openssl command")
+def test_sink_decrypts_tls_for_clients_that_trust_its_authority(tmp_path):
+    authority = sink.Authority(tmp_path)
+    assert authority.pem.startswith("-----BEGIN CERTIFICATE-----")
+    trusting = ssl.create_default_context(cadata=authority.pem)
+    body = b"token=npm_FAKE"
+
+    def post(port: int, context: ssl.SSLContext = trusting) -> None:
+        with socket.create_connection(("127.0.0.1", port), timeout=10) as raw:
+            try:
+                with context.wrap_socket(raw, server_hostname="collector.invalid") as tls:
+                    tls.sendall(b"POST /c HTTP/1.1\r\nHost: collector.invalid\r\n"
+                                b"Content-Length: %d\r\n\r\n" % len(body) + body)
+                    assert tls.recv(100).startswith(b"HTTP/1.1 404")
+            except ssl.SSLError:
+                pass
+
+    event = _sink_connection(authority, post)
+    assert (event["tls"], event["sni"]) == ("decrypted", "collector.invalid")
+    assert event["http"] == {"method": "POST", "target": "/c", "host": "collector.invalid"}
+    assert base64.b64decode(event["data"]).endswith(body)
+
+    # A client with its own list of authorities refuses the certificate: only the name.
+    (tmp_path / "other").mkdir()
+    untrusting = ssl.create_default_context(cadata=sink.Authority(tmp_path / "other").pem)
+    event = _sink_connection(authority, lambda port: post(port, untrusting))
+    assert (event["tls"], event["sni"], event["http"]) == ("handshake failed",
+                                                          "collector.invalid", None)
+    assert body not in base64.b64decode(event["data"])
+
+
+def test_sink_does_not_issue_certificates_for_names_that_are_not_host_names(tmp_path):
+    authority = sink.Authority.__new__(sink.Authority)  # no openssl needed: nothing issued
+    authority._contexts, authority._lock = {}, threading.Lock()
+    for name in (None, "", "-config", "a b", "x\n[ca]", "x\n", "*.example", "a" * 254):
+        assert authority.context(name) is None
+    # Without an authority, TLS is recorded as before: its server name and raw bytes.
+    hello = _client_hello("api.example.invalid")
+
+    def send_hello(port: int) -> None:
+        with socket.create_connection(("127.0.0.1", port), timeout=10) as raw:
+            raw.sendall(hello)
+            raw.shutdown(socket.SHUT_WR)
+            raw.recv(10)
+
+    event = _sink_connection(None, send_hello)
+    assert (event["tls"], event["sni"]) == ("not decrypted", "api.example.invalid")
+    assert base64.b64decode(event["data"]) == hello
 
 
 # Trace --------------------------------------------------------------------------------------
@@ -255,15 +333,21 @@ def test_a_pypi_wheel_goes_in_beside_the_sdist_in_case_it_does_not_build():
 class FakeDocker:
     """Records docker commands and answers them as a working Docker would."""
 
-    def __init__(self, fail: str | None = None) -> None:
+    CA = "-----BEGIN CERTIFICATE-----\nTUlJQg==\n-----END CERTIFICATE-----\n"
+
+    def __init__(self, fail: str | None = None, ca: str | None = CA) -> None:
         self.calls: list[list[str]] = []
+        self.inputs: list[bytes | None] = []
         self.fail = fail
+        self.ca = ca
 
     def run(self, args, **kwargs):
         self.calls.append(args)
+        self.inputs.append(kwargs.get("input"))
         out = b""
         if args[1] == "logs":
-            out = (json.dumps({"kind": "ready", "address": "172.30.0.2"}) + "\n" + json.dumps(
+            out = (json.dumps({"kind": "ready", "address": "172.30.0.2", "ca": self.ca}) + "\n"
+                   + json.dumps(
                 {"kind": "dns", "name": "collector.invalid"}) + "\n").encode()
         code = 1 if self.fail and self.fail in args else 0
         if args[:3] == ["docker", "image", "inspect"]:
@@ -303,6 +387,26 @@ def test_the_sandbox_has_no_mounts_no_route_out_and_no_extra_privileges():
     assert "--read-only" in run_sink and run_sink[run_sink.index("--network") + 1] == network[-1]
     assert docker.calls[-2][:3] == ["docker", "rm", "--force"]
     assert docker.calls[-1][:3] == ["docker", "network", "rm"]
+    # The sink's certificate goes in, and TLS clients are pointed at it.
+    copies = [i for i, c in enumerate(docker.calls) if c[1] == "cp"]
+    assert len(copies) == 2
+    members = _tar_members(docker.inputs[copies[1]])
+    assert set(members) == {"detonate/ca", "detonate/ca/sink.pem"}
+    assert members["detonate/ca/sink.pem"].uid == 0
+    for name in ("NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
+        assert f"{name}=/detonate/ca/sink.pem" in create
+    assert result.notes == []
+
+
+def test_without_the_sinks_certificate_tls_is_left_alone_and_said_so():
+    for ca in (None, "-----BEGIN CERTIFICATE-----\n$(id)\n-----END CERTIFICATE-----\n"):
+        docker = FakeDocker(ca=ca)
+        result = runner.run_detonation("pypi", "demo", "1.0", "demo-1.0.tar.gz", b"x", None,
+                                       _canaries(), run=docker.run, popen=docker.popen)
+        assert len([c for c in docker.calls if c[1] == "cp"]) == 1
+        [create] = [c for c in docker.calls if c[1] == "create"]
+        assert not any(a.startswith("SSL_CERT_FILE=") for a in create)
+        assert any("TLS was not decrypted" in n for n in result.notes)
 
 
 def test_the_sandbox_is_removed_when_a_step_fails():
@@ -361,7 +465,7 @@ def test_detonate_reports_observations_against_the_static_scan(tmp_path, monkeyp
     assert "programs started" in report.comparison.gaps
     text = detonation.render(report)
     assert "Nothing observed does not mean safe." in text
-    assert "not cleared" in text and "TLS traffic" in text
+    assert "not cleared" in text and "only the server name is seen" in text
     assert json.loads(json.dumps(report.to_dict()))["subject"] == "npm:demo@1.0.0"
 
 

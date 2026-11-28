@@ -7,6 +7,10 @@ the user `detonate` (SETUID, SETGID). Switching user clears them, and `no-new-pr
 stops the package from getting any back. Files go in with `docker cp` and the trace comes
 out on standard output, so nothing on the host is shared with it. Docker commands are
 argument lists, never a shell.
+
+The sink makes a certificate authority for the run and prints its certificate when it is
+ready. The certificate goes into the package's container, which trusts it, so the sink can
+read what is sent over TLS. The authority's key stays in the sink.
 """
 
 from __future__ import annotations
@@ -44,8 +48,14 @@ SANDBOX_FLAGS = ("--cap-drop", "ALL", "--cap-add", "SETUID", "--cap-add", "SETGI
                  "--memory", "1g", "--cpus", "1", "--pids-limit", "512",
                  "--log-opt", "max-size=64m")
 SINK_FLAGS = ("--cap-drop", "ALL", "--cap-add", "NET_BIND_SERVICE", "--security-opt",
-              "no-new-privileges", "--read-only", "--memory", "256m", "--pids-limit", "64",
-              "--log-opt", "max-size=32m")
+              "no-new-privileges", "--read-only", "--tmpfs", "/tmp:size=16m,mode=1777",
+              "--memory", "256m", "--pids-limit", "64", "--log-opt", "max-size=32m")
+# Where the sink's certificate goes, and the variables that make TLS clients trust it. The
+# image's entry script also adds it to the system bundle, for clients that read only that.
+SINK_CA = "/detonate/ca/sink.pem"
+TLS_ENV = {name: SINK_CA for name in ("NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE",
+                                      "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")}
+PEM = re.compile(r"-----BEGIN CERTIFICATE-----\n[A-Za-z0-9+/=\n]+-----END CERTIFICATE-----\n?")
 
 Run = Callable[..., subprocess.CompletedProcess]
 
@@ -159,6 +169,15 @@ def payload(ecosystem: str, name: str, version: str, artifact_name: str, artifac
     return out.getvalue()
 
 
+def ca_payload(pem: str) -> bytes:
+    """The tar stream that puts the sink's certificate where the container expects it."""
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w") as tar:
+        _add(tar, "detonate/ca", None, 0o755, 0)
+        _add(tar, SINK_CA.lstrip("/"), pem.encode("ascii"), 0o644, 0)
+    return out.getvalue()
+
+
 @dataclass
 class RunResult:
     trace: str
@@ -208,14 +227,21 @@ def run_detonation(ecosystem: str, name: str, version: str, artifact_name: str,
         _check(run(["docker", "network", "create", "--internal", network]), "network")
         _check(run(["docker", "run", "--detach", "--name", sink, "--network", network,
                     *SINK_FLAGS, sink_image]), "sink")
-        address = _sink_address(sink, run)
+        address, ca = _sink_ready(sink, run)
+        if ca is None:
+            notes.append("The sink could not make a certificate authority, so TLS was not "
+                         "decrypted: only server names were recorded.")
         env = {**canaries.env, "HOME": HOME, "BS_PACKAGE": name, "BS_ARTIFACT": artifact_name,
-               "BS_FALLBACK": fallback[0] if fallback else "", "BS_SINK": address}
+               "BS_FALLBACK": fallback[0] if fallback else "", "BS_SINK": address,
+               **(TLS_ENV if ca else {})}
         env_args = [arg for key, value in sorted(env.items()) for arg in ("--env",
                                                                           f"{key}={value}")]
         _check(run(["docker", "create", "--name", box, "--network", network, "--dns", address,
                     "--hostname", "detonate", *SANDBOX_FLAGS, *env_args, image]), "container")
         _check(run(["docker", "cp", "--archive", "-", f"{box}:/"], input=tar), "copy")
+        if ca is not None:
+            _check(run(["docker", "cp", "--archive", "-", f"{box}:/"], input=ca_payload(ca)),
+                   "copy")
         captured = io.BytesIO()
         process = popen(["docker", "start", "--attach", box], stdout=subprocess.PIPE,
                         stderr=subprocess.DEVNULL)
@@ -265,12 +291,15 @@ def _check(result: subprocess.CompletedProcess, what: str) -> None:
                               f"{result.stderr.decode('utf-8', 'replace')[-1000:]}")
 
 
-def _sink_address(sink: str, run: Run) -> str:
+def _sink_ready(sink: str, run: Run) -> tuple[str, str | None]:
+    """The sink's address, and its certificate when it made one."""
     for _ in range(50):
         logs = run(["docker", "logs", sink]).stdout.decode("utf-8", "replace")
         for event in sink_events(logs):
             if event.get("kind") == "ready" and re.fullmatch(r"[\d.]+", str(
                     event.get("address"))):
-                return event["address"]
+                ca = event.get("ca")
+                valid = isinstance(ca, str) and len(ca) < 8192 and PEM.fullmatch(ca)
+                return event["address"], ca if valid else None
         time.sleep(0.2)
     raise DetonationError("the sink did not start")
