@@ -245,7 +245,9 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
 
 **Built:** `python -m watch run`, which finds each release first published in a window for the top packages of the pinned lists. It diffs each release against the one before it and writes the review queue ([methodology](methodology.md#daily-watch)).
 
-**Not yet:** where the daily run happens. Run summaries and artifacts on a public repository are public, so the run must not happen there before review. Also the site, the feed, the flag log and the defusal record.
+**Built:** the review step, the flag log and the defusal record as hash-chained, append-only files that only a person's review or report adds to, and the static site and Atom feed built from them alone ([methodology](methodology.md#review-flag-log-and-site)).
+
+**Not yet:** where the daily run happens and where the two files are kept. Run summaries and artifacts on a public repository are public, so the run must not happen there before review. Publishing the site.
 
 **Exit:** 30 days of daily runs with every flag reviewed.
 

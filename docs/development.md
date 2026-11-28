@@ -33,7 +33,7 @@ Set `BOMBSQUAD_POWERSHELL` to pick a specific PowerShell executable.
 | `src/bombsquad/sarif.py`, `text_report.py` | Output formats |
 | `src/bombsquad/detonate/` | `bombsquad detonate`: the sandbox images, the sink, fake credentials, the strace reader and the comparison with the static scan |
 | `benchmark/` | The accuracy benchmark against GuardDog. It runs only in `.github/workflows/benchmark.yml`, on Linux CI. |
-| `watch/` | The daily watch: new releases of popular packages, diffed and queued for review |
+| `watch/` | The daily watch: new releases of popular packages, diffed and queued for review; the review step, the flag log and defusal record, and the site and feed built from them |
 | `scripts/detonation-vm.ps1`, `detonation-vm.sh` | A disposable Azure VM for detonating malicious samples, and its boot script |
 
 ## Detonation VM
