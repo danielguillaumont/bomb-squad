@@ -153,6 +153,28 @@ jobs:
           sed 's|^|/|' ../paths.txt | git sparse-checkout set --no-cone --stdin
           git checkout -q FETCH_HEAD
 
+      - name: Fetch the OpenSSF reports for the sampled names
+        # Report files only, never package content: the repository is listed without file
+        # contents, and only the reports in the sampled names' folders are checked out.
+        run: |
+          set -euo pipefail
+          read -r repo commit < <(uv run --locked python -c \
+            "from benchmark import openssf as o; print(o.REPO, o.COMMIT)" | tr -d '\r')
+          git init -q data/openssf
+          cd data/openssf
+          git remote add origin "https://github.com/$repo"
+          git config remote.origin.promisor true
+          git config remote.origin.partialclonefilter blob:none
+          git fetch -q --depth=1 --filter=blob:none origin "$commit"
+          git ls-tree -r --name-only FETCH_HEAD -- osv/malicious/npm osv/malicious/pypi \
+            > ../openssf-listing.txt
+          cd ../..
+          uv run --locked python -m benchmark openssf --listing data/openssf-listing.txt \
+            --selected data/selected.json --paths data/openssf-paths.txt
+          cd data/openssf
+          sed 's|^|/|' ../openssf-paths.txt | git sparse-checkout set --no-cone --stdin
+          git checkout -q FETCH_HEAD
+
       - name: Fetch the pinned PyPI popularity list
         # With the job's read-only token: unauthenticated GitHub API requests from shared
         # runners hit the rate limit.
@@ -200,7 +222,7 @@ jobs:
             --dataset-date "$DATASET_DATE" --guarddog guarddog \
             --guarddog-version "$GUARDDOG_VERSION" \
             --benign-per-ecosystem "$BENIGN_PER_ECOSYSTEM" --as-of "$DATASET_DATE" \
-            --pypi-list data/top-pypi.json \
+            --pypi-list data/top-pypi.json --openssf data/openssf \
             --workers 4 -o data/results.jsonl
 
       - name: Score

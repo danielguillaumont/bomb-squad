@@ -61,6 +61,7 @@ class _Analysis(ast.NodeVisitor):
         self.defined: set[str] = set()  # functions and classes the file defines itself
         self.paths: dict[str, str] = {}  # variable -> path; "" is the file's own folder
         self.opened: dict[str, str] = {}  # file object variable -> path
+        self.env_holders: set[str] = set()  # variables holding os.environ, whole or in a value
 
     def region(self, node: ast.AST):
         end_line = getattr(node, "end_lineno", None) or node.lineno
@@ -116,11 +117,23 @@ class _Analysis(ast.NodeVisitor):
         nodes = sorted((n for n in ast.walk(tree) if hasattr(n, "lineno")),
                        key=lambda n: (n.lineno, n.col_offset))
         for node in nodes:
+            # Import aliases too, as the visitor sets them, so `from os import environ`
+            # resolves in the variables below.
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    self.aliases[alias.asname or alias.name.split(".")[0]] = (
+                        alias.name if alias.asname else alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    self.aliases[alias.asname or alias.name] = (
+                        f"{node.module}.{alias.name}" if node.module else alias.name)
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                 self.defined.add(node.name)
             elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(
                     node.targets[0], ast.Name):
                 name = node.targets[0].id
+                if self.holds_environ(node.value):
+                    self.env_holders.add(name)
                 opened = self.opened_path(node.value)
                 if opened is not None:
                     self.opened[name] = opened
@@ -172,6 +185,29 @@ class _Analysis(ast.NodeVisitor):
             k is None and self.dotted(v) == "os.environ" for k, v in zip(node.keys,
                                                                        node.values,
                                                                        strict=True))
+
+    def holds_environ(self, node: ast.AST | None, depth: int = 0) -> bool:
+        """os.environ or a whole copy of it, a variable bound to one, or a dict, list,
+        tuple or dict() call with one among its values: `{"env": dict(os.environ)}`."""
+        if node is None or depth > 8:
+            return False
+        if self.is_environ(node) or (isinstance(node, ast.Name)
+                                     and node.id in self.env_holders):
+            return True
+        if isinstance(node, ast.Dict):
+            return any(self.holds_environ(v, depth + 1) for v in node.values)
+        if isinstance(node, ast.List | ast.Tuple | ast.Set):
+            return any(self.holds_environ(e, depth + 1) for e in node.elts)
+        if isinstance(node, ast.Starred):
+            return self.holds_environ(node.value, depth + 1)
+        if isinstance(node, ast.Call) and self.dotted(node.func) == "dict":
+            return any(self.holds_environ(v, depth + 1)
+                       for v in [*node.args, *(k.value for k in node.keywords)])
+        return False
+
+    def sends(self, name: str) -> bool:
+        """A call that sends data over the network: a function of a network module."""
+        return any(name.startswith(candidate + ".") for candidate in NETWORK_MODULES)
 
     # Imports -----------------------------------------------------------------------------
 
@@ -230,8 +266,13 @@ class _Analysis(ast.NodeVisitor):
                     self.result.hits.remove(found)
                     found.via.append(f"runs the code of {local}")
                     self.result.exec_files.append((local, found))
+        values = [*node.args, *(k.value for k in node.keywords)]
         if name in ENV_SERIALIZERS and any(self.is_environ(a) for a in node.args):
             self.hit("BS-ENV-001", node, [f"os.environ passed to {name}"])
+        elif (name in ENV_SERIALIZERS or self.sends(name)) and any(
+                self.holds_environ(v) for v in values):
+            how = "serialised by" if name in ENV_SERIALIZERS else "sent with"
+            self.hit("BS-ENV-001", node, [f"os.environ, held in a value, {how} {name}"])
         if isinstance(node.func, ast.Attribute) and node.func.attr in ("items", "keys",
                                                                        "values") and (
                 self.is_environ(node.func.value)):

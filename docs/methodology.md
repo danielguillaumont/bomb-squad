@@ -97,7 +97,7 @@ Markdown is split into front matter, fenced code blocks, inline code and HTML co
 - JavaScript and TypeScript (including JSX and TSX) are parsed with tree-sitter, Python with the standard library's `ast`, and shell with tree-sitter-bash. Nothing is imported or evaluated.
 - **Names:** `require` and `import` bindings are tracked within a file, so `const cp = require('child_process'); cp.exec(…)` and `from os import system` resolve.
 - **Credentials:** strings that name a credential file (`.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `~/.aws`, `~/.ssh`, `~/.kube`, `~/.docker/config.json`, cloud metadata addresses and others) or a token variable (`GITHUB_TOKEN`, `NPM_TOKEN`, `AWS_SECRET_ACCESS_KEY`, CI OIDC variables and others). The full lists are in `src/bombsquad/code/common.py`.
-- **Whole environment:** `process.env` or `os.environ` serialised, iterated, spread or formatted into text; `env`, `printenv`, `export -p`; `Get-ChildItem Env:` and `GetEnvironmentVariables()`. Passing the environment to a child process is not reported.
+- **Whole environment:** `process.env` or `os.environ` serialised, iterated, spread or formatted into text; `env`, `printenv`, `export -p`; `Get-ChildItem Env:` and `GetEnvironmentVariables()`. Also the whole environment held in an object, array or spread, or in a variable in the same file, that is then serialised or passed to a network call, such as `{ env: process.env }` in a `fetch` body or `json={"env": dict(os.environ)}` in `requests.post`. Passing the environment to a child process is not reported. The value is followed through literals and plain assignments in one file, not through functions or other files.
 - **Decode then run:** `eval`, `Function`, `vm`, `exec` or `compile` with an argument that decodes (`atob`, `Buffer.from(…, 'base64')`, `base64`, `zlib`, `marshal`), and shell pipelines from a decoder into an interpreter.
 - **Packed code:** an encoded blob of 2,000 characters or more, ten or more obfuscator-style `_0x` names, or a line over 5,000 characters.
 
@@ -319,6 +319,10 @@ Detection rates come only from the benchmark below. Every figure states its coun
   - One version is chosen per package name, so a campaign of near-identical versions counts once, and then a seeded sample per ecosystem.
   - Samples are decrypted and unpacked with the same rules as registry packages, and any package archive inside is unpacked too. Both tools get the same folder: the shallowest one with a `package.json` (npm), or with `setup.py`, `pyproject.toml`, `setup.cfg` or `PKG-INFO` (PyPI).
   - The date in a sample's name is when DataDog found it, not when it was published.
+- **OpenSSF reports:** each malicious sample is looked up in [OpenSSF malicious-packages](https://github.com/ossf/malicious-packages) at a pinned commit (`benchmark/openssf.py`), a confirmation independent of DataDog's label.
+  - Only report files are fetched: the repository is listed without file contents, and only the sampled names' report folders are checked out.
+  - A report confirms the sample when it lists the version, when its range starts at that version with no end, or when it affects every version. Other ranges are not evaluated, so such a sample counts as named, not confirmed. Withdrawn reports are left out.
+  - The scores add recall on the confirmed samples, for both tools, with how many samples each kind of report covers. A report confirms that a version was malicious, not when the compromise began.
 - **Benign set:** a seeded sample from the 1,000 most-downloaded packages per ecosystem.
   - The lists come from `npm-high-impact` 1.13.0 (npm) and hugovk/top-pypi-packages at commit `29c0d4c38c28` of 2026-11-01 (PyPI).
   - For each package, the highest stable version published on or before the dataset commit's date is downloaded and checked as `bombsquad diff` does. For PyPI, that is the sdist and one wheel. A package that has only published pre-releases gets its highest pre-release.
