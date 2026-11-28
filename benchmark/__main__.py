@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from benchmark import benign, detonation, incidents, openssf, samples, score, tools
+from benchmark import benign, detonation, incidents, openssf, samples, score, tools, triage_eval
 from bombsquad import __version__
 from bombsquad.powershell.parser import ParserUnavailable, find_powershell
 from bombsquad.registry import http_get
@@ -99,7 +99,12 @@ def _evaluate(row: dict, args, sample: samples.Sample | None) -> dict:
         except Exception as exc:  # a sample that cannot be prepared is reported, not fatal
             row["prepare_error"] = f"{exc.__class__.__name__}: {str(exc)[:300]}"
             return row
-        row["bombsquad"] = tools.bombsquad(root)
+        findings: list | None = [] if args.triage else None
+        row["bombsquad"] = tools.bombsquad(root, findings=findings)
+        if findings:
+            result = triage_eval.evaluate(findings, _triage_client(), sample is not None)
+            if result is not None:
+                row["triage"] = result
         row["guarddog"] = tools.guarddog(args.guarddog, row["ecosystem"], root)
         if sample is None and row.get("previous"):
             row["diff"] = tools.bombsquad_diff(row["ecosystem"], row["name"], row["previous"],
@@ -112,6 +117,19 @@ def _evaluate(row: dict, args, sample: samples.Sample | None) -> dict:
 
 
 _DETONATIONS = threading.Semaphore(2)  # each runs two containers
+_CLIENT: list = []
+_CLIENT_LOCK = threading.Lock()
+
+
+def _triage_client():
+    with _CLIENT_LOCK:
+        if not _CLIENT:
+            import anthropic  # the triage extra
+
+            _CLIENT.append(anthropic.Anthropic())
+            # The client holds the key now; no tool or container started later inherits it.
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+        return _CLIENT[0]
 
 
 def _run(args) -> int:
@@ -134,6 +152,16 @@ def _run(args) -> int:
         "detonate": args.detonate,
         "version_pairs": args.version_pairs,
     }
+    if args.triage:
+        if args.detonate == "all":
+            raise SystemExit("benchmark: --triage needs an API key, which must not be on "
+                             "the VM that runs malicious samples; leave out --detonate all")
+        from bombsquad import triage
+
+        meta["triage"] = {"model": triage.MODEL, "prompt_version": triage.PROMPT_VERSION,
+                          "prompt_sha256": triage.prompt_digest(),
+                          "notes_version": triage_eval.NOTES_VERSION}
+        _triage_client()  # fails here, before any package, without the extra or a key
     if args.exclude_selection:
         meta["left_out"] = ("packages chosen with seed:count "
                             + ", ".join(args.exclude_selection))
@@ -178,9 +206,13 @@ def _run(args) -> int:
 def _score(args) -> int:
     meta, rows = score.load(args.results)
     scores = score.score(meta, rows)
+    if meta.get("triage"):
+        scores["triage"] = {**meta["triage"], **triage_eval.score(rows)}  # as the run had it
     if args.json:
         args.json.write_text(json.dumps(scores, indent=2) + "\n", encoding="utf-8")
     text = score.markdown(scores)
+    if scores.get("triage"):
+        text += "\n" + triage_eval.markdown(scores["triage"])
     if args.markdown:
         args.markdown.write_text(text, encoding="utf-8")
     else:
@@ -265,6 +297,9 @@ def main(argv: list[str] | None = None) -> int:
                         "(Linux with Docker)")
     r.add_argument("--detonate-timeout", type=int, default=detonation.TIMEOUT_SECONDS,
                    metavar="SECONDS")
+    r.add_argument("--triage", action="store_true",
+                   help="also run LLM triage on each package's flagged findings, and the "
+                        "adversarial notes on malicious samples (Anthropic API, paid)")
     r.add_argument("--openssf", type=Path, metavar="CHECKOUT",
                    help=f"look up each malicious sample in {openssf.REPO} at commit "
                         f"{openssf.COMMIT[:12]}, checked out here")

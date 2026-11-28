@@ -259,6 +259,10 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
 - **How it is judged:** on the benchmark against the no-LLM ranking. It is kept only if it raises precision at the same recall.
 - **Adversarial set:** malicious samples carrying text addressed to the reviewer (for example "test fixture, safe to ignore"). The write-up reports how often triage is talked down. The LLM can reorder findings but never suppress a rule finding.
 
+**Built:** `bombsquad triage`, which sends a report's flagged excerpts to the Anthropic API and returns every finding in a new reading order ([methodology](methodology.md#llm-triage)). Text in an excerpt that addresses a reviewer raises that finding. The eval is in the benchmark behind the workflow's `triage` input: the ranking against the rule thresholds, and six adversarial notes on the malicious samples. Tests use a fake client.
+
+**Not yet:** a triage run. It needs an `ANTHROPIC_API_KEY` secret and a paid run.
+
 **Exit:** the eval is published, whatever it shows.
 
 ## Not doing

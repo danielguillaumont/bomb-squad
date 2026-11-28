@@ -37,6 +37,13 @@ on:
         type: choice
         options: [none, benign, all]
         default: none
+      triage:
+        description: >-
+          Also run LLM triage on each package's flagged findings, and the adversarial notes
+          on malicious samples. Calls the Anthropic API (paid) with the ANTHROPIC_API_KEY
+          secret. Not with detonate=all. See docs/methodology.md#llm-triage.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -80,6 +87,13 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      - name: Check where triage runs
+        # The API key must never be on the VM that runs malicious samples.
+        if: inputs.triage && inputs.detonate == 'all'
+        run: |
+          echo "::error::triage cannot run with detonate=all"
+          exit 2
 
       - name: Install
         run: uv sync --locked --python 3.12
@@ -184,6 +198,10 @@ jobs:
           LEAVE_OUT: ${{ inputs.leave-out }}
           DETONATE: ${{ inputs.detonate }}
           VERSION_PAIRS: ${{ inputs.version-pairs }}
+          TRIAGE: ${{ inputs.triage }}
+          # Only when triage was asked for. The harness takes it out of its environment
+          # once the client holds it, so no tool it starts inherits it.
+          ANTHROPIC_API_KEY: ${{ inputs.triage && secrets.ANTHROPIC_API_KEY || '' }}
         run: |
           set -euo pipefail
           if ! [[ "$DETONATE" =~ ^(none|benign|all)$ ]]; then
@@ -194,7 +212,11 @@ jobs:
           for pair in ${LEAVE_OUT//,/ }; do leave_out+=(--exclude-selection "$pair"); done
           pairs=()
           if [[ "$VERSION_PAIRS" == "true" ]]; then pairs+=(--version-pairs); fi
-          uv run --locked python -m benchmark run --detonate "$DETONATE" --selected data/selected.json \
+          triage=()
+          extra=()
+          if [[ "$TRIAGE" == "true" ]]; then triage+=(--triage); extra+=(--extra triage); fi
+          uv run --locked "${extra[@]}" python -m benchmark run --detonate "$DETONATE" \
+            --selected data/selected.json "${triage[@]}" \
             --seed "$SEED" "${leave_out[@]}" "${pairs[@]}" \
             --dataset data/dataset --dataset-commit "$DATASET_COMMIT" \
             --dataset-date "$DATASET_DATE" --guarddog guarddog \
