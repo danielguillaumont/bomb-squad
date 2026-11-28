@@ -410,14 +410,15 @@ def test_detonation_rows_keep_counts_not_content(tmp_path):
 
 
 def test_detonation_is_scored_only_where_it_ran():
-    def detonated(set_, levels, flagged, seen=("network",), error=None):
+    def detonated(set_, levels, flagged, seen=("network",), error=None, exit_status=0):
         r = row(set_, "npm", levels, 0)
         r["detonation"] = {"flagged": flagged, "seen": list(seen), "error": error,
-                           "seconds": 4.0, "timed_out": False}
+                           "seconds": 4.0, "timed_out": False, "exit_status": exit_status}
         return r
 
     rows = [detonated("malicious", [], True), detonated("malicious", ["review"], False),
-            detonated("malicious", [], False, seen=()), row("malicious", "npm", [], 0),
+            detonated("malicious", [], False, seen=(), exit_status=3),
+            row("malicious", "npm", [], 0),
             detonated("benign", [], False), detonated("benign", [], False, seen=())]
     assert score.score({}, rows)["results"][-1]["tool"] == "guarddog"  # not detonated
     scores = score.score({"detonate": "all"}, rows)
@@ -430,7 +431,8 @@ def test_detonation_is_scored_only_where_it_ran():
     [cost] = [c for c in scores["detonation_cost"] if c["set"] == "malicious"
               and c["ecosystem"] == "npm"]
     assert cost == {"ecosystem": "npm", "set": "malicious", "packages": 3, "errors": 0,
-                    "timed_out": 0, "median_seconds": 4.0, "total_seconds": 12.0}
+                    "timed_out": 0, "exited_non_zero": 1, "median_seconds": 4.0,
+                    "total_seconds": 12.0}
     assert "### Detonation cost" in score.markdown(scores)
 
 
@@ -456,8 +458,15 @@ def test_an_update_pairs_a_release_with_the_one_before_it():
 
 def test_diff_output_is_reduced_to_what_scoring_needs():
     d = tools.parse_diff(json.dumps({
-        "entry_points": {"added": [{"surface": "npm", "runs": "node x.js"}],
-                         "changed": [{"old": {}, "new": {"surface": "python"}}],
+        "entry_points": {"added": [{"surface": "npm", "kind": "postinstall script",
+                                    "trigger": "npm install, including when installed as a "
+                                               "dependency", "runs": "node x.js"},
+                                   {"surface": "npm", "kind": "prepare script",
+                                    "trigger": "npm install in this repository, or as a git "
+                                               "dependency"},
+                                   {"surface": "github-actions", "kind": "workflow job"}],
+                         "changed": [{"old": {}, "new": {"surface": "python",
+                                                         "kind": "setup.py"}}],
                          "removed": []},
         "findings": {"added": [{"rule_id": "BS-NET-001", "level": "review",
                                 "evidence": "secret stuff"}], "removed": []},
@@ -465,34 +474,40 @@ def test_diff_output_is_reduced_to_what_scoring_needs():
                     {"signal": "maintainers-changed", "level": "review",
                      "detail": "added someone"}],
         "files": {"grew": [{"path": "a.js", "detail": "x"}]}}))
-    assert d == {"entry_points": {"added": 1, "changed": 1, "surfaces": ["npm", "python"]},
+    assert d == {"entry_points": {"added": 3, "changed": 1,
+                                  "surfaces": ["github-actions", "npm", "python"],
+                                  "run_on_install": 2, "install_surfaces": ["npm", "python"]},
                  "levels": ["review"], "rules_by_level": {"review": ["BS-NET-001"]},
                  "signals": ["maintainers-changed:review", "release-age:info"], "grew": 1}
     assert "secret stuff" not in json.dumps(d) and "someone" not in json.dumps(d)
 
 
 def test_updates_are_scored_as_false_alarms_with_their_rules():
-    def update(levels=(), rules=(), entries=0, signals=(), error=None, previous="1.0"):
+    def update(levels=(), rules=(), entries=0, signals=(), error=None, previous="1.0",
+               installed=None):
         r = row("benign", "npm", [], 0)
         r["previous"] = previous
         if previous:
             r["diff"] = {"levels": list(levels), "error": error, "seconds": 2.0,
                          "rules_by_level": {"review": list(rules)} if rules else {},
-                         "entry_points": {"added": entries, "changed": 0},
+                         "entry_points": {"added": entries, "changed": 0,
+                                          "run_on_install": entries if installed is None
+                                          else installed},
                          "signals": list(signals)}
         return r
 
     rows = [update(["review"], ["BS-NET-001"]), update(entries=1),
+            update(entries=2, installed=0),  # workflows in an sdist: installing runs none
             update(signals=["recent-release:review"]),  # age: not the update's doing
             update(signals=["publisher-changed:review"]), update(error="exit 2"),
             update(previous=None), update()]
     assert "updates" not in score.score({}, rows)
     scores = score.score({"version_pairs": True}, rows)
     npm = next(u for u in scores["updates"] if u["ecosystem"] == "npm")
-    assert npm["releases"] == 7 and npm["no_earlier_release"] == 1 and npm["errors"] == 1
+    assert npm["releases"] == 8 and npm["no_earlier_release"] == 1 and npm["errors"] == 1
     alarms = {a["threshold"]: (a["count"], a["of"]) for a in npm["alarms"]}
-    assert alarms == {"findings": (1, 5), "high": (0, 5), "entry_points": (1, 5),
-                      "any": (2, 5)}
+    assert alarms == {"findings": (1, 6), "high": (0, 6), "entry_points": (1, 6),
+                      "any": (2, 6)}
     assert npm["rules"] == [("BS-NET-001", 1)]
     text = score.markdown(scores)
-    assert "### Updates of benign packages" in text and "20.0% (1/5)" in text
+    assert "### Updates of benign packages" in text and "16.7% (1/6)" in text

@@ -24,7 +24,7 @@ from bombsquad.code.javascript import analyze_javascript
 from bombsquad.code.python import analyze_python
 from bombsquad.code.shell import analyze_shell
 from bombsquad.discovery import LANGUAGE_BY_SUFFIX, Discovery
-from bombsquad.inventory import NESTED_SETUP, discover, is_detected, surface
+from bombsquad.inventory import NESTED_SETUP, NPM_PREPARE, discover, is_detected, surface
 from bombsquad.model import EntryPoint, FileResult, Finding, Level, Region, ScanReport
 from bombsquad.powershell.analyze import Source, analyze_tagged
 from bombsquad.powershell.parser import ParserUnavailable
@@ -61,13 +61,20 @@ NOT_REACHED_IN_PACKAGE = ("Found in a published package, in a PowerShell file th
                           "point runs, so installing does not run it. It is reported at info.")
 
 
+def runs_on_install(surface: str, kind: str, trigger: str) -> bool:
+    """Whether installing a published package, or starting Python with it installed, runs
+    an entry point of this surface, kind and trigger. Workflows, git hooks, editor and agent
+    settings, conftest.py, and a setup.py below the project root do not run: they belong to
+    the project the package was built from, or are modules that happen to share the name.
+    Nor do npm `prepare` scripts, which npm runs for a local or git install, not for a
+    package installed from the registry."""
+    if surface == "npm":
+        return trigger != NPM_PREPARE
+    return surface == "python" and kind not in ("conftest.py", NESTED_SETUP)
+
+
 def runs_from_package(entry: EntryPoint) -> bool:
-    """Whether installing a package, or starting Python with it installed, runs this entry
-    point. Workflows, git hooks, editor and agent settings, conftest.py, and a setup.py below
-    the project root inside a published package do not run: they belong to the project the
-    package was built from, or are modules that happen to share the name."""
-    return entry.surface == "npm" or (entry.surface == "python"
-                                      and entry.kind not in ("conftest.py", NESTED_SETUP))
+    return runs_on_install(entry.surface, entry.kind, entry.trigger)
 
 
 PROSE_SUFFIXES = frozenset({".md", ".markdown", ".txt", ".rst"})
