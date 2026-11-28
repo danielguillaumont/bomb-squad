@@ -47,6 +47,8 @@ $TagValue = "detonation"
 $RunnerPrefix = "bombsquad-detonation-"
 $Workflow = "benchmark.yml"
 $BootScript = Join-Path $PSScriptRoot "detonation-vm.sh"
+# The full image name: the CLI's short aliases need a download and differ between versions.
+$Image = "Canonical:ubuntu-24_04-lts:server:latest"
 
 function Invoke-Tool {
     # Runs az or gh, and nothing else, with an argument list and returns its standard output
@@ -79,9 +81,10 @@ function Get-DetonationGroups {
 }
 
 function Get-DetonationRunners {
+    param([switch] $AllowFailure)
     # Filtered here, not with --jq: Windows PowerShell 5.1 drops quotes inside arguments.
     $lines = Invoke-Tool gh @("api", "repos/$Repo/actions/runners", "--paginate", "--jq",
-        ".runners[] | [.id, .name, .status] | @tsv")
+        ".runners[] | [.id, .name, .status] | @tsv") -AllowFailure:$AllowFailure
     return @($lines -split "`n" | Where-Object { $_.Trim() } | ForEach-Object {
             $id, $name, $status = $_ -split "`t"
             [pscustomobject]@{ Id = $id; Name = $name; Status = "$status".Trim() }
@@ -90,12 +93,17 @@ function Get-DetonationRunners {
 
 function Remove-Detonation {
     param([string[]] $Groups)
+    # Each step goes on when one fails, such as on a dropped connection; `down` can be run
+    # again to finish.
     foreach ($group in $Groups) {
         Write-Host "Deleting resource group $group ..."
-        Invoke-Tool az @("group", "delete", "--name", $group, "--yes") | Out-Null
+        Invoke-Tool az @("group", "delete", "--name", $group, "--yes") -AllowFailure | Out-Null
+        if (-not $DryRun -and $LASTEXITCODE -ne 0) {
+            Write-Warning "Could not delete $group. Run: .\scripts\detonation-vm.ps1 down"
+        }
     }
     # An ephemeral runner removes itself after its job. One whose VM went first is left.
-    foreach ($runner in Get-DetonationRunners) {
+    foreach ($runner in Get-DetonationRunners -AllowFailure) {
         Write-Host "Removing runner $($runner.Name) ..."
         Invoke-Tool gh @("api", "--method", "DELETE",
             "repos/$Repo/actions/runners/$($runner.Id)") -AllowFailure | Out-Null
@@ -246,7 +254,7 @@ function Start-Detonation {
 
         Write-Host "Creating the VM ..."
         Invoke-Tool az @("vm", "create", "--resource-group", $group, "--name", "detonation",
-            "--image", "Ubuntu2404", "--size", $Size, "--admin-username", "bombsquad",
+            "--image", $Image, "--size", $Size, "--admin-username", "bombsquad",
             "--ssh-key-values", $publicKey, "--custom-data", $boot, "--nsg", "detonation-nsg",
             "--public-ip-sku", "Standard", "--os-disk-size-gb", "64",
             "--os-disk-delete-option", "Delete", "--nic-delete-option", "Delete",
