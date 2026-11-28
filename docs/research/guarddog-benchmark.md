@@ -149,6 +149,15 @@ Before any figure was used, the first runs on a branch found faults in the harne
 
 The two BS-OB-001 false positives in the development sample were found after these runs. The rule was narrowed in [pull request 34](https://github.com/danielguillaumont/bomb-squad/pull/34) before the held-out run, so the development sample's figures are those of the earlier rule.
 
+### After the held-out run
+
+Run 46085706292 (2026-11-28, `main` at `1c829e374a24`, seed 2026) was the first with detonation of the benign packages and with version pairs. Its figures are not used. It showed two faults, fixed in the pull request that added this paragraph:
+
+- **`prepare` scripts:** 22 of the 200 benign npm packages have one, and detonation ran none of them, because npm runs `prepare` for a local or git install, not for a package from the registry. Package mode had treated them as run on install. It no longer does. This changes Bomb Squad's scan after the held-out run, so the held-out and development figures above are those of the earlier code.
+- **Entry points in the diff:** most new or changed PyPI entry points were workflows and git hooks shipped in sdists, which installing does not run. The diff's entry point threshold now counts only those that installing runs.
+
+It also showed that 52 of the 195 PyPI detonations installed nothing: pip could not build the sdist without its build dependencies. The scores now count these.
+
 **Correction:** earlier versions of this page and the README showed 79.0% for 90/114. The scorer rounded each rate to four decimals and then again to one, and 90/114 is 78.9%. The scorer now formats rates from their counts. Every other percentage on this page was checked against its counts.
 
 ## Runs

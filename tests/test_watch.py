@@ -39,13 +39,15 @@ def test_a_release_is_queued_only_for_what_it_newly_gains():
             "published": "2026-11-26T08:00:00+00:00"}
     quiet = daily.check(base, stub({}))
     assert quiet["status"] == "nothing new found" and quiet["reasons"] == []
-    hook = daily.check(base, stub({"entry_points": {"added": 1, "changed": 0,
-                                                    "surfaces": ["npm"]},
+    hook = daily.check(base, stub({"entry_points": {"added": 2, "changed": 0,
+                                                    "surfaces": ["github-actions", "npm"],
+                                                    "run_on_install": 1,
+                                                    "install_surfaces": ["npm"]},
                                    "rules_by_level": {"high": ["BS-EX-001"]},
                                    "signals": ["publisher-changed:review",
                                                "recent-release:review"]}))
     assert hook["status"] == "queued for review"
-    assert hook["reasons"] == ["1 new and 0 changed entry points (npm)",
+    assert hook["reasons"] == ["1 new or changed entry points that installing runs (npm)",
                                "new high findings: BS-EX-001", "publish signal: publisher-changed"]
     failed = daily.check(base, stub({"error": "exit 2: boom"}))
     assert failed["status"] == "error"

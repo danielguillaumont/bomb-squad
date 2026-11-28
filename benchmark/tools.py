@@ -14,6 +14,8 @@ import sys
 import time
 from pathlib import Path
 
+from bombsquad.scan import runs_on_install
+
 TIMEOUT_SECONDS = 300
 LEVELS = ("high", "review", "info")
 
@@ -101,13 +103,19 @@ def parse_diff(text: str) -> dict:
     added = [e for e in entries.get("added", []) if isinstance(e, dict)]
     changed = [c.get("new") for c in entries.get("changed", [])
                if isinstance(c, dict) and isinstance(c.get("new"), dict)]
+    installed = [e for e in added + changed if runs_on_install(
+        str(e.get("surface")), str(e.get("kind")), str(e.get("trigger")))]
     findings = (data.get("findings") or {}).get("added", [])
     findings = [f for f in findings if isinstance(f, dict)]
     levels = {f.get("level") for f in findings}
     return {
         "entry_points": {"added": len(added), "changed": len(changed),
                          "surfaces": sorted({e.get("surface") for e in added + changed
-                                             if isinstance(e.get("surface"), str)})},
+                                             if isinstance(e.get("surface"), str)}),
+                         # The ones installing the package runs, as `scan --package` judges.
+                         "run_on_install": len(installed),
+                         "install_surfaces": sorted({e.get("surface") for e in installed
+                                                     if isinstance(e.get("surface"), str)})},
         "levels": [level for level in LEVELS if level in levels],
         "rules_by_level": {level: sorted({f.get("rule_id") for f in findings
                                           if f.get("level") == level

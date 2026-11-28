@@ -27,7 +27,7 @@ DETONATION_DETECTORS = (
 DIFF_DETECTORS = (
     ("findings", "Diff: a new review or high finding"),
     ("high", "Diff: a new high finding"),
-    ("entry_points", "Diff: a new or changed entry point"),
+    ("entry_points", "Diff: a new or changed entry point that installing runs"),
     ("any", "Diff: a new review or high finding, or a publish signal at review"),
 )
 AGE_SIGNALS = ("recent-release", "release-age")
@@ -87,7 +87,7 @@ def diff_alarm(result: dict, threshold: str) -> bool:
         return findings
     entries = result.get("entry_points") or {}
     if threshold == "entry_points":
-        return bool(entries.get("added") or entries.get("changed"))
+        return bool(entries.get("run_on_install"))
     signals = [s.rsplit(":", 1) for s in result.get("signals") or []]
     return findings or any(level in ("review", "high") and name not in AGE_SIGNALS
                            for name, level in signals)
@@ -151,6 +151,11 @@ def _cost(rows: list[dict]) -> dict:
     seconds = [d["seconds"] for d in done if isinstance(d.get("seconds"), int | float)]
     return {"packages": len(done), "errors": sum(1 for d in done if d.get("error")),
             "timed_out": sum(1 for d in done if d.get("timed_out")),
+            # The install or import step failed: what ran before the failure was still
+            # traced, but not the rest (for PyPI, often an sdist that would not build).
+            "exited_non_zero": sum(1 for d in done if not d.get("error")
+                                   and not d.get("timed_out")
+                                   and d.get("exit_status") not in (0, None)),
             "median_seconds": round(statistics.median(seconds), 1) if seconds else None,
             "total_seconds": round(sum(seconds), 1)}
 
@@ -252,12 +257,13 @@ def markdown(scores: dict) -> str:
                          f"diff errors, median {median} s. Rules in new findings: {rules}.")
     if scores.get("detonation_cost"):
         lines += ["", "### Detonation cost", "",
-                  "| Ecosystem | Set | Detonated | Errors | Timed out | Median seconds | "
-                  "Total seconds |", "|---|---|---|---|---|---|---|"]
+                  "| Ecosystem | Set | Detonated | Errors | Timed out | Exited non-zero | "
+                  "Median seconds | Total seconds |", "|---|---|---|---|---|---|---|---|"]
         for c in scores["detonation_cost"]:
             median = "n/a" if c["median_seconds"] is None else c["median_seconds"]
             lines.append(f"| {c['ecosystem']} | {c['set']} | {c['packages']} | {c['errors']} | "
-                         f"{c['timed_out']} | {median} | {c['total_seconds']} |")
+                         f"{c['timed_out']} | {c['exited_non_zero']} | {median} | "
+                         f"{c['total_seconds']} |")
     lines += ["", "Precision depends on the mix of malicious and benign packages here, which "
               "is not the mix in the wild; false positives per 1,000 benign releases do not. "
               "Most samples in the DataDog dataset were found by GuardDog, which favours it. "

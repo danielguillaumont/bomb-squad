@@ -47,10 +47,10 @@ def reasons(diff: dict) -> list[str]:
     signal names, never evidence."""
     out = []
     entries = diff.get("entry_points") or {}
-    if entries.get("added") or entries.get("changed"):
-        surfaces = ", ".join(entries.get("surfaces") or []) or "unknown surface"
-        out.append(f"{entries.get('added', 0)} new and {entries.get('changed', 0)} changed "
-                   f"entry points ({surfaces})")
+    if entries.get("run_on_install"):
+        surfaces = ", ".join(entries.get("install_surfaces") or []) or "unknown surface"
+        out.append(f"{entries['run_on_install']} new or changed entry points that installing "
+                   f"runs ({surfaces})")
     for level in ("high", "review"):
         rules = (diff.get("rules_by_level") or {}).get(level) or []
         if rules:
