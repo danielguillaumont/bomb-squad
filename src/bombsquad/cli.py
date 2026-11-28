@@ -96,6 +96,8 @@ def _parser() -> argparse.ArgumentParser:
     det_cmd.add_argument("--wheel", type=Path, metavar="FILE",
                          help="with a PyPI --artifact sdist: a wheel to install if the sdist "
                               "does not build")
+    det_cmd.add_argument("--no-dependencies", action="store_true",
+                         help="do not fetch and install the dependencies the package declares")
     det_cmd.add_argument("--timeout", type=int, default=120, metavar="SECONDS",
                          help="stop the container after this long (default 120)")
     det_cmd.add_argument("--format", choices=("text", "json"), default="text")
@@ -227,7 +229,8 @@ def _detonate(args) -> int:
     try:
         if args.wheel and not args.artifact:
             raise ValueError("--wheel goes with a local --artifact sdist")
-        report = detonate(args.spec, args.artifact, max(10, args.timeout), wheel=args.wheel)
+        report = detonate(args.spec, args.artifact, max(10, args.timeout), wheel=args.wheel,
+                          with_dependencies=not args.no_dependencies)
     except (ValueError, OSError, FetchError, ArchiveError, DetonationError, InputError,
             ParserFailed, ParserUnavailable) as exc:
         print(f"bombsquad: {exc}", file=sys.stderr)

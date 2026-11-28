@@ -390,7 +390,7 @@ def test_detonation_rows_keep_counts_not_content(tmp_path):
     from tests.test_detonate import NPM_TRACE
 
     def fake_run(ecosystem, name, version, artifact_name, data, unpacked, canaries, timeout,
-                 fallback=None):
+                 fallback=None, dependencies=None):
         assert artifact_name == "demo-1.0.0.tgz" and unpacked == tmp_path
         return runner.RunResult(NPM_TRACE, [{"kind": "dns", "name": "c2.example.invalid"}],
                                 False, False)

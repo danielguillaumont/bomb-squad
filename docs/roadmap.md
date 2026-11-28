@@ -225,11 +225,11 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
   - observed with no static finding marks a gap in the static rules;
   - predicted but not observed is not cleared, because payloads can be time-gated or conditional.
 
-**Built:** `bombsquad detonate`, with the sandbox, the sink, the fake credentials, the strace recorder and the comparison with the static scan ([methodology](methodology.md#detonation)). The sink reads TLS with a certificate authority made for each run, so a fake credential sent over HTTPS counts as sent. CI runs harmless stand-in packages in real containers, over HTTP and HTTPS.
+**Built:** `bombsquad detonate`, with the sandbox, the sink, the fake credentials, the strace recorder and the comparison with the static scan ([methodology](methodology.md#detonation)). The sink reads TLS with a certificate authority made for each run, so a fake credential sent over HTTPS counts as sent. The dependencies a release declares are fetched outside the sandbox, by a container that runs no package code, and installed with it. CI runs harmless stand-in packages in real containers, over HTTP and HTTPS.
 
 **Measured on benign packages only:** detonation in the benchmark, behind the workflow's `detonate` input (`none` by default, `benign`, or `all`). Run 46090723283 (2026-11-28) detonated the 395 benign packages: its cost and what it observed are in [the write-up](research/guarddog-benchmark.md#detonation). Malicious samples have not been detonated yet. They will be, only on a disposable self-hosted VM ([setup](development.md#detonation-vm)): the workflow sends a run with `detonate` set to `all` there and refuses any other runner. `scripts/detonation-vm.ps1` creates such a VM on Azure for one run and deletes it after.
 
-**Not yet:** detonating the malicious samples, which the exit needs, installing dependencies, and eBPF.
+**Not yet:** detonating the malicious samples, which the exit needs, running dependencies' own install scripts, and eBPF.
 
 **Exit:** a benchmark re-run shows whether detonation adds recall, and at what cost per package.
 
