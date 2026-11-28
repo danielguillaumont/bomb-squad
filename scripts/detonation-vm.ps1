@@ -122,9 +122,11 @@ function Remove-Detonation {
 
 function Write-BootScript {
     param([string] $Path, [string] $RunnerName, [string] $Token)
+    $minutes = [string]($MaxHours * 60)
     $text = [IO.File]::ReadAllText($BootScript) -replace "`r`n", "`n"
     $text = $text.Replace("__REPO_URL__", "https://github.com/$Repo")
     $text = $text.Replace("__RUNNER_NAME__", $RunnerName).Replace("__TOKEN__", $Token)
+    $text = $text.Replace("__MAX_MINUTES__", $minutes)
     [IO.File]::WriteAllText($Path, $text, (New-Object Text.UTF8Encoding $false))
 }
 
@@ -373,8 +375,15 @@ function Start-Detonation {
         Remove-Item -Force (Join-Path $work "key"), (Join-Path $work "key.pub"), $boot -ErrorAction SilentlyContinue
 
         $stop = $now.AddHours($MaxHours).ToString("HHmm")
+        # Azure's scheduled shutdown deallocates the VM, which stops the billing. Some regions
+        # do not offer it; the VM then powers itself off at the same time (detonation-vm.sh).
         Invoke-Tool az @("vm", "auto-shutdown", "--resource-group", $group, "--name",
-            "detonation", "--time", $stop, "--output", "none") | Out-Null
+            "detonation", "--time", $stop, "--output", "none") -AllowFailure | Out-Null
+        if (-not $DryRun -and $LASTEXITCODE -ne 0) {
+            Write-Warning ("Azure's scheduled shutdown is not offered in $($placement.Location). " +
+                "The VM powers itself off after $MaxHours hours, but Azure bills it until it is " +
+                "deleted: if this script stops, run .\scripts\detonation-vm.ps1 down")
+        }
 
         Wait-Runner -RunnerName $runnerName
         $dispatched = (Get-Date).ToUniversalTime()

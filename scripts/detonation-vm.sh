@@ -1,5 +1,5 @@
 #!/bin/bash
-# Boot script for the disposable detonation VM. scripts/detonation-vm.ps1 fills in the three
+# Boot script for the disposable detonation VM. scripts/detonation-vm.ps1 fills in the four
 # placeholders and passes it as the VM's custom data, and cloud-init runs it once, as root.
 # It installs Docker, marks the VM as disposable, and registers a GitHub Actions runner that
 # takes one job and then unregisters. See docs/development.md#detonation-vm.
@@ -10,6 +10,11 @@ RUNNER_SHA256=baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40
 REPO_URL="__REPO_URL__"
 RUNNER_NAME="__RUNNER_NAME__"
 TOKEN="__TOKEN__"
+MAX_MINUTES="__MAX_MINUTES__"
+
+# A backstop if the script that made this VM stops: power off after the time limit. Azure
+# still bills a VM that is powered off from inside until it is deallocated or deleted.
+shutdown -h "+$MAX_MINUTES"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update

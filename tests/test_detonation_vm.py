@@ -34,9 +34,10 @@ def test_the_runner_download_is_pinned_and_checked():
     assert re.search(r"^RUNNER_VERSION=\d+\.\d+\.\d+$", BOOT, re.M)
     assert re.search(r"^RUNNER_SHA256=[0-9a-f]{64}$", BOOT, re.M)
     assert 'sha256sum -c -' in BOOT
-    assert set(re.findall(r"__[A-Z_]+__", BOOT)) == {"__REPO_URL__", "__RUNNER_NAME__",
-                                                     "__TOKEN__"}
-    for placeholder in ("__REPO_URL__", "__RUNNER_NAME__", "__TOKEN__"):
+    placeholders = {"__REPO_URL__", "__RUNNER_NAME__", "__TOKEN__", "__MAX_MINUTES__"}
+    assert set(re.findall(r"__[A-Z_]+__", BOOT)) == placeholders
+    assert 'shutdown -h "+$MAX_MINUTES"' in BOOT
+    for placeholder in placeholders:
         assert f'Replace("{placeholder}"' in DRIVER
 
 
