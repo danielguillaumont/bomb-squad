@@ -106,11 +106,14 @@ def _add(tar: tarfile.TarFile, name: str, data: bytes | None, mode: int, owner: 
 
 
 def payload(ecosystem: str, name: str, version: str, artifact_name: str, artifact: bytes,
-            unpacked: Path | None, canaries: Canaries) -> bytes:
+            unpacked: Path | None, canaries: Canaries,
+            fallback: tuple[str, bytes] | None = None) -> bytes:
     """The tar stream copied into the container: the fake credentials in the home folder,
-    and the package (unpacked into node_modules for npm, the artifact itself for PyPI)."""
-    if not FILENAME.match(artifact_name):
-        raise DetonationError(f"unexpected artifact file name: {artifact_name!r}")
+    and the package (unpacked into node_modules for npm, the artifact itself for PyPI).
+    `fallback` is a wheel to install when the sdist does not."""
+    for checked in (artifact_name, *([fallback[0]] if fallback else [])):
+        if not FILENAME.match(checked):
+            raise DetonationError(f"unexpected artifact file name: {checked!r}")
     home = HOME.lstrip("/")
     out = io.BytesIO()
     with tarfile.open(fileobj=out, mode="w") as tar:
@@ -124,6 +127,8 @@ def payload(ecosystem: str, name: str, version: str, artifact_name: str, artifac
         _add(tar, "detonate", None, 0o755, 0)
         _add(tar, "detonate/in", None, 0o755, 0)
         _add(tar, f"detonate/in/{artifact_name}", artifact, 0o644, 0)
+        if fallback is not None:
+            _add(tar, f"detonate/in/{fallback[0]}", fallback[1], 0o644, 0)
         if ecosystem == "npm":
             if unpacked is None:
                 raise DetonationError("an npm package needs its unpacked folder")
@@ -189,9 +194,11 @@ def sink_events(text: str) -> list[dict]:
 def run_detonation(ecosystem: str, name: str, version: str, artifact_name: str,
                    artifact: bytes, unpacked: Path | None, canaries: Canaries,
                    timeout: int = 120, run: Run = _run,
-                   popen: Callable[..., subprocess.Popen] = subprocess.Popen) -> RunResult:
+                   popen: Callable[..., subprocess.Popen] = subprocess.Popen,
+                   fallback: tuple[str, bytes] | None = None) -> RunResult:
     check_name(ecosystem, name)
-    tar = payload(ecosystem, name, version, artifact_name, artifact, unpacked, canaries)
+    tar = payload(ecosystem, name, version, artifact_name, artifact, unpacked, canaries,
+                  fallback)
     image = build_image(ecosystem, run)
     sink_image = build_image("sink", run)
     tag = f"bombsquad-{canaries.run}"
@@ -203,7 +210,7 @@ def run_detonation(ecosystem: str, name: str, version: str, artifact_name: str,
                     *SINK_FLAGS, sink_image]), "sink")
         address = _sink_address(sink, run)
         env = {**canaries.env, "HOME": HOME, "BS_PACKAGE": name, "BS_ARTIFACT": artifact_name,
-               "BS_SINK": address}
+               "BS_FALLBACK": fallback[0] if fallback else "", "BS_SINK": address}
         env_args = [arg for key, value in sorted(env.items()) for arg in ("--env",
                                                                           f"{key}={value}")]
         _check(run(["docker", "create", "--name", box, "--network", network, "--dns", address,

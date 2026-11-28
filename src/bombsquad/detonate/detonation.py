@@ -56,15 +56,25 @@ def parse_spec(spec: str) -> tuple[str, str, str]:
 
 
 def fetch_artifact(ecosystem: str, name: str, version: str, fetch: Fetch = http_get
-                   ) -> tuple[str, bytes]:
+                   ) -> tuple[str, bytes, tuple[str, bytes] | None]:
     """The npm tarball, or for PyPI the sdist (which runs setup.py or a build backend) and
-    otherwise a wheel. Checked against the registry's hash."""
+    otherwise a wheel. With an sdist, also the release's wheel, installed if the sdist does
+    not build. Each is checked against the registry's hash."""
     lookup = npm_releases if ecosystem == "npm" else pypi_releases
     [release] = lookup(name, [version], fetch)
     if not release.artifacts:
         raise runner.DetonationError(f"{ecosystem}:{name}@{version} has no artifact")
     chosen = next((a for a in release.artifacts if a.kind == "sdist"), release.artifacts[0])
-    return chosen.filename, download(chosen, fetch)
+    wheel = next((a for a in release.artifacts if a.kind == "wheel" and a is not chosen), None)
+    fallback = (wheel.filename, download(wheel, fetch)) if wheel else None
+    return chosen.filename, download(chosen, fetch), fallback
+
+
+def installed_fallback(parsed: trace.Trace, fallback: str | None) -> bool:
+    """Whether the stage installed the fallback wheel: pip was started with it."""
+    target = f"/detonate/in/{fallback}"
+    return bool(fallback) and any(target in argv for p in parsed.processes.values()
+                                  for argv in p.execs)
 
 
 def static_rules(root: Path) -> list[str]:
@@ -77,26 +87,32 @@ def static_rules(root: Path) -> list[str]:
 
 
 def detonate(spec: str, artifact: Path | None = None, timeout: int = 120,
-             fetch: Fetch = http_get, run_detonation=runner.run_detonation) -> DetonationReport:
+             fetch: Fetch = http_get, run_detonation=runner.run_detonation,
+             wheel: Path | None = None) -> DetonationReport:
     if not sys.platform.startswith("linux"):
         raise runner.DetonationError(
             "detonation runs only on a Linux host, such as a CI runner; nothing was run")
     ecosystem, name, version = parse_spec(spec)
+    fallback = (wheel.name, wheel.read_bytes()) if wheel is not None else None
     if artifact is not None:
         artifact_name, data = artifact.name, artifact.read_bytes()
     else:
-        artifact_name, data = fetch_artifact(ecosystem, name, version, fetch)
+        artifact_name, data, fallback = fetch_artifact(ecosystem, name, version, fetch)
     canaries = canary.make()
     with tempfile.TemporaryDirectory(prefix="bombsquad-detonate-") as tmp:
         root, skipped = unpack(data, artifact_name, Path(tmp) / "unpacked")
         rules = static_rules(root)
         result = run_detonation(ecosystem, name, version, artifact_name, data,
-                                root if ecosystem == "npm" else None, canaries, timeout)
+                                root if ecosystem == "npm" else None, canaries, timeout,
+                                fallback=fallback)
     parsed = trace.parse(result.trace)
     observation = observe.observe(parsed, result.sink_events, canaries, ecosystem,
                                   result.timed_out)
     observation.notes += result.notes
     notes = [f"{artifact_name}: {n}" for n in skipped]
+    if fallback and installed_fallback(parsed, fallback[0]):
+        notes.append(f"{artifact_name} did not install, so {fallback[0]} was installed and "
+                     "imported. What the sdist's build ran before it failed is included.")
     if parsed.unparsed:
         notes.append(f"{parsed.unparsed} of {parsed.lines} trace lines were not read.")
     return DetonationReport(f"{ecosystem}:{name}@{version}", artifact_name, observation,

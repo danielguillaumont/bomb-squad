@@ -108,3 +108,51 @@ def test_pypi_setup_py_and_import_are_both_observed(tmp_path):
                                                                    "AWS secret key"}
     assert {"collector.invalid", "imported.invalid"} <= set(observed["dns_names"])
     assert observed["exit_status"] == 0
+
+
+def _wheel(path: Path, files: dict[str, str], dist_info: str) -> Path:
+    import base64
+    import hashlib
+    import zipfile
+
+    record = []
+    for name, text in files.items():
+        digest = base64.urlsafe_b64encode(hashlib.sha256(text.encode()).digest()).rstrip(b"=")
+        record.append(f"{name},sha256={digest.decode()},{len(text.encode())}")
+    record.append(f"{dist_info}/RECORD,,")
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, text in files.items():
+            archive.writestr(name, text)
+        archive.writestr(f"{dist_info}/RECORD", "\n".join(record) + "\n")
+    return path
+
+
+def test_pypi_wheel_is_installed_when_the_sdist_does_not_build(tmp_path):
+    sdist = _tarball(tmp_path / "detonate-fallback-1.0.tar.gz", {
+        "detonate-fallback-1.0/PKG-INFO": "Metadata-Version: 2.1\nName: detonate-fallback\n"
+                                          "Version: 1.0\n",
+        "detonate-fallback-1.0/setup.py": "raise SystemExit('needs a compiler it lacks')\n",
+    })
+    dist_info = "detonate_fallback-1.0.dist-info"
+    wheel = _wheel(tmp_path / "detonate_fallback-1.0-py3-none-any.whl", {
+        "detonate_fallback/__init__.py": (
+            "import socket\n"
+            "try:\n"
+            "    socket.gethostbyname('wheel-imported.invalid')\n"
+            "except OSError:\n"
+            "    pass\n"),
+        f"{dist_info}/METADATA": "Metadata-Version: 2.1\nName: detonate-fallback\n"
+                                 "Version: 1.0\n",
+        f"{dist_info}/WHEEL": "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\n"
+                              "Tag: py3-none-any\n",
+        f"{dist_info}/top_level.txt": "detonate_fallback\n",
+    }, dist_info)
+    out = tmp_path / "fallback.json"
+    assert main(["detonate", "pypi:detonate-fallback@1.0", "--artifact", str(sdist),
+                 "--wheel", str(wheel), "--timeout", "180", "--format", "json",
+                 "-o", str(out)]) == EXIT_OK
+    report = json.loads(out.read_text(encoding="utf-8"))
+    print(json.dumps(report, indent=2))
+    assert any("was installed and imported" in n for n in report["notes"])
+    assert "wheel-imported.invalid" in report["observed"]["dns_names"]
+    assert report["observed"]["exit_status"] == 0

@@ -389,7 +389,8 @@ def test_detonation_rows_keep_counts_not_content(tmp_path):
     from bombsquad.detonate import runner
     from tests.test_detonate import NPM_TRACE
 
-    def fake_run(ecosystem, name, version, artifact_name, data, unpacked, canaries, timeout):
+    def fake_run(ecosystem, name, version, artifact_name, data, unpacked, canaries, timeout,
+                 fallback=None):
         assert artifact_name == "demo-1.0.0.tgz" and unpacked == tmp_path
         return runner.RunResult(NPM_TRACE, [{"kind": "dns", "name": "c2.example.invalid"}],
                                 False, False)
@@ -402,7 +403,7 @@ def test_detonation_rows_keep_counts_not_content(tmp_path):
     assert result["gaps"] == ["credentials read", "programs started", "persistence"]
     assert result["dns_names"] == 1 and "c2.example.invalid" not in json.dumps(result)
 
-    def broken(*args):
+    def broken(*args, **kwargs):
         raise runner.DetonationError("the sandbox recorded no trace")
 
     assert detonation.detonate(row, tmp_path, tmp_path, False, None, run=broken)[
@@ -431,8 +432,8 @@ def test_detonation_is_scored_only_where_it_ran():
     [cost] = [c for c in scores["detonation_cost"] if c["set"] == "malicious"
               and c["ecosystem"] == "npm"]
     assert cost == {"ecosystem": "npm", "set": "malicious", "packages": 3, "errors": 0,
-                    "timed_out": 0, "exited_non_zero": 1, "median_seconds": 4.0,
-                    "total_seconds": 12.0}
+                    "timed_out": 0, "exited_non_zero": 1, "wheel_instead": 0,
+                    "median_seconds": 4.0, "total_seconds": 12.0}
     assert "### Detonation cost" in score.markdown(scores)
 
 
