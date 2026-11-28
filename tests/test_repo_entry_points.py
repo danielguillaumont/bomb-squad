@@ -326,13 +326,36 @@ def test_third_party_actions_by_tag_and_self_hosted_runners(tmp_path):
     assert found(report, "BS-GHA-005")[0].region.line == 6
 
 
+def test_a_self_hosted_runner_chosen_by_an_expression_is_reported(tmp_path):
+    root = build(tmp_path, workflow("""
+        on: workflow_dispatch
+        permissions:
+          contents: read
+        jobs:
+          build:
+            runs-on: ${{ inputs.big && fromJSON('["self-hosted", "gpu"]') || 'ubuntu-latest' }}
+            steps:
+              - run: make
+          plain:
+            runs-on: ${{ inputs.os || 'ubuntu-latest' }}
+            steps:
+              - run: make
+        """))
+    report = scan([root])
+    [hit] = found(report, "BS-GHA-005")
+    assert hit.region.line == 6
+
+
 def test_this_repository_follows_its_own_rules():
     report = scan([ROOT / ".github", ROOT / "action.yml"])
     assert {e.kind for e in report.entry_points} == {
         "workflow job test", "workflow job code-scanning", "workflow job actionlint",
         "workflow job review", "workflow job comment", "composite action",
         "workflow job benchmark", "workflow job detonate"}
-    assert report.findings == []
+    # One reviewed exception: the benchmark detonates live samples only on a disposable
+    # self-hosted VM (docs/development.md#detonation-vm), and says so.
+    [finding] = report.findings
+    assert finding.rule.id == "BS-GHA-005" and finding.path.endswith("benchmark.yml")
 
 
 # GitHub Actions: run steps and the files they run ----------------------------------------

@@ -58,7 +58,8 @@ RULES: dict[str, Rule] = {r.id: r for r in (
         "repository's approval settings.",
         "Use GitHub-hosted runners for untrusted code, or ephemeral, isolated self-hosted "
         "runners.",
-        (*_PUBLIC, "Only the literal self-hosted label is recognised."),
+        (*_PUBLIC, "Recognised by the self-hosted label, or an expression that names it. A "
+                   "runner group, or a custom label alone, is not recognised."),
     ),
     Rule(
         "BS-GHA-006", "exfiltration", "Sends secrets to the network from a step", Level.HIGH,
