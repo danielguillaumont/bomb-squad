@@ -77,10 +77,25 @@ function Invoke-Tool {
         Write-Host "would run: $Tool $($Arguments -join ' ')"
         return ""
     }
-    $output = & $Tool @Arguments
-    if ($LASTEXITCODE -ne 0 -and -not $AllowFailure) {
-        throw "$Tool $($Arguments[0]) $($Arguments[1]) failed with exit code $LASTEXITCODE"
+    # Only the exit code decides failure. A warning on standard error, such as az's advice
+    # to use Trusted Launch, is shown and does not stop the run: Windows PowerShell 5.1
+    # turns standard error into errors when output is redirected, which "Stop" would throw.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        # Each tool named outright, so the script shows what it runs.
+        $all = if ($Tool -eq "az") { @(& az @Arguments 2>&1) } else { @(& gh @Arguments 2>&1) }
+        $code = $LASTEXITCODE
     }
+    finally { $ErrorActionPreference = $previous }
+    $output = @($all | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
+    $errors = @($all | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } |
+        ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    if ($code -ne 0 -and -not $AllowFailure) {
+        throw ("$Tool $($Arguments[0]) $($Arguments[1]) failed with exit code $code" +
+            $(if ($errors) { ": " + ($errors -join " ") } else { "" }))
+    }
+    foreach ($line in $errors) { Write-Host "  ($Tool) $line" }
     return ($output -join "`n")
 }
 
@@ -466,8 +481,13 @@ function Start-Detonation {
         if ($run) {
             Write-Host "Benchmark run: $($run.url)"
             Write-Host "If this window closes before it ends, run: .\scripts\detonation-vm.ps1 down"
-            # Not captured, so its progress shows as it goes.
-            & gh run watch "$($run.databaseId)" --repo $Repo --interval 120 --compact
+            # Not captured, so its progress shows as it goes. Standard error must not stop
+            # the script here: the cleanup below would cancel the run.
+            $previous = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try { & gh run watch "$($run.databaseId)" --repo $Repo --interval 120 --compact 2>&1 |
+                    ForEach-Object { "$_" } }
+            finally { $ErrorActionPreference = $previous }
         }
     }
     finally {
