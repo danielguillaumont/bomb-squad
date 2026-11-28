@@ -24,6 +24,16 @@ TIMEOUT_SECONDS = 60
 STRONG = ("credentials read", "credentials sent", "persistence")
 
 
+def registry_name(ecosystem: str, name: str) -> str:
+    """The package's name on its registry. The dataset names its folders after packages, so
+    it writes a scoped npm name, `@scope/name`, as `@scope@name`."""
+    if ecosystem == "npm" and name.startswith("@") and "/" not in name:
+        scope, at, rest = name[1:].partition("@")
+        if at and scope and rest:
+            return f"@{scope}/{rest}"
+    return name
+
+
 def _safe(text: str) -> str:
     return re.sub(r"[^\w.+-]", "_", text).lstrip("._-") or "package"
 
@@ -80,7 +90,8 @@ def detonate(row: dict, root: Path, work: Path, from_registry: bool, fetch: Fetc
     start = time.monotonic()
     result: dict = {}
     try:
-        ecosystem, name, version = row["ecosystem"], row["name"], row["version"]
+        ecosystem, version = row["ecosystem"], row["version"]
+        name = registry_name(ecosystem, row["name"])
         runner.check_name(ecosystem, name)
         fallback = None
         if from_registry:

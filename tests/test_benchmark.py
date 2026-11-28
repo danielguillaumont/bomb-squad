@@ -410,6 +410,28 @@ def test_detonation_rows_keep_counts_not_content(tmp_path):
         "error"].startswith("DetonationError")
 
 
+def test_scoped_npm_samples_are_detonated_under_their_registry_name(tmp_path):
+    from benchmark import detonation
+    from bombsquad.detonate import runner
+    from tests.test_detonate import NPM_TRACE
+
+    # The dataset names its folders after packages, so `@scope/name` is `@scope@name` there.
+    assert detonation.registry_name("npm", "@scope@name") == "@scope/name"
+    for unchanged in ("@scope/name", "plain", "@scope", "@@name", "@scope@"):
+        assert detonation.registry_name("npm", unchanged) == unchanged
+    assert detonation.registry_name("pypi", "@scope@name") == "@scope@name"
+    names = []
+
+    def fake_run(ecosystem, name, version, *args, **kwargs):
+        names.append(name)
+        return runner.RunResult(NPM_TRACE, [], False, False)
+
+    row = {"ecosystem": "npm", "name": "@scope@name", "version": "1.0.0"}
+    assert detonation.detonate(row, tmp_path, tmp_path, False, None, run=fake_run)[
+        "error"] is None
+    assert names == ["@scope/name"]
+
+
 def test_detonation_is_scored_only_where_it_ran():
     def detonated(set_, levels, flagged, seen=("network",), error=None, exit_status=0):
         r = row(set_, "npm", levels, 0)
