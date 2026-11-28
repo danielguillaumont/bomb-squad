@@ -410,6 +410,28 @@ def test_detonation_rows_keep_counts_not_content(tmp_path):
         "error"].startswith("DetonationError")
 
 
+def test_scoped_npm_samples_are_detonated_under_their_registry_name(tmp_path):
+    from benchmark import detonation
+    from bombsquad.detonate import runner
+    from tests.test_detonate import NPM_TRACE
+
+    # The dataset names its folders after packages, so `@scope/name` is `@scope@name` there.
+    assert detonation.registry_name("npm", "@scope@name") == "@scope/name"
+    for unchanged in ("@scope/name", "plain", "@scope", "@@name", "@scope@"):
+        assert detonation.registry_name("npm", unchanged) == unchanged
+    assert detonation.registry_name("pypi", "@scope@name") == "@scope@name"
+    names = []
+
+    def fake_run(ecosystem, name, version, *args, **kwargs):
+        names.append(name)
+        return runner.RunResult(NPM_TRACE, [], False, False)
+
+    row = {"ecosystem": "npm", "name": "@scope@name", "version": "1.0.0"}
+    assert detonation.detonate(row, tmp_path, tmp_path, False, None, run=fake_run)[
+        "error"] is None
+    assert names == ["@scope/name"]
+
+
 def test_detonation_is_scored_only_where_it_ran():
     def detonated(set_, levels, flagged, seen=("network",), error=None, exit_status=0):
         r = row(set_, "npm", levels, 0)
@@ -512,3 +534,32 @@ def test_updates_are_scored_as_false_alarms_with_their_rules():
     assert npm["rules"] == [("BS-NET-001", 1)]
     text = score.markdown(scores)
     assert "### Updates of benign packages" in text and "16.7% (1/6)" in text
+
+
+def test_a_run_needs_powershell_and_records_it(monkeypatch):
+    from benchmark import __main__ as harness
+    from bombsquad.powershell.parser import ParserUnavailable
+
+    def missing():
+        raise ParserUnavailable("PowerShell is needed to parse PowerShell")
+
+    # Without it, PowerShell embedded in a package is only noted, and its findings would
+    # drop out of the scores with no error.
+    monkeypatch.setattr(harness, "find_powershell", missing)
+    with pytest.raises(SystemExit, match="PowerShell is needed"):
+        harness._powershell()
+    monkeypatch.setattr(harness, "find_powershell", lambda: "/usr/bin/pwsh")
+    monkeypatch.setattr(harness.tools, "version", lambda executable: "PowerShell 7.6.10")
+    assert harness._powershell() == "PowerShell 7.6.10"
+
+
+def test_a_version_is_read_from_plain_text_output():
+    import sys
+
+    from benchmark import tools
+
+    # Run 46112205761 recorded the path, not the version: plain text was taken for an error.
+    script = "print('Tool'); print('Tool 7.6.10')"
+    assert tools.version_of([sys.executable, "-c", script]) == "Tool 7.6.10"
+    assert tools.version_of([sys.executable, "-c", "import sys; sys.exit(3)"]) is None
+    assert tools.version("/no/such/tool") is None

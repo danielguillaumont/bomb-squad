@@ -45,17 +45,27 @@ The benchmark detonates live malicious samples (`detonate` input `all`) only on 
 `scripts/detonation-vm.ps1` does the whole run with the signed-in Azure CLI and GitHub CLI, from Windows PowerShell 5.1 or PowerShell 7:
 
 ```powershell
+.\scripts\detonation-vm.ps1 check
+```
+
+```powershell
 .\scripts\detonation-vm.ps1 run
 ```
 
+`check` shows where `run` would create the VM, without creating it. It first makes the GitHub calls `run` makes later, read-only against the latest benchmark run, so a failure there shows before a VM exists. For each region it tries, it creates an empty resource group and firewall, which are free, asks Azure to validate the full VM request with `az vm create --validate` (quota and capacity included), and deletes them.
+
 1. It checks that workflows from fork pull requests need approval for all outside contributors, and that no earlier detonation VM or runner is left.
 2. It shows the subscription, location and VM size, and asks you to type `yes`.
-3. It creates a resource group with one Ubuntu 24.04 VM (`Standard_D4s_v5` by default) and nothing else. The VM has no managed identity and no inbound rules. Its only outbound traffic to the internet is TCP 80 and 443. Azure deallocates it after `-MaxHours` (7 by default) even if the script has stopped.
-4. At boot, `scripts/detonation-vm.sh` installs Docker, writes `/etc/bombsquad/disposable-vm`, and registers a runner that takes one job and unregisters. The runner is downloaded at a pinned version and checked against its SHA-256. It may update itself from GitHub's releases if GitHub no longer accepts that version.
+3. It makes the same check, then creates one Ubuntu 24.04 VM (`Canonical:ubuntu-24_04-lts:server:latest`) in the first region and size Azure accepts, in a resource group with nothing else. The sizes tried are 4-vCPU, 16 GB sizes in families that Azure for Students gives 4 cores of. `-Location` and `-Size` take other lists, separated by commas. The VM has no managed identity and no inbound rules. Its only outbound traffic to the internet is TCP 80 and 443.
+   - **Deadline:** the group also holds a deadline (`scripts/detonation-deadline.json`), so the VM is deleted even if the script or the machine running it stops. It is a Logic App whose only trigger is a 5-minute timer. Its own identity has Contributor on that resource group and nothing else. It deletes the group once the VM is powered off, which the VM does when its one job ends, or after `-MaxHours` (7 by default). Its role assignment goes with the group. Creating it needs the right to assign roles, which a subscription's owner has. `check` tries it in the empty group. If Azure refuses it, `run` warns and falls back to Azure's scheduled shutdown, which some regions such as `belgiumcentral` do not offer. The VM is then billed until `down` deletes it.
+   - It goes in a new resource group of its own, and the script deletes only resource groups it tagged `bombsquad=detonation`. Other resources in the subscription are not touched. The VM has its own network, with no peering to any other.
+   - Regions the subscription's allowed-regions policy leaves out are skipped.
+   - On a new subscription it registers the Microsoft.Compute, Microsoft.Network and Microsoft.Logic providers first.
+4. At boot, `scripts/detonation-vm.sh` installs Docker and PowerShell 7, writes `/etc/bombsquad/disposable-vm`, and registers a runner that takes one job and unregisters. PowerShell and the runner are downloaded at pinned versions and checked against their SHA-256. The benchmark stops if no PowerShell is installed: without it, PowerShell embedded in a package is not analysed and its findings would drop out of the scores. It may update itself from GitHub's releases if GitHub no longer accepts that version.
 5. The script dispatches the benchmark with `detonate=all` and waits for it.
 6. When the run ends, fails or is interrupted, it cancels the run if it has not finished and deletes the resource group and the runner.
 
-If the window closes during a run, delete what is left:
+If the window closes during a run, the deadline deletes the VM. To delete what is left at once:
 
 ```powershell
 .\scripts\detonation-vm.ps1 down
@@ -63,7 +73,8 @@ If the window closes during a run, delete what is left:
 
 Before the first run:
 
-- Use a subscription that holds nothing else of value, and check that its terms allow running malware samples for research in your own VM.
+- A subscription that holds nothing else is safest. In a shared one, the VM has no identity and no network peering, so it cannot reach other resources through Azure, only their public endpoints, as any host on the internet can.
+- Check that the subscription's terms allow running malware samples for research in your own VM.
 - Set the fork approval policy, once: `gh api --method PUT repos/danielguillaumont/bomb-squad/actions/permissions/fork-pr-contributor-approval -f approval_policy=all_external_contributors`.
 - The run is billed while the VM exists. `-DryRun` prints what would be done without calling Azure or GitHub.
 
@@ -79,7 +90,7 @@ What it does not do:
    - It holds no credentials and no cloud role. Turn off the instance metadata service, or give the VM no instance role.
    - It has no folders shared with another machine.
    - Its outbound traffic is limited to what the job fetches: GitHub, the npm and PyPI registries, Docker Hub for the pinned base images, and the Debian mirror the images install strace from. Where only addresses and ports can be filtered, allow TCP 80 and 443 and nothing else. The packages themselves reach only the sink, on an internal Docker network.
-2. **Install Docker Engine**, then mark the VM as disposable: `sudo mkdir -p /etc/bombsquad && sudo touch /etc/bombsquad/disposable-vm`. The workflow checks for this file. `scripts/detonation-vm.sh` does this and the next step on any Ubuntu VM with cloud-init.
+2. **Install Docker Engine and PowerShell 7**, then mark the VM as disposable: `sudo mkdir -p /etc/bombsquad && sudo touch /etc/bombsquad/disposable-vm`. The workflow checks for this file. `scripts/detonation-vm.sh` does this and the next step on any Ubuntu VM with cloud-init.
 3. **In the repository's settings** (Actions, General), require approval for workflows from fork pull requests by all outside contributors. Any workflow file in a fork could otherwise ask for the runner's label while it is registered.
 4. **Register the VM as an ephemeral runner** right before dispatching the run, with the labels `self-hosted`, `linux`, `x64` and `bombsquad-detonation`. Follow GitHub's instructions for adding a self-hosted runner, and pass `--ephemeral` to `config.sh` so that the runner takes one job and unregisters.
 5. **Dispatch the benchmark** with `detonate` set to `all`.
