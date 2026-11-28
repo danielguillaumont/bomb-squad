@@ -1,6 +1,6 @@
 # Bomb Squad and GuardDog on the same packages
 
-Every figure here comes from one of two benchmark runs on `main`, both on 2026-11-27 and both on the same dataset commit. The pins are in [Runs](#runs).
+Every figure here comes from one of three benchmark runs on `main`, two on 2026-11-27 and one on 2026-11-28, all on the same dataset commit. The pins are in [Runs](#runs). The third, run [46090723283](https://github.com/danielguillaumont/bomb-squad/actions/runs/46090723283), measured [updates and detonation](#updates-and-detonation-of-the-benign-packages) on the benign packages.
 
 - **Held-out sample:** GitHub Actions run [46075004726](https://github.com/danielguillaumont/bomb-squad/actions/runs/46075004726), Bomb Squad 2.0.1 at commit `4562013`. Its 400 malicious and 400 benign packages share none with the development runs. Its protocol was [fixed before it ran](../methodology.md#how-the-benchmark-works). [Its results](#held-out-sample) are the less in-sample measure.
 - **Development sample:** run [46066816294](https://github.com/danielguillaumont/bomb-squad/actions/runs/46066816294), at commit `63c1026`, on the same 400 and 400 packages as the [development runs](#development-runs) whose rule counts shaped the rules. [Its results](#development-sample) are in-sample.
@@ -123,7 +123,7 @@ GuardDog finds more malicious packages than Bomb Squad at every pair of threshol
 
 - **Selection.** The DataDog README says most of its samples were found by GuardDog. Samples GuardDog missed are less likely to be in the dataset, so its recall here is an upper estimate.
 - **Scope.** Bomb Squad reports what runs without anyone choosing to run it: install hooks, `.pth` files, build backends and the code they reach. A package whose payload runs when it is imported or required, and not on install, has no entry point for Bomb Squad and is a miss here by design. GuardDog reads every file.
-- **Rules seen.** Bomb Squad's rules changed after the development runs listed below, which used the development sample's packages, so that sample's figures are in-sample for Bomb Squad. The changes were made from rule counts and error lines, and from benign packages inspected by hand, not from reading malicious samples. No rule changed after the held-out run. Its packages were not used before it, but near-identical packages of one campaign fall in both samples, such as the 76 and 64 PyPI samples above. GuardDog 3.2.0 was published to PyPI on 2026-08-12, before this dataset commit. GuardDog and the dataset both come from DataDog.
+- **Rules seen.** Bomb Squad's rules changed after the development runs listed below, which used the development sample's packages, so that sample's figures are in-sample for Bomb Squad. The changes were made from rule counts and error lines, and from benign packages inspected by hand, not from reading malicious samples. No rule changed between the held-out run and its figures being published. Two later fixes changed what package mode counts as run on install: a `setup.py` below the project root ([pull request 38](https://github.com/danielguillaumont/bomb-squad/pull/38)) and npm `prepare` scripts ([pull request 43](https://github.com/danielguillaumont/bomb-squad/pull/43)). The held-out figures are from before both. The held-out packages were not used before that run, but near-identical packages of one campaign fall in both samples, such as the 76 and 64 PyPI samples above. GuardDog 3.2.0 was published to PyPI on 2026-08-12, before this dataset commit. GuardDog and the dataset both come from DataDog.
 - **Precision** depends on the ratio of malicious to benign packages here, which is not the ratio in the wild. False positives per 1,000 benign releases do not. The run's `scores.md` gives precision on this mix.
 
 ## What neither number shows
@@ -133,6 +133,53 @@ GuardDog finds more malicious packages than Bomb Squad at every pair of threshol
 - A popular release is assumed benign. A compromised release in the benign sample would count as a false positive.
 - The after-cutoff split, packages DataDog found after the rules were frozen, is empty for this dataset commit. It is the measure of detection of the unknown, and it needs a later dataset commit.
 - 200 packages per ecosystem is a small sample: a difference of a few packages is a difference of one or two percentage points.
+
+## Updates and detonation of the benign packages
+
+Run [46090723283](https://github.com/danielguillaumont/bomb-squad/actions/runs/46090723283) on `main` (started 2026-11-28T00:59:03Z, Bomb Squad 2.0.1 at commit `ea87b2b`) used the development sample's pins and packages, with version pairs and with detonation of the benign packages only. No malicious package was detonated, so detonation's recall is not measured.
+
+Its static figures match the development sample's above, except for Bomb Squad's PyPI false positives. There it has 4 rather than 6 at high, and 20 rather than 23 at review. The difference is three packages, from two changes made after the development sample ran:
+
+- google-cloud-firestore and uv lost their BS-OB-001 finding when that rule was narrowed in [pull request 34](https://github.com/danielguillaumont/bomb-squad/pull/34).
+- pyzmq's BS-NET-003 finding came from `examples/cython/setup.py`, which is below the project root. Since [pull request 38](https://github.com/danielguillaumont/bomb-squad/pull/38), such a `setup.py` is reported at info.
+
+GuardDog labelled every package the same in both runs.
+
+### Updates
+
+Each benign release was diffed with `bombsquad diff` against the highest lower version published before it, as the pull-request gate reviews an update. On an ordinary update every alarm is a false alarm.
+
+| Ecosystem | Alarm | False alarms | Per 1,000 updates |
+|---|---|---|---|
+| npm | A new review or high finding | 0.5% (1/199) | 5.0 |
+| npm | A new high finding | 0.0% (0/199) | 0.0 |
+| npm | A new or changed entry point that installing runs | 0.0% (0/199) | 0.0 |
+| npm | A new finding, or a publish signal at review | 14.1% (28/199) | 140.7 |
+| PyPI | A new review or high finding | 2.1% (4/194) | 20.6 |
+| PyPI | A new high finding | 1.0% (2/194) | 10.3 |
+| PyPI | A new or changed entry point that installing runs | 0.0% (0/194) | 0.0 |
+| PyPI | A new finding, or a publish signal at review | 3.6% (7/194) | 36.1 |
+
+- **Denominators:** one release in each ecosystem had no earlier release. The 5 PyPI releases over the download limit are left out, as above. No diff failed.
+- **New findings:** BS-UC-001 (invisible characters) in 1 npm and 3 PyPI updates, 2 of them at high, and BS-NET-003 in 1 PyPI update.
+- **Publish signals:** on npm, 27 updates raised only a signal: a new publisher in 16, a maintainer change in 11 and a changed repository in 8, some with more than one. On PyPI, 3 updates changed their declared repository. PyPI does not publish uploaders, so it has no publisher signal.
+- **Entry points listed but not run:** 8 npm and 26 PyPI updates added or changed workflows, git hooks, agent files, `conftest.py` in sdists, or npm `prepare` scripts. Installing runs none of them, so they are not counted as alarms.
+- **Time:** the median diff took 0.2 seconds on npm and 1.1 seconds on PyPI, fetching both releases included.
+
+### Detonation
+
+| Ecosystem | Detonated | Errors or timeouts | Installed nothing | Wheel instead of sdist | Median seconds | Total seconds |
+|---|---|---|---|---|---|---|
+| npm | 200 | 0 | 0 | n/a | 2.7 | 547.2 |
+| PyPI | 195 | 0 | 1 | 51 | 4.0 | 995.3 |
+
+- **Flagged** (package code read or sent a fake credential, or wrote somewhere that persists): 0 of 200 npm and 0 of 195 PyPI packages.
+- **Anything observed:** 0 of 200 npm and 5 of 195 PyPI packages. Four made network attempts, which only the sink answered, and four started a program.
+  - The static scan predicted reportlab's network attempts (BS-NET-003 at review). The other three are gaps in the static rules.
+  - It predicted two of the programs started (BS-PRC-001 at info). The other two are gaps.
+  - The packages were not inspected further, so this is what was observed, not an explanation of it.
+- **npm:** according to the registry metadata, none of the 200 releases has a `preinstall`, `install` or `postinstall` script, or a `binding.gyp`, so detonation ran none of their code. 22 have a `prepare` script, which a registry install does not run.
+- **PyPI:** 51 sdists did not build in the sandbox, which reaches no package index and has only its preinstalled build backends, so the release's wheel was installed and imported instead. One package, mysqlclient, installed neither way: its sdist did not build, and the wheel tried after it did not install.
 
 ## Development runs
 
@@ -156,21 +203,22 @@ Run 46085706292 (2026-11-28, `main` at `1c829e374a24`, seed 2026) was the first 
 - **`prepare` scripts:** 22 of the 200 benign npm packages have one, and detonation ran none of them, because npm runs `prepare` for a local or git install, not for a package from the registry. Package mode had treated them as run on install. It no longer does. This changes Bomb Squad's scan after the held-out run, so the held-out and development figures above are those of the earlier code.
 - **Entry points in the diff:** most new or changed PyPI entry points were workflows and git hooks shipped in sdists, which installing does not run. The diff's entry point threshold now counts only those that installing runs.
 
-It also showed that 52 of the 195 PyPI detonations installed nothing: pip could not build the sdist without its build dependencies. The scores now count these.
+It also showed that 52 of the 195 PyPI detonations installed nothing: pip could not build the sdist without its build dependencies. The scores now count these, and the sandbox now installs the release's wheel when the sdist does not build ([pull request 44](https://github.com/danielguillaumont/bomb-squad/pull/44)). The run after both fixes, [46090723283](https://github.com/danielguillaumont/bomb-squad/actions/runs/46090723283), gave every one of the 800 packages the same Bomb Squad levels as this run.
 
 **Correction:** earlier versions of this page and the README showed 79.0% for 90/114. The scorer rounded each rate to four decimals and then again to one, and 90/114 is 78.9%. The scorer now formats rates from their counts. Every other percentage on this page was checked against its counts.
 
 ## Runs
 
-Both runs use `.github/workflows/benchmark.yml` on `main`, with the same pins:
+All three runs use `.github/workflows/benchmark.yml` on `main`, with the same pins:
 - **GuardDog:** 3.2.0, with its dependencies as of 2026-11-20.
 - **Malicious:** DataDog/malicious-software-packages-dataset at commit `72c723be547033c558244520524b117c8d71663b` (2026-11-05), 200 per ecosystem.
 - **Benign:** `npm-high-impact` 1.13.0 and hugovk/top-pypi-packages at commit `29c0d4c38c28` (2026-11-01), from the top 1,000, 200 per ecosystem, releases as of 2026-11-05.
-- **Kept:** each run's artifact holds package names, versions, rule IDs, levels and timings, not sample content. The workflow keeps it for 90 days.
+- **Kept:** each run's artifact holds package names, versions, rule IDs, levels and timings, not sample content. The updates run also keeps detonation categories and counts, and for each update the counts of entry points, the rule IDs and the signal names. The workflow keeps each artifact for 90 days.
 
-| | Held-out sample | Development sample |
-|---|---|---|
-| Run | 46075004726, started 2026-11-27T22:11:06Z | 46066816294, started 2026-11-27T20:55:11Z |
-| Bomb Squad | 2.0.1 at `45620136314441e1fa5f89c57c1e281a3fb760f8` | 2.0.0.dev0 at `63c102626739ad14f0e009c4fadcf065333e363b` |
-| Seed | 2027, leaving out the packages of seed 2026 at 200 and at 5 | 2026 |
-| Cutoff | 2026-11-27, the commit's date | 2026-11-27, the commit's date |
+| | Held-out sample | Development sample | Updates and detonation |
+|---|---|---|---|
+| Run | 46075004726, started 2026-11-27T22:11:06Z | 46066816294, started 2026-11-27T20:55:11Z | 46090723283, started 2026-11-28T00:59:03Z |
+| Bomb Squad | 2.0.1 at `45620136314441e1fa5f89c57c1e281a3fb760f8` | 2.0.0.dev0 at `63c102626739ad14f0e009c4fadcf065333e363b` | 2.0.1 at `ea87b2b785c2eec97195653f52a47777302d7038` |
+| Seed | 2027, leaving out the packages of seed 2026 at 200 and at 5 | 2026 | 2026 |
+| Cutoff | 2026-11-27, the commit's date | 2026-11-27, the commit's date | 2026-11-27, the commit's date |
+| Inputs | | | `version-pairs` on, `detonate` benign, 60 seconds each |
