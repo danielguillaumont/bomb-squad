@@ -236,12 +236,15 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
   - Two containers share an internal Docker network with no route out: the package's container, and the sink.
   - Nothing on the host is mounted in the package's container. It has no capabilities except the three strace needs, to trace and to switch users. The package runs as an unprivileged user with none, and `no-new-privileges`.
   - Images are built from base images pinned by digest.
-- **npm:** the tarball is unpacked into `node_modules` and `npm rebuild` runs its `preinstall`, `install` and `postinstall` scripts, and node-gyp for `binding.gyp`. Its dependencies are not installed.
+- **npm:** the tarball is unpacked into `node_modules` and `npm rebuild` runs its `preinstall`, `install` and `postinstall` scripts, and node-gyp for `binding.gyp`. Its dependencies are beside it in `node_modules`, without their own install scripts run.
 - **PyPI:**
   - The sdist is detonated when there is one, otherwise a wheel.
-  - pip installs it without dependencies or an index, using build backends preinstalled in the image, so `setup.py` or the build backend runs.
+  - pip installs it with no index, using build backends preinstalled in the image, so `setup.py` or the build backend runs. Its dependencies come from the wheels fetched before the sandbox started; if they do not satisfy it, it is installed without dependencies.
   - When the sdist does not build there (often because its build dependencies are missing), the release's wheel is installed instead, as `--wheel FILE` does for a local sdist. What the failed build ran is still in the trace, and the report says which was installed.
   - Each top-level module is then imported once, which also runs any `.pth` file it installed.
+- **Dependencies:** fetched before the sandbox starts, by a separate container of the same image. That container has Docker's default network but neither the package nor the fake credentials, and it runs no package code: npm uses `npm install --ignore-scripts`, and PyPI uses `pip download --only-binary=:all:`. `--no-dependencies` skips this step.
+  - What it fetches is what the release declares from the registry: npm `dependencies` and `optionalDependencies`, without git, URL, file or alias specifiers. For PyPI, the first source that lists any: wheel `METADATA` or sdist `PKG-INFO`, egg-info `requires.txt`, `pyproject.toml`, or a literal `install_requires` in `setup.py`. Direct URL references are left out.
+  - Only regular files with plain relative names come back, up to 300 MB, 100,000 files and 180 seconds.
 - **Fake credentials:**
   - Files: `.npmrc`, `.pypirc`, `~/.aws/credentials`, `~/.ssh/id_ed25519` and `.git-credentials`.
   - Variables: npm, GitHub, AWS and PyPI tokens, and the GitHub Actions OIDC request variables.
@@ -259,7 +262,8 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
   - Observed with no static finding marks a gap in the static rules.
   - Predicted but not observed is not cleared.
 - **What it cannot see:**
-  - Code that needs the missing dependencies fails.
+  - Code that needs a dependency that could not be fetched fails. For PyPI that includes a dependency with no wheel, and one declared only in code that builds the list at run time.
+  - Dependencies' own install scripts do not run, so a payload placed in a dependency's install script is not seen.
   - A client that pins a certificate or brings its own list of authorities fails the TLS handshake, and then only its server name is seen.
   - Reading environment variables leaves no trace.
   - One timed run as a fresh user does not trigger payloads gated on time, host or a later run.

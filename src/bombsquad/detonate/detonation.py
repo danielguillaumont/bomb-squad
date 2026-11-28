@@ -9,14 +9,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from bombsquad.archive import unpack
-from bombsquad.detonate import canary, observe, runner, trace
+from bombsquad.detonate import canary, dependencies, observe, runner, trace
 from bombsquad.model import Level
 from bombsquad.registry import Fetch, download, http_get, npm_releases, pypi_releases
 from bombsquad.scan import NOT_REACHED_IN_PACKAGE, NOT_RUN_FROM_PACKAGE, scan
 
 LIMITS = [
-    "Dependencies are not installed: the network reaches only the sink. Code that needs "
-    "them fails when it loads them.",
+    "Dependencies the package declares are fetched outside the sandbox and installed with "
+    "it, without running their own install scripts. For PyPI only wheels are fetched, so a "
+    "dependency with none is missing, and dependencies are read from the release's "
+    "metadata, a literal install_requires or pyproject.toml. Code that needs a missing "
+    "one fails when it loads it.",
     "TLS is read with a certificate authority made for the run, which the sandbox trusts "
     "through its system bundle and NODE_EXTRA_CA_CERTS, SSL_CERT_FILE, REQUESTS_CA_BUNDLE and "
     "CURL_CA_BUNDLE. A client that pins a certificate or brings its own list of authorities "
@@ -90,7 +93,7 @@ def static_rules(root: Path) -> list[str]:
 
 def detonate(spec: str, artifact: Path | None = None, timeout: int = 120,
              fetch: Fetch = http_get, run_detonation=runner.run_detonation,
-             wheel: Path | None = None) -> DetonationReport:
+             wheel: Path | None = None, with_dependencies: bool = True) -> DetonationReport:
     if not sys.platform.startswith("linux"):
         raise runner.DetonationError(
             "detonation runs only on a Linux host, such as a CI runner; nothing was run")
@@ -104,14 +107,21 @@ def detonate(spec: str, artifact: Path | None = None, timeout: int = 120,
     with tempfile.TemporaryDirectory(prefix="bombsquad-detonate-") as tmp:
         root, skipped = unpack(data, artifact_name, Path(tmp) / "unpacked")
         rules = static_rules(root)
+        declared = dependencies.declared(ecosystem, root) if with_dependencies else []
         result = run_detonation(ecosystem, name, version, artifact_name, data,
                                 root if ecosystem == "npm" else None, canaries, timeout,
-                                fallback=fallback)
+                                fallback=fallback, dependencies=declared)
     parsed = trace.parse(result.trace)
     observation = observe.observe(parsed, result.sink_events, canaries, ecosystem,
                                   result.timed_out)
     observation.notes += result.notes
     notes = [f"{artifact_name}: {n}" for n in skipped]
+    if result.dependencies:
+        count = len(result.dependencies)
+        notes.append(f"{count} {'dependency was' if count == 1 else 'dependencies were'} "
+                     "fetched outside the sandbox and installed with the package.")
+    elif not with_dependencies:
+        notes.append("Dependencies were not installed (--no-dependencies).")
     if fallback and installed_fallback(parsed, fallback[0]):
         notes.append(f"{artifact_name} did not install, so {fallback[0]} was installed and "
                      "imported. What the sdist's build ran before it failed is included.")

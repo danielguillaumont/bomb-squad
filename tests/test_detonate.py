@@ -340,6 +340,7 @@ class FakeDocker:
         self.inputs: list[bytes | None] = []
         self.fail = fail
         self.ca = ca
+        self.fetched = b""  # what the dependency fetch container sends back
 
     def run(self, args, **kwargs):
         self.calls.append(args)
@@ -349,6 +350,8 @@ class FakeDocker:
             out = (json.dumps({"kind": "ready", "address": "172.30.0.2", "ca": self.ca}) + "\n"
                    + json.dumps(
                 {"kind": "dns", "name": "collector.invalid"}) + "\n").encode()
+        if "--entrypoint" in args:
+            out = self.fetched
         code = 1 if self.fail and self.fail in args else 0
         if args[:3] == ["docker", "image", "inspect"]:
             code = 1  # not built yet
@@ -452,7 +455,7 @@ def test_detonate_reports_observations_against_the_static_scan(tmp_path, monkeyp
     seen = {}
 
     def fake_run(ecosystem, name, version, artifact_name, data, unpacked, canaries, timeout,
-                 fallback=None):
+                 fallback=None, dependencies=None):
         seen["unpacked"] = sorted(p.name for p in unpacked.iterdir())
         return runner.RunResult(NPM_TRACE, [{"kind": "dns", "name": "collector.invalid"}],
                                 False, False)

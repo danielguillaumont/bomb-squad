@@ -8,6 +8,10 @@ stops the package from getting any back. Files go in with `docker cp` and the tr
 out on standard output, so nothing on the host is shared with it. Docker commands are
 argument lists, never a shell.
 
+Dependencies are fetched first, by a separate container of the same image that has
+Docker's default network but neither the package nor the fake credentials
+(`bombsquad.detonate.dependencies`), and go in with the package.
+
 The sink makes a certificate authority for the run and prints its certificate when it is
 ready. The certificate goes into the package's container, which trusts it, so the sink can
 read what is sent over TLS. The authority's key stays in the sink.
@@ -29,6 +33,7 @@ from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
+from bombsquad.detonate import dependencies as deps
 from bombsquad.detonate.canary import HOME, Canaries
 
 UID = 1001
@@ -115,12 +120,20 @@ def _add(tar: tarfile.TarFile, name: str, data: bytes | None, mode: int, owner: 
         tar.addfile(info, io.BytesIO(data))
 
 
+def _mode(data: bytes) -> int:
+    # Archives' file modes are not kept when unpacking; a script that a lifecycle hook runs
+    # directly needs to be executable.
+    return 0o755 if data.startswith(b"#!") else 0o644
+
+
 def payload(ecosystem: str, name: str, version: str, artifact_name: str, artifact: bytes,
             unpacked: Path | None, canaries: Canaries,
-            fallback: tuple[str, bytes] | None = None) -> bytes:
+            fallback: tuple[str, bytes] | None = None,
+            dependencies: list[tuple[str, bytes]] | None = None) -> bytes:
     """The tar stream copied into the container: the fake credentials in the home folder,
     and the package (unpacked into node_modules for npm, the artifact itself for PyPI).
-    `fallback` is a wheel to install when the sdist does not."""
+    `fallback` is a wheel to install when the sdist does not. `dependencies` are files
+    relative to node_modules (npm) or wheels (PyPI), from the fetch container."""
     for checked in (artifact_name, *([fallback[0]] if fallback else [])):
         if not FILENAME.match(checked):
             raise DetonationError(f"unexpected artifact file name: {checked!r}")
@@ -139,6 +152,11 @@ def payload(ecosystem: str, name: str, version: str, artifact_name: str, artifac
         _add(tar, f"detonate/in/{artifact_name}", artifact, 0o644, 0)
         if fallback is not None:
             _add(tar, f"detonate/in/{fallback[0]}", fallback[1], 0o644, 0)
+        if ecosystem == "pypi" and dependencies:
+            _add(tar, "detonate/deps", None, 0o755, 0)
+            for wheel, data in dependencies:
+                if FILENAME.match(wheel):
+                    _add(tar, f"detonate/deps/{wheel}", data, 0o644, 0)
         if ecosystem == "npm":
             if unpacked is None:
                 raise DetonationError("an npm package needs its unpacked folder")
@@ -149,6 +167,15 @@ def payload(ecosystem: str, name: str, version: str, artifact_name: str, artifac
             _add(tar, f"{project}/package.json", json.dumps(manifest).encode(), 0o644, UID)
             _add(tar, f"{project}/node_modules", None, 0o755, UID)
             base = f"{project}/node_modules"
+            # Dependencies first, so the package's own files are the ones kept.
+            kept = [(r, d) for r, d in dependencies or []
+                    if r.split("/")[:len(name.split("/"))] != name.split("/")]
+            folders = sorted({"/".join(r.split("/")[:i]) for r, _ in kept
+                              for i in range(1, len(r.split("/")))})
+            for folder in folders:
+                _add(tar, f"{base}/{folder}", None, 0o755, UID)
+            for relative, data in kept:
+                _add(tar, f"{base}/{relative}", data, _mode(data), UID)
             parts = name.split("/")
             for i in range(1, len(parts)):
                 _add(tar, f"{base}/{'/'.join(parts[:i])}", None, 0o755, UID)
@@ -162,10 +189,7 @@ def payload(ecosystem: str, name: str, version: str, artifact_name: str, artifac
                     _add(tar, f"{target}/{relative}", None, 0o755, UID)
                 else:
                     data = path.read_bytes()
-                    # Archives' file modes are not kept when unpacking; a script that a
-                    # lifecycle hook runs directly needs to be executable.
-                    mode = 0o755 if data.startswith(b"#!") else 0o644
-                    _add(tar, f"{target}/{relative}", data, mode, UID)
+                    _add(tar, f"{target}/{relative}", data, _mode(data), UID)
     return out.getvalue()
 
 
@@ -185,6 +209,7 @@ class RunResult:
     timed_out: bool
     trace_truncated: bool
     notes: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)  # the packages installed with it
 
 
 def _read_capped(stream, sink: io.BytesIO, cap: int, on_cap: Callable[[], None]) -> None:
@@ -210,19 +235,45 @@ def sink_events(text: str) -> list[dict]:
     return events
 
 
+def fetch_dependencies(ecosystem: str, image: str, specs: list[str], name: str,
+                       run: Run = _run) -> deps.Fetched:
+    """Fetch `specs` in a container of `image` that holds neither the package nor the fake
+    credentials; see `bombsquad.detonate.dependencies`."""
+    command = deps.fetch_command(ecosystem, image, name, specs)
+    try:
+        result = run(command, timeout=deps.FETCH_SECONDS)
+    except subprocess.TimeoutExpired:
+        run(["docker", "rm", "--force", name])
+        return deps.Fetched(notes=[f"Fetching the dependencies took longer than "
+                                   f"{deps.FETCH_SECONDS} seconds, so none were installed."])
+    fetched = deps.read_fetched(ecosystem, result.stdout or b"")
+    if not fetched.files:
+        fetched.notes.append(f"None of the {len(specs)} declared dependencies could be "
+                             "fetched, so none were installed.")
+    return fetched
+
+
 def run_detonation(ecosystem: str, name: str, version: str, artifact_name: str,
                    artifact: bytes, unpacked: Path | None, canaries: Canaries,
                    timeout: int = 120, run: Run = _run,
                    popen: Callable[..., subprocess.Popen] = subprocess.Popen,
-                   fallback: tuple[str, bytes] | None = None) -> RunResult:
+                   fallback: tuple[str, bytes] | None = None,
+                   dependencies: list[str] | None = None) -> RunResult:
+    """`dependencies` are what the package declares (`name@range` for npm, requirement
+    strings for PyPI), fetched before the sandbox starts."""
     check_name(ecosystem, name)
-    tar = payload(ecosystem, name, version, artifact_name, artifact, unpacked, canaries,
-                  fallback)
+    payload(ecosystem, name, version, artifact_name, artifact, unpacked, canaries, fallback)
     image = build_image(ecosystem, run)
     sink_image = build_image("sink", run)
     tag = f"bombsquad-{canaries.run}"
     network, sink, box = f"{tag}-net", f"{tag}-sink", f"{tag}-box"
     notes: list[str] = []
+    fetched = deps.Fetched()
+    if dependencies:
+        fetched = fetch_dependencies(ecosystem, image, dependencies, f"{tag}-deps", run)
+        notes += fetched.notes
+    tar = payload(ecosystem, name, version, artifact_name, artifact, unpacked, canaries,
+                  fallback, fetched.files)
     try:
         _check(run(["docker", "network", "create", "--internal", network]), "network")
         _check(run(["docker", "run", "--detach", "--name", sink, "--network", network,
@@ -279,7 +330,7 @@ def run_detonation(ecosystem: str, name: str, version: str, artifact_name: str,
             raise DetonationError("the sandbox recorded no trace, so nothing is reported"
                                   + (f": {errors.strip()}" if errors.strip() else ""))
         return RunResult(captured.getvalue().decode("utf-8", "replace"), events, timed_out,
-                         capped.is_set(), notes)
+                         capped.is_set(), notes, fetched.names)
     finally:
         run(["docker", "rm", "--force", box, sink])
         run(["docker", "network", "rm", network])

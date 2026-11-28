@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from benchmark.samples import INNER_ARCHIVES
-from bombsquad.detonate import canary, observe, runner, trace
+from bombsquad.detonate import canary, dependencies, observe, runner, trace
 from bombsquad.detonate.detonation import fetch_artifact, installed_fallback
 from bombsquad.registry import Fetch
 
@@ -89,13 +89,15 @@ def detonate(row: dict, root: Path, work: Path, from_registry: bool, fetch: Fetc
             artifact_name, data = sample_artifact(ecosystem, name, version, root, work)
         secrets = canary.make()
         ran = run(ecosystem, name, version, artifact_name, data,
-                  root if ecosystem == "npm" else None, secrets, timeout, fallback=fallback)
+                  root if ecosystem == "npm" else None, secrets, timeout, fallback=fallback,
+                  dependencies=dependencies.declared(ecosystem, root))
         parsed = trace.parse(ran.trace)
         obs = observe.observe(parsed, ran.sink_events, secrets, ecosystem, ran.timed_out)
         static = set((row.get("bombsquad") or {}).get("rules") or [])
         result = summarise(obs, static)
         result["wheel_instead"] = installed_fallback(parsed, fallback[0] if fallback
                                                      else None)
+        result["dependencies"] = len(ran.dependencies)
         result["error"] = None
     except Exception as exc:  # a package that cannot be detonated is reported, not fatal
         result = {"error": f"{exc.__class__.__name__}: {str(exc)[:300]}"}
