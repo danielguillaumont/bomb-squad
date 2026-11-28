@@ -157,5 +157,16 @@ def guarddog(executable: str, ecosystem: str, root: Path,
 
 
 def version(executable: str) -> str | None:
-    out, error, _ = _run([executable, "--version"], 60)
-    return out.strip().splitlines()[-1] if out and not error and out.strip() else None
+    return version_of([executable, "--version"])
+
+
+def version_of(command: list[str]) -> str | None:
+    """The last line the command prints. Not through `_run`, which expects a JSON report
+    and would count plain text as an error."""
+    try:
+        done = subprocess.run(command, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = done.stdout.strip().splitlines()
+    return lines[-1].strip() if done.returncode == 0 and lines else None

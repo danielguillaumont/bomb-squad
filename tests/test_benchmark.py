@@ -551,3 +551,15 @@ def test_a_run_needs_powershell_and_records_it(monkeypatch):
     monkeypatch.setattr(harness, "find_powershell", lambda: "/usr/bin/pwsh")
     monkeypatch.setattr(harness.tools, "version", lambda executable: "PowerShell 7.6.10")
     assert harness._powershell() == "PowerShell 7.6.10"
+
+
+def test_a_version_is_read_from_plain_text_output():
+    import sys
+
+    from benchmark import tools
+
+    # Run 46112205761 recorded the path, not the version: plain text was taken for an error.
+    script = "print('Tool'); print('Tool 7.6.10')"
+    assert tools.version_of([sys.executable, "-c", script]) == "Tool 7.6.10"
+    assert tools.version_of([sys.executable, "-c", "import sys; sys.exit(3)"]) is None
+    assert tools.version("/no/such/tool") is None
