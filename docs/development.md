@@ -60,7 +60,7 @@ The benchmark detonates live malicious samples (`detonate` input `all`) only on 
    - It goes in a new resource group of its own, and the script deletes only resource groups it tagged `bombsquad=detonation`. Other resources in the subscription are not touched. The VM has its own network, with no peering to any other.
    - Regions the subscription's allowed-regions policy leaves out are skipped.
    - On a new subscription it registers the Microsoft.Compute and Microsoft.Network providers first.
-4. At boot, `scripts/detonation-vm.sh` installs Docker, writes `/etc/bombsquad/disposable-vm`, and registers a runner that takes one job and unregisters. The runner is downloaded at a pinned version and checked against its SHA-256. It may update itself from GitHub's releases if GitHub no longer accepts that version.
+4. At boot, `scripts/detonation-vm.sh` installs Docker and PowerShell 7, writes `/etc/bombsquad/disposable-vm`, and registers a runner that takes one job and unregisters. PowerShell and the runner are downloaded at pinned versions and checked against their SHA-256. The benchmark stops if no PowerShell is installed: without it, PowerShell embedded in a package is not analysed and its findings would drop out of the scores. It may update itself from GitHub's releases if GitHub no longer accepts that version.
 5. The script dispatches the benchmark with `detonate=all` and waits for it.
 6. When the run ends, fails or is interrupted, it cancels the run if it has not finished and deletes the resource group and the runner.
 
@@ -89,7 +89,7 @@ What it does not do:
    - It holds no credentials and no cloud role. Turn off the instance metadata service, or give the VM no instance role.
    - It has no folders shared with another machine.
    - Its outbound traffic is limited to what the job fetches: GitHub, the npm and PyPI registries, Docker Hub for the pinned base images, and the Debian mirror the images install strace from. Where only addresses and ports can be filtered, allow TCP 80 and 443 and nothing else. The packages themselves reach only the sink, on an internal Docker network.
-2. **Install Docker Engine**, then mark the VM as disposable: `sudo mkdir -p /etc/bombsquad && sudo touch /etc/bombsquad/disposable-vm`. The workflow checks for this file. `scripts/detonation-vm.sh` does this and the next step on any Ubuntu VM with cloud-init.
+2. **Install Docker Engine and PowerShell 7**, then mark the VM as disposable: `sudo mkdir -p /etc/bombsquad && sudo touch /etc/bombsquad/disposable-vm`. The workflow checks for this file. `scripts/detonation-vm.sh` does this and the next step on any Ubuntu VM with cloud-init.
 3. **In the repository's settings** (Actions, General), require approval for workflows from fork pull requests by all outside contributors. Any workflow file in a fork could otherwise ask for the runner's label while it is registered.
 4. **Register the VM as an ephemeral runner** right before dispatching the run, with the labels `self-hosted`, `linux`, `x64` and `bombsquad-detonation`. Follow GitHub's instructions for adding a self-hosted runner, and pass `--ephemeral` to `config.sh` so that the runner takes one job and unregisters.
 5. **Dispatch the benchmark** with `detonate` set to `all`.

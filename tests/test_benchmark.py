@@ -512,3 +512,20 @@ def test_updates_are_scored_as_false_alarms_with_their_rules():
     assert npm["rules"] == [("BS-NET-001", 1)]
     text = score.markdown(scores)
     assert "### Updates of benign packages" in text and "16.7% (1/6)" in text
+
+
+def test_a_run_needs_powershell_and_records_it(monkeypatch):
+    from benchmark import __main__ as harness
+    from bombsquad.powershell.parser import ParserUnavailable
+
+    def missing():
+        raise ParserUnavailable("PowerShell is needed to parse PowerShell")
+
+    # Without it, PowerShell embedded in a package is only noted, and its findings would
+    # drop out of the scores with no error.
+    monkeypatch.setattr(harness, "find_powershell", missing)
+    with pytest.raises(SystemExit, match="PowerShell is needed"):
+        harness._powershell()
+    monkeypatch.setattr(harness, "find_powershell", lambda: "/usr/bin/pwsh")
+    monkeypatch.setattr(harness.tools, "version", lambda executable: "PowerShell 7.6.10")
+    assert harness._powershell() == "PowerShell 7.6.10"

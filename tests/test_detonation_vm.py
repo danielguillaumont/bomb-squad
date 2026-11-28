@@ -30,10 +30,14 @@ def test_the_vm_is_marked_and_labelled_as_the_benchmark_job_requires():
     assert "--ephemeral" in BOOT
 
 
-def test_the_runner_download_is_pinned_and_checked():
-    assert re.search(r"^RUNNER_VERSION=\d+\.\d+\.\d+$", BOOT, re.M)
-    assert re.search(r"^RUNNER_SHA256=[0-9a-f]{64}$", BOOT, re.M)
-    assert 'sha256sum -c -' in BOOT
+def test_the_runner_and_powershell_downloads_are_pinned_and_checked():
+    for name in ("RUNNER", "PWSH"):
+        assert re.search(rf"^{name}_VERSION=\d+\.\d+\.\d+$", BOOT, re.M)
+        assert re.search(rf"^{name}_SHA256=[0-9a-f]{{64}}$", BOOT, re.M)
+        assert f'echo "${name}_SHA256  ' in BOOT
+    assert BOOT.count("sha256sum -c -") == 2
+    # The benchmark's static scan parses PowerShell with it.
+    assert "/usr/bin/pwsh" in BOOT
     placeholders = {"__REPO_URL__", "__RUNNER_NAME__", "__TOKEN__", "__MAX_MINUTES__"}
     assert set(re.findall(r"__[A-Z_]+__", BOOT)) == placeholders
     assert 'shutdown -h "+$MAX_MINUTES"' in BOOT

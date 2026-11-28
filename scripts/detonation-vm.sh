@@ -7,6 +7,9 @@ set -euo pipefail
 
 RUNNER_VERSION=2.338.2
 RUNNER_SHA256=baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40
+# Bomb Squad parses PowerShell with pwsh, which GitHub's hosted runners have and Ubuntu lacks.
+PWSH_VERSION=7.6.10
+PWSH_SHA256=e261cabc91c78a9afe8d1e5f24731ab0d38204735ab2ec94b0af55102652e10d
 REPO_URL="__REPO_URL__"
 RUNNER_NAME="__RUNNER_NAME__"
 TOKEN="__TOKEN__"
@@ -24,6 +27,15 @@ systemctl enable --now docker
 # What the benchmark workflow checks before it detonates anything.
 mkdir -p /etc/bombsquad
 touch /etc/bombsquad/disposable-vm
+
+curl -fsSL -o /tmp/pwsh.tar.gz \
+  "https://github.com/PowerShell/PowerShell/releases/download/v$PWSH_VERSION/powershell-$PWSH_VERSION-linux-x64.tar.gz"
+echo "$PWSH_SHA256  /tmp/pwsh.tar.gz" | sha256sum -c -
+mkdir -p /opt/microsoft/powershell/7
+tar -xzf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/7
+rm /tmp/pwsh.tar.gz
+chmod +x /opt/microsoft/powershell/7/pwsh
+ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh
 
 useradd --create-home --shell /bin/bash runner
 usermod -aG docker runner
