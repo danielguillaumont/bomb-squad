@@ -3,7 +3,10 @@
 Runs the benchmark with detonate=all on a throwaway Azure VM, then deletes the VM.
 
 .DESCRIPTION
-`run` creates a resource group that holds one Ubuntu VM and nothing else. The VM has no
+`check` asks Azure to validate the VM request, size by size and region by region, without
+creating a VM; it creates only an empty resource group and firewall for each region it
+tries, and deletes them. `run` makes the same check, then creates the VM in the first place
+Azure accepts. It creates a resource group that holds one Ubuntu VM and nothing else. The VM has no
 managed identity, accepts no inbound connections, and can send only HTTP and HTTPS out. It
 registers itself as an ephemeral GitHub Actions runner (scripts/detonation-vm.sh). The script
 then dispatches the benchmark with detonate=all, waits for it, and deletes the resource group
@@ -14,6 +17,9 @@ Uses the signed-in Azure CLI (az) and GitHub CLI (gh). It never installs, runs o
 package on this machine. See docs/development.md#detonation-vm.
 
 .EXAMPLE
+.\scripts\detonation-vm.ps1 check
+
+.EXAMPLE
 .\scripts\detonation-vm.ps1 run
 
 .EXAMPLE
@@ -22,12 +28,16 @@ package on this machine. See docs/development.md#detonation-vm.
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("run", "down")]
+    [ValidateSet("run", "check", "down")]
     [string] $Command = "run",
-    # A region the subscription allows; Azure for Students allows only a few.
-    [string] $Location = "canadacentral",
-    # 4 vCPUs and 16 GB. Azure for Students allows 4 cores of the DSv4 family, and none of DSv5.
-    [string] $Size = "Standard_D4s_v4",
+    # Regions to try, in order, separated by commas. Those the subscription's policy does not
+    # allow are skipped; Azure for Students allows only a few.
+    [string[]] $Location = @("canadacentral", "westus", "northcentralus", "norwayeast",
+        "belgiumcentral"),
+    # Sizes to try in each region, in order: 4 vCPUs and 16 GB, in families that Azure for
+    # Students gives 4 cores of. It gives none of DSv5.
+    [string[]] $Size = @("Standard_D4s_v4", "Standard_D4as_v4", "Standard_D4ds_v4",
+        "Standard_D4s_v3", "Standard_D4_v4"),
     # Azure deallocates the VM after this long even if this script is no longer running.
     [ValidateRange(1, 24)]
     [int] $MaxHours = 7,
@@ -149,6 +159,153 @@ function Find-Run {
     throw "The dispatched benchmark run did not appear."
 }
 
+function Split-List {
+    # `-Location a,b` from another shell arrives as one string.
+    param([string[]] $Values)
+    return @($Values | ForEach-Object { $_ -split "," } | ForEach-Object { $_.Trim() } |
+            Where-Object { $_ })
+}
+
+function Get-AllowedLocations {
+    # Subscriptions such as Azure for Students allow only some regions, by policy.
+    $wanted = Split-List $Location
+    if ($DryRun) { return $wanted }
+    $allowed = Invoke-Tool az @("policy", "assignment", "list", "--query",
+        "[].parameters.listOfAllowedLocations.value[]", "--output", "tsv")
+    $regions = @($allowed -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($regions.Count -eq 0) { return $wanted }
+    $kept = @($wanted | Where-Object { $regions -contains $_ })
+    if ($kept.Count -eq 0) {
+        throw "The subscription allows none of $($wanted -join ', '). It allows: $($regions -join ', ')"
+    }
+    return $kept
+}
+
+function Register-Providers {
+    # A new subscription has to have these services turned on once. Registering them changes
+    # nothing that already exists.
+    foreach ($provider in "Microsoft.Compute", "Microsoft.Network") {
+        Invoke-Tool az @("provider", "register", "--namespace", $provider, "--wait") | Out-Null
+    }
+}
+
+function New-NetworkGroup {
+    # The resource group and the firewall the VM gets. Both are free while there is no VM.
+    param([string] $Group, [string] $Where)
+    Invoke-Tool az @("group", "create", "--name", $Group, "--location", $Where,
+        "--tags", "$TagName=$TagValue", "created=$((Get-Date).ToUniversalTime().ToString('o'))",
+        "--output", "none") | Out-Null
+    # No inbound rules: Azure's default rules refuse everything from the internet.
+    # Outbound to the internet: HTTP and HTTPS only. Azure DNS is not on the internet.
+    Invoke-Tool az @("network", "nsg", "create", "--resource-group", $Group, "--name",
+        "detonation-nsg", "--location", $Where, "--output", "none") | Out-Null
+    Invoke-Tool az @("network", "nsg", "rule", "create", "--resource-group", $Group,
+        "--nsg-name", "detonation-nsg", "--name", "web-out", "--priority", "100",
+        "--direction", "Outbound", "--access", "Allow", "--protocol", "Tcp",
+        "--destination-address-prefixes", "Internet", "--destination-port-ranges", "80",
+        "443", "--output", "none") | Out-Null
+    Invoke-Tool az @("network", "nsg", "rule", "create", "--resource-group", $Group,
+        "--nsg-name", "detonation-nsg", "--name", "no-other-out", "--priority", "4000",
+        "--direction", "Outbound", "--access", "Deny", "--protocol", "*",
+        "--destination-address-prefixes", "Internet", "--destination-port-ranges", "*",
+        "--output", "none") | Out-Null
+}
+
+function Get-VmArguments {
+    param([string] $Group, [string] $Where, [string] $VmSize, [string] $PublicKey,
+        [string] $Boot)
+    return @("vm", "create", "--resource-group", $Group, "--name", "detonation",
+        "--location", $Where, "--image", $Image, "--size", $VmSize,
+        "--admin-username", "bombsquad", "--ssh-key-values", $PublicKey,
+        "--custom-data", $Boot, "--nsg", "detonation-nsg", "--public-ip-sku", "Standard",
+        "--os-disk-size-gb", "64", "--os-disk-delete-option", "Delete",
+        "--nic-delete-option", "Delete", "--tags", "$TagName=$TagValue", "--output", "none")
+}
+
+function Find-Placement {
+    # The first region and size for which Azure validates the full VM request, quota and
+    # capacity included, without creating the VM. With -Keep, that region's resource group
+    # and firewall are kept for the VM; every other group made here is deleted.
+    param([string] $Id, [string] $PublicKey, [string] $Boot, [switch] $Keep)
+    $tried = @()
+    foreach ($where in Get-AllowedLocations) {
+        $group = "bombsquad-detonation-$Id-$where"
+        Write-Host "Checking $where ..."
+        New-NetworkGroup -Group $group -Where $where
+        foreach ($vmSize in Split-List $Size) {
+            $arguments = (Get-VmArguments $group $where $vmSize $PublicKey $Boot) + "--validate"
+            if ($DryRun) {
+                Invoke-Tool az $arguments | Out-Null
+                return [pscustomobject]@{ Location = $where; Size = $vmSize; Group = $group }
+            }
+            # Windows PowerShell 5.1 turns a native command's error output into exceptions
+            # when it is redirected and errors stop the script.
+            $previous = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                $errors = & az @arguments 2>&1 | Out-String
+                $code = $LASTEXITCODE
+            }
+            finally { $ErrorActionPreference = $previous }
+            if ($code -eq 0) {
+                Write-Host "  $vmSize : accepted"
+                if (-not $Keep) { Remove-Detonation -Groups @($group) }
+                return [pscustomobject]@{ Location = $where; Size = $vmSize; Group = $group }
+            }
+            $codes = @([regex]::Matches($errors, "\((\w+)\)") | ForEach-Object { $_.Groups[1].Value } |
+                    Where-Object { $_.Length -gt 1 -and $_ -notin "InvalidTemplateDeployment" } | Select-Object -Unique)
+            $reason = if ($codes.Count -gt 0) { $codes -join ", " } else { "refused" }
+            Write-Host "  $vmSize : $reason"
+            $tried += "$vmSize in $where ($reason)"
+        }
+        Remove-Detonation -Groups @($group)
+    }
+    Write-Host "Nothing was accepted. Tried: $($tried -join '; ')"
+    return $null
+}
+
+function New-Key {
+    # The VM needs an admin key to be created. Nothing can connect to it, so the key is thrown
+    # away straight after.
+    param([string] $Work)
+    $key = Join-Path $Work "key"
+    if ($DryRun) { Set-Content -Path "$key.pub" -Value "ssh-ed25519 DRYRUN" }
+    else {
+        # The passphrase does not matter: only the public key is used.
+        & ssh-keygen -q -t ed25519 -N '""' -f $key | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "ssh-keygen failed" }
+    }
+    return (Get-Content -Raw "$key.pub").Trim()
+}
+
+function Assert-Clean {
+    $left = @(Get-DetonationGroups)
+    if ($left.Count -gt 0) {
+        throw "A detonation resource group is still there ($($left -join ', ')). Run: .\scripts\detonation-vm.ps1 down"
+    }
+}
+
+function Test-Placement {
+    # `check`: what `run` would pick, without creating a VM or registering a runner.
+    Assert-Tools
+    if (-not $DryRun) { Assert-Clean }
+    Register-Providers
+    $id = "check-" + (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmm")
+    $work = Join-Path ([IO.Path]::GetTempPath()) "bombsquad-$id"
+    New-Item -ItemType Directory -Force -Path $work | Out-Null
+    try {
+        $publicKey = New-Key -Work $work
+        $boot = Join-Path $work "boot.sh"
+        Write-BootScript -Path $boot -RunnerName "check" -Token "CHECK"
+        $placement = Find-Placement -Id $id -PublicKey $publicKey -Boot $boot
+    }
+    finally {
+        Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+    }
+    if (-not $placement) { throw "No region and size was accepted; nothing was created." }
+    Write-Host "run would create a $($placement.Size) VM in $($placement.Location). Nothing was created."
+}
+
 function Start-Detonation {
     Assert-Tools
     if (-not (Test-Path $BootScript)) { throw "Missing $BootScript" }
@@ -167,17 +324,7 @@ function Start-Detonation {
                 "repos/$Repo/actions/permissions/fork-pr-contributor-approval " +
                 "-f approval_policy=all_external_contributors")
         }
-        # Subscriptions such as Azure for Students allow only some regions, by policy.
-        $allowed = Invoke-Tool az @("policy", "assignment", "list", "--query",
-            "[].parameters.listOfAllowedLocations.value[]", "--output", "tsv")
-        $regions = @($allowed -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() })
-        if ($regions.Count -gt 0 -and $regions -notcontains $Location) {
-            throw "The subscription does not allow $Location. Pass -Location with one of: $($regions -join ', ')"
-        }
-        $left = @(Get-DetonationGroups)
-        if ($left.Count -gt 0) {
-            throw "A detonation VM is still there ($($left -join ', ')). Run: .\scripts\detonation-vm.ps1 down"
-        }
+        Assert-Clean
         if (@(Get-DetonationRunners | Where-Object { $_.Status -eq "online" }).Count -gt 0) {
             throw "A detonation runner is already online. Run: .\scripts\detonation-vm.ps1 down"
         }
@@ -189,7 +336,8 @@ function Start-Detonation {
     Write-Host ""
     Write-Host "This creates a VM that detonates live malicious packages, and is billed while it exists:"
     Write-Host "  Azure subscription: $subscription"
-    Write-Host "  Location and size:  $Location, $Size"
+    Write-Host "  Where:              the first of $((Split-List $Location) -join ', ') that Azure accepts"
+    Write-Host "  Size:               the first of $((Split-List $Size) -join ', ') that Azure accepts"
     Write-Host "  Deallocated after:  $MaxHours hours at most, deleted when the run ends"
     Write-Host "  Benchmark:          $Repo $Workflow at $Ref, detonate=all"
     Write-Host "It goes in a new resource group of its own; nothing else in the subscription is changed."
@@ -198,24 +346,13 @@ function Start-Detonation {
     }
 
     $id = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmm") + "-" + (Get-Random -Maximum 10000)
-    $group = "bombsquad-detonation-$id"
     $runnerName = "$RunnerPrefix$id"
     $work = Join-Path ([IO.Path]::GetTempPath()) "bombsquad-$id"
     New-Item -ItemType Directory -Path $work | Out-Null
-    $created = $false
+    $group = $null
     $run = $null
     try {
-        # The VM needs an admin key to be created. Nothing can connect to it, so the key is
-        # thrown away straight after.
-        $key = Join-Path $work "key"
-        if ($DryRun) { Set-Content -Path "$key.pub" -Value "ssh-ed25519 DRYRUN" }
-        else {
-            # The passphrase does not matter: only the public key is used.
-            & ssh-keygen -q -t ed25519 -N '""' -f $key | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "ssh-keygen failed" }
-        }
-        $publicKey = (Get-Content -Raw "$key.pub").Trim()
-
+        $publicKey = New-Key -Work $work
         $token = "DRYRUN"
         if (-not $DryRun) {
             $token = (Invoke-Tool gh @("api", "--method", "POST",
@@ -225,41 +362,15 @@ function Start-Detonation {
         Write-BootScript -Path $boot -RunnerName $runnerName -Token $token
         if ($DryRun) { Write-Host "boot script:"; Get-Content $boot | Write-Host }
 
-        # A new subscription has to have these services turned on once. Registering them
-        # changes nothing that already exists.
-        foreach ($provider in "Microsoft.Compute", "Microsoft.Network") {
-            Invoke-Tool az @("provider", "register", "--namespace", $provider, "--wait") | Out-Null
-        }
+        Register-Providers
+        $placement = Find-Placement -Id $id -PublicKey $publicKey -Boot $boot -Keep
+        if (-not $placement) { throw "No region and size was accepted; nothing was created." }
+        $group = $placement.Group
 
+        Write-Host "Creating a $($placement.Size) VM in $($placement.Location) ..."
         $now = (Get-Date).ToUniversalTime()
-        Invoke-Tool az @("group", "create", "--name", $group, "--location", $Location,
-            "--tags", "$TagName=$TagValue", "created=$($now.ToString('o'))", "--output",
-            "none") | Out-Null
-        $created = $true
-
-        # No inbound rules: Azure's default rules refuse everything from the internet.
-        # Outbound to the internet: HTTP and HTTPS only. Azure DNS is not on the internet.
-        Invoke-Tool az @("network", "nsg", "create", "--resource-group", $group, "--name",
-            "detonation-nsg", "--output", "none") | Out-Null
-        Invoke-Tool az @("network", "nsg", "rule", "create", "--resource-group", $group,
-            "--nsg-name", "detonation-nsg", "--name", "web-out", "--priority", "100",
-            "--direction", "Outbound", "--access", "Allow", "--protocol", "Tcp",
-            "--destination-address-prefixes", "Internet", "--destination-port-ranges", "80",
-            "443", "--output", "none") | Out-Null
-        Invoke-Tool az @("network", "nsg", "rule", "create", "--resource-group", $group,
-            "--nsg-name", "detonation-nsg", "--name", "no-other-out", "--priority", "4000",
-            "--direction", "Outbound", "--access", "Deny", "--protocol", "*",
-            "--destination-address-prefixes", "Internet", "--destination-port-ranges", "*",
-            "--output", "none") | Out-Null
-
-        Write-Host "Creating the VM ..."
-        Invoke-Tool az @("vm", "create", "--resource-group", $group, "--name", "detonation",
-            "--image", $Image, "--size", $Size, "--admin-username", "bombsquad",
-            "--ssh-key-values", $publicKey, "--custom-data", $boot, "--nsg", "detonation-nsg",
-            "--public-ip-sku", "Standard", "--os-disk-size-gb", "64",
-            "--os-disk-delete-option", "Delete", "--nic-delete-option", "Delete",
-            "--tags", "$TagName=$TagValue", "--output", "none") | Out-Null
-        Remove-Item -Force $key, "$key.pub", $boot -ErrorAction SilentlyContinue
+        Invoke-Tool az (Get-VmArguments $group $placement.Location $placement.Size $publicKey $boot) | Out-Null
+        Remove-Item -Force (Join-Path $work "key"), (Join-Path $work "key.pub"), $boot -ErrorAction SilentlyContinue
 
         $stop = $now.AddHours($MaxHours).ToString("HHmm")
         Invoke-Tool az @("vm", "auto-shutdown", "--resource-group", $group, "--name",
@@ -286,7 +397,7 @@ function Start-Detonation {
                 Invoke-Tool gh @("run", "cancel", "$($run.databaseId)", "--repo", $Repo) -AllowFailure | Out-Null
             }
         }
-        if ($created) { Remove-Detonation -Groups @($group) }
+        if ($group) { Remove-Detonation -Groups @($group) }
         Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
         if ($run) { Write-Host "Done. Results: $($run.url)" }
     }
@@ -294,6 +405,7 @@ function Start-Detonation {
 
 switch ($Command) {
     "run" { Start-Detonation }
+    "check" { Test-Placement }
     "down" {
         Assert-Tools
         Remove-Detonation -Groups (Get-DetonationGroups)

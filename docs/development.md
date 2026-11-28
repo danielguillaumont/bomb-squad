@@ -45,14 +45,20 @@ The benchmark detonates live malicious samples (`detonate` input `all`) only on 
 `scripts/detonation-vm.ps1` does the whole run with the signed-in Azure CLI and GitHub CLI, from Windows PowerShell 5.1 or PowerShell 7:
 
 ```powershell
+.\scripts\detonation-vm.ps1 check
+```
+
+```powershell
 .\scripts\detonation-vm.ps1 run
 ```
 
+`check` shows where `run` would create the VM, without creating it. For each region it tries, it creates an empty resource group and firewall, which are free, asks Azure to validate the full VM request with `az vm create --validate` (quota and capacity included), and deletes them.
+
 1. It checks that workflows from fork pull requests need approval for all outside contributors, and that no earlier detonation VM or runner is left.
 2. It shows the subscription, location and VM size, and asks you to type `yes`.
-3. It creates a resource group with one Ubuntu 24.04 VM (`Canonical:ubuntu-24_04-lts:server:latest`, `Standard_D4s_v4` by default, which fits the 4-core quota of Azure for Students; pass `-Size` for another) and nothing else. The VM has no managed identity and no inbound rules. Its only outbound traffic to the internet is TCP 80 and 443. Azure deallocates it after `-MaxHours` (7 by default) even if the script has stopped.
+3. It makes the same check, then creates one Ubuntu 24.04 VM (`Canonical:ubuntu-24_04-lts:server:latest`) in the first region and size Azure accepts, in a resource group with nothing else. The sizes tried are 4-vCPU, 16 GB sizes in families that Azure for Students gives 4 cores of. `-Location` and `-Size` take other lists, separated by commas. The VM has no managed identity and no inbound rules. Its only outbound traffic to the internet is TCP 80 and 443. Azure deallocates it after `-MaxHours` (7 by default) even if the script has stopped.
    - It goes in a new resource group of its own, and the script deletes only resource groups it tagged `bombsquad=detonation`. Other resources in the subscription are not touched. The VM has its own network, with no peering to any other.
-   - The region defaults to `canadacentral`. Pass `-Location` for another; the script checks it against the subscription's allowed-regions policy.
+   - Regions the subscription's allowed-regions policy leaves out are skipped.
    - On a new subscription it registers the Microsoft.Compute and Microsoft.Network providers first.
 4. At boot, `scripts/detonation-vm.sh` installs Docker, writes `/etc/bombsquad/disposable-vm`, and registers a runner that takes one job and unregisters. The runner is downloaded at a pinned version and checked against its SHA-256. It may update itself from GitHub's releases if GitHub no longer accepts that version.
 5. The script dispatches the benchmark with `detonate=all` and waits for it.
