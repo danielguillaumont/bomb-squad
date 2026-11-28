@@ -31,7 +31,25 @@ Set `BOMBSQUAD_POWERSHELL` to pick a specific PowerShell executable.
 | `src/bombsquad/registry.py`, `archive.py`, `diff.py`, `source.py` | `bombsquad diff`: registry metadata and hash checks, safe unpacking, the comparison, and the check against the GitHub source and tag record |
 | `src/bombsquad/lockfiles.py`, `actionrefs.py`, `gate.py`, `action.yml` | `bombsquad gate`: pinned versions from lockfiles, action references and their review, the pull request report and its comment, and the GitHub Action |
 | `src/bombsquad/sarif.py`, `text_report.py` | Output formats |
+| `src/bombsquad/detonate/` | `bombsquad detonate`: the sandbox images, the sink, fake credentials, the strace reader and the comparison with the static scan |
 | `benchmark/` | The accuracy benchmark against GuardDog. It runs only in `.github/workflows/benchmark.yml`, on Linux CI. |
+| `watch/` | The daily watch: new releases of popular packages, diffed and queued for review |
+
+## Detonation VM
+
+The benchmark detonates live malicious samples (`detonate` input `all`) only on a disposable virtual machine. Neither GitHub's shared runners nor a development machine is used. The job refuses to start anywhere else, so a run with `all` waits until such a VM is registered.
+
+1. **Create a fresh Linux x86-64 VM** for each run, on a cloud account or a host that holds nothing else of value.
+   - It holds no credentials and no cloud role. Turn off the instance metadata service, or give the VM no instance role.
+   - It has no folders shared with another machine.
+   - Its outbound traffic is limited to what the job fetches: GitHub, the npm and PyPI registries, Docker Hub for the pinned base images, and the Debian mirror the images install strace from. The packages themselves reach only the sink, on an internal Docker network.
+2. **Install Docker Engine**, then mark the VM as disposable: `sudo mkdir -p /etc/bombsquad && sudo touch /etc/bombsquad/disposable-vm`. The workflow checks for this file.
+3. **In the repository's settings** (Actions, General), require approval for workflows from fork pull requests by all outside contributors. Any workflow file in a fork could otherwise ask for the runner's label while it is registered.
+4. **Register the VM as an ephemeral runner** right before dispatching the run, with the labels `self-hosted`, `linux`, `x64` and `bombsquad-detonation`. Follow GitHub's instructions for adding a self-hosted runner, and pass `--ephemeral` to `config.sh` so that the runner takes one job and unregisters.
+5. **Dispatch the benchmark** with `detonate` set to `all`.
+6. **Destroy the VM** when the run ends, whatever its outcome. Never reuse it, and never copy files off it. The results reach GitHub as the run's artifact.
+
+The job's token can only read the repository and upload the run's artifact. A package that escaped its container could use that token while the job runs, and it could reach whatever the VM's outbound rules allow. This is why the VM is disposable and holds nothing else. Bomb Squad's own scan reports the job as running on a self-hosted runner (BS-GHA-005). That is the one finding this repository's workflows have, and it is expected.
 
 ## Samples that look like malware
 

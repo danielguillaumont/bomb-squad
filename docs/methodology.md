@@ -307,6 +307,7 @@ Detection rates come only from the benchmark below. Every figure states its coun
   - **Detonation**, only when the workflow's `detonate` input is `benign` or `all` (`run --detonate`), is scored on the packages it ran on.
     - Inputs: benign releases are fetched again as the registry serves them, with the sdist preferred. A PyPI sample installs the archive it holds, or its folder packed as an sdist. An npm sample installs from its folder.
     - Limits: 60 seconds each, two at a time.
+    - Where: with `benign`, on a GitHub-hosted runner. With `all`, the whole job runs on a disposable self-hosted VM ([setup](development.md#detonation-vm)), and it refuses to start on any other runner.
     - It flags a package when package code read or sent a fake credential, or wrote somewhere that persists. A second detector counts anything observed. A third flags what either Bomb Squad at review or high, or detonation, flags.
     - Its gaps are compared with all of Bomb Squad's rule IDs for that package, including findings at info that installing does not run, so they are never overstated.
     - Scores give the median and total seconds per package, and how many runs failed, timed out, or ended with the install or import step exiting non-zero. In that last case, what ran before the failure was traced, but not the rest. They also count PyPI releases whose wheel was installed because the sdist did not build.

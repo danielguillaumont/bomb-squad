@@ -99,7 +99,7 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 - **Analysis:** `run:` steps, task commands, lifecycle commands and hooks go through the 1a analysis in the language of their shell, with findings on the exact line of a `run: |` block. Files they run are followed. A file passed only as data (`cat x.sh`) is no longer a target, for npm scripts too.
 - **Parsing:** YAML is composed into nodes and never constructed into objects. VS Code's JSON with comments is read by Bomb Squad's own reader, which keeps positions.
 
-**Exit met:** `tests/test_repo_entry_points.py` has fixtures modelled on GhostAction, ChainDrop and PolinRider, the pull-request trust-boundary cases, and each git hook tool, plus negatives (base-branch `pull_request_target`, values passed through `env:`, header-only deploy tokens, tasks that do not run on open, data-only file arguments). This repository's own workflows produce no findings.
+**Exit met:** `tests/test_repo_entry_points.py` has fixtures modelled on GhostAction, ChainDrop and PolinRider, the pull-request trust-boundary cases, and each git hook tool, plus negatives (base-branch `pull_request_target`, values passed through `env:`, header-only deploy tokens, tasks that do not run on open, data-only file arguments). This repository's own workflows produce no findings, except for one, added in Phase 5: the benchmark job runs on a self-hosted runner when it detonates malicious samples (BS-GHA-005).
 
 ### 1c: agent files and code scanning ✅
 
@@ -227,7 +227,7 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
 
 **Built:** `bombsquad detonate`, with the sandbox, the sink, the fake credentials, the strace recorder and the comparison with the static scan ([methodology](methodology.md#detonation)). CI runs harmless stand-in packages in real containers.
 
-**Measured on benign packages only:** detonation in the benchmark, behind the workflow's `detonate` input (`none` by default, `benign`, or `all`). Run 46090723283 (2026-11-28) detonated the 395 benign packages: its cost and what it observed are in [the write-up](research/guarddog-benchmark.md#detonation). Malicious samples have not been detonated, because where that can run is still to be decided.
+**Measured on benign packages only:** detonation in the benchmark, behind the workflow's `detonate` input (`none` by default, `benign`, or `all`). Run 46090723283 (2026-11-28) detonated the 395 benign packages: its cost and what it observed are in [the write-up](research/guarddog-benchmark.md#detonation). Malicious samples have not been detonated yet. They will be, only on a disposable self-hosted VM ([setup](development.md#detonation-vm)): the workflow sends a run with `detonate` set to `all` there and refuses any other runner.
 
 **Not yet:** detonating the malicious samples, which the exit needs, installing dependencies, HTTPS content, and eBPF.
 

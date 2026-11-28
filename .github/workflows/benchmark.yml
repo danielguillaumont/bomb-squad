@@ -32,7 +32,8 @@ on:
       detonate:
         description: >-
           Also detonate packages in the sandbox: none, benign (the popular releases only), or
-          all (the malicious samples too). See docs/methodology.md#detonation.
+          all (the malicious samples too, only on a disposable self-hosted VM; see
+          docs/development.md#detonation-vm). See docs/methodology.md#detonation.
         type: choice
         options: [none, benign, all]
         default: none
@@ -52,9 +53,20 @@ env:
 jobs:
   benchmark:
     name: Benchmark against GuardDog
-    runs-on: ubuntu-latest
+    # Live malicious samples are detonated only on a disposable VM registered as an
+    # ephemeral runner for one run, never on GitHub's shared runners. Everything else runs
+    # on GitHub-hosted runners.
+    runs-on: ${{ inputs.detonate == 'all' && fromJSON('["self-hosted", "linux", "x64", "bombsquad-detonation"]') || 'ubuntu-latest' }}
     timeout-minutes: 340
     steps:
+      - name: Check where detonation runs
+        if: inputs.detonate == 'all'
+        run: |
+          if [[ "$RUNNER_ENVIRONMENT" != "self-hosted" || ! -f /etc/bombsquad/disposable-vm ]]; then
+            echo "::error::detonate=all runs only on a disposable VM marked by /etc/bombsquad/disposable-vm. See docs/development.md#detonation-vm."
+            exit 2
+          fi
+
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

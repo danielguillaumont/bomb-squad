@@ -443,7 +443,10 @@ def workflow(path: Path, shown: str, text: str, found: Discovery, display) -> No
             missing.append(job_id)
         item.permissions(y.key_node(job, "permissions"), y.get(job, "permissions"), entry,
                          where)
-        if any(label.strip().lower() == "self-hosted" for label in runs_on):
+        # An expression that can pick a self-hosted runner counts too, or a workflow could
+        # hide the label behind `${{ ... }}`.
+        if any(label.strip().lower() == "self-hosted"
+               or ("${{" in label and "self-hosted" in label.lower()) for label in runs_on):
             node = y.get(job, "runs-on")
             item.hit("BS-GHA-005", y.region(item.positions, node), f"runs-on: "
                      f"{', '.join(runs_on)}", entry,
