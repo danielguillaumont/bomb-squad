@@ -121,6 +121,26 @@ GuardDog finds more malicious packages than Bomb Squad at every pair of threshol
   No code is hidden in either. The sixth is BS-EX-001 in nodeenv: its `setup.py` imports the module, and that module both opens network connections and names `.npmrc` in a shell template.
 - **npm false positives:** three, all invisible characters (BS-UC-001), in recharts, vite and date-fns.
 
+## Samples an OpenSSF report confirms
+
+Run [46172764843](https://github.com/danielguillaumont/bomb-squad/actions/runs/46172764843) (started 2026-11-28T17:52:43Z) scanned the development sample again on `main`, at commit `af44245`. It looked up each malicious sample in [OpenSSF malicious-packages](https://github.com/ossf/malicious-packages) at commit `efc03f62e0d3` (2026-11-28). A report confirms a sample when it lists the sample's version or affects all versions. That holds for 173 of the 200 npm samples and 169 of the 200 PyPI samples.
+
+| Ecosystem | Detector | Recall on the confirmed samples |
+|---|---|---|
+| npm | Bomb Squad, a high finding | 7.5% (13/173) |
+| npm | Bomb Squad, a review or high finding | 49.7% (86/173) |
+| npm | GuardDog, high risk | 64.7% (112/173) |
+| npm | GuardDog, suspicious or high risk | 71.7% (124/173) |
+| PyPI | Bomb Squad, a high finding | 48.5% (82/169) |
+| PyPI | Bomb Squad, a review or high finding | 69.8% (118/169) |
+| PyPI | GuardDog, high risk | 91.1% (154/169) |
+| PyPI | GuardDog, suspicious or high risk | 94.1% (159/169) |
+
+- **The rest:** for npm, a report names the package but not plainly this version for 5 samples, and no report names 22. For PyPI, the counts are 1 and 30.
+- **Against the whole sample, in the same run:** Bomb Squad flags 90/200 npm and 131/200 PyPI samples at review or high. So it flags 4 of the 27 npm samples and 13 of the 31 PyPI samples no report confirms. GuardDog at high risk flags 119/200 and 177/200, so 7 of the 27 and 23 of the 31.
+- **In-sample:** this is the development sample, whose rule counts shaped the rules, scanned after BS-ENV-001 was widened from its detonation gaps. These figures are not held out.
+- A sample no report confirms is not shown to be benign. DataDog's dataset labels it malicious, and OpenSSF may not have a report for it.
+
 ## Where the comparison favours one tool
 
 - **Selection.** The DataDog README says most of its samples were found by GuardDog. Samples GuardDog missed are less likely to be in the dataset, so its recall here is an upper estimate.
@@ -266,16 +286,16 @@ It also showed that 52 of the 195 PyPI detonations installed nothing: pip could 
 
 ## Runs
 
-All four runs use `.github/workflows/benchmark.yml`, three from `main` and the malicious detonation run from the branch of pull request 50, with the same pins:
+All five runs use `.github/workflows/benchmark.yml`, four from `main` and the malicious detonation run from the branch of pull request 50, with the same pins:
 - **GuardDog:** 3.2.0, with its dependencies as of 2026-11-20.
 - **Malicious:** DataDog/malicious-software-packages-dataset at commit `72c723be547033c558244520524b117c8d71663b` (2026-11-05), 200 per ecosystem.
 - **Benign:** `npm-high-impact` 1.13.0 and hugovk/top-pypi-packages at commit `29c0d4c38c28` (2026-11-01), from the top 1,000, 200 per ecosystem, releases as of 2026-11-05.
 - **Kept:** each run's artifact holds package names, versions, rule IDs, levels and timings, not sample content. The detonation runs also keep detonation categories and counts. For each update, the updates runs keep the counts of entry points, the rule IDs and the signal names. The workflow keeps each artifact for 90 days.
 
-| | Held-out sample | Development sample | Updates and detonation | Malicious detonation |
-|---|---|---|---|---|
-| Run | 46075004726, started 2026-11-27T22:11:06Z | 46066816294, started 2026-11-27T20:55:11Z | 46090723283, started 2026-11-28T00:59:03Z | 46112205761, started 2026-11-28T05:27:59Z |
-| Bomb Squad | 2.0.1 at `45620136314441e1fa5f89c57c1e281a3fb760f8` | 2.0.0.dev0 at `63c102626739ad14f0e009c4fadcf065333e363b` | 2.0.1 at `ea87b2b785c2eec97195653f52a47777302d7038` | 2.0.1 at `5850c70ee26eee28550f33b859f23a3bcf0ad4e5` |
-| Seed | 2027, leaving out the packages of seed 2026 at 200 and at 5 | 2026 | 2026 | 2026 |
-| Cutoff | 2026-11-27, the commit's date | 2026-11-27, the commit's date | 2026-11-27, the commit's date | 2026-11-28, the commit's date |
-| Inputs | | | `version-pairs` on, `detonate` benign, 60 seconds each | `version-pairs` on, `detonate` all, 60 seconds each. The VM script installs PowerShell 7.6.10; the run records it as `/usr/bin/pwsh` |
+| | Held-out sample | Development sample | Updates and detonation | Malicious detonation | OpenSSF reports |
+|---|---|---|---|---|---|
+| Run | 46075004726, started 2026-11-27T22:11:06Z | 46066816294, started 2026-11-27T20:55:11Z | 46090723283, started 2026-11-28T00:59:03Z | 46112205761, started 2026-11-28T05:27:59Z | 46172764843, started 2026-11-28T17:52:43Z |
+| Bomb Squad | 2.0.1 at `45620136314441e1fa5f89c57c1e281a3fb760f8` | 2.0.0.dev0 at `63c102626739ad14f0e009c4fadcf065333e363b` | 2.0.1 at `ea87b2b785c2eec97195653f52a47777302d7038` | 2.0.1 at `5850c70ee26eee28550f33b859f23a3bcf0ad4e5` | 2.0.1 at `af44245942a7216a5c158e8518aba3f0401cc5eb` |
+| Seed | 2027, leaving out the packages of seed 2026 at 200 and at 5 | 2026 | 2026 | 2026 | 2026 |
+| Cutoff | 2026-11-27, the commit's date | 2026-11-27, the commit's date | 2026-11-27, the commit's date | 2026-11-28, the commit's date | 2026-11-28, the commit's date |
+| Inputs | | | `version-pairs` on, `detonate` benign, 60 seconds each | `version-pairs` on, `detonate` all, 60 seconds each. The VM script installs PowerShell 7.6.10; the run records it as `/usr/bin/pwsh` | `version-pairs` on, `detonate` none, OpenSSF malicious-packages at `efc03f62e0d3b9bb0a9f1b4c76d24b7bab5ecd1b` |
