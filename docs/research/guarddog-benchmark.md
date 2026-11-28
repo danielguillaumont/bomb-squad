@@ -1,6 +1,8 @@
 # Bomb Squad and GuardDog on the same packages
 
-Every figure here comes from one of three benchmark runs on `main`, two on 2026-11-27 and one on 2026-11-28, all on the same dataset commit. The pins are in [Runs](#runs). The third, run [46090723283](https://github.com/danielguillaumont/bomb-squad/actions/runs/46090723283), measured [updates and detonation](#updates-and-detonation-of-the-benign-packages) on the benign packages.
+Every figure here comes from one of four benchmark runs, all on the same dataset commit. Three ran on `main`, two on 2026-11-27 and one on 2026-11-28. The fourth ran on 2026-11-28 from a pull request branch. The pins are in [Runs](#runs).
+- **Updates and benign detonation:** run [46090723283](https://github.com/danielguillaumont/bomb-squad/actions/runs/46090723283) measured [updates and detonation](#updates-and-detonation-of-the-benign-packages) on the benign packages.
+- **Malicious detonation:** run [46112205761](https://github.com/danielguillaumont/bomb-squad/actions/runs/46112205761) [detonated the malicious samples](#detonation-of-the-malicious-samples) too.
 
 - **Held-out sample:** GitHub Actions run [46075004726](https://github.com/danielguillaumont/bomb-squad/actions/runs/46075004726), Bomb Squad 2.0.1 at commit `4562013`. Its 400 malicious and 400 benign packages share none with the development runs. Its protocol was [fixed before it ran](../methodology.md#how-the-benchmark-works). [Its results](#held-out-sample) are the less in-sample measure.
 - **Development sample:** run [46066816294](https://github.com/danielguillaumont/bomb-squad/actions/runs/46066816294), at commit `63c1026`, on the same 400 and 400 packages as the [development runs](#development-runs) whose rule counts shaped the rules. [Its results](#development-sample) are in-sample.
@@ -183,6 +185,59 @@ Each benign release was diffed with `bombsquad diff` against the highest lower v
 - **TLS:** in this run the sink recorded TLS by server name only, so a fake credential sent over HTTPS would have counted as read, not as sent. The sink has read TLS since.
 - **Dependencies:** in this run no dependency was installed, so package code that loads one failed when it did. Detonation has installed declared dependencies since.
 
+## Detonation of the malicious samples
+
+Run [46112205761](https://github.com/danielguillaumont/bomb-squad/actions/runs/46112205761) (started 2026-11-28T05:27:59Z) detonated every package of the development sample, malicious and benign. It ran on a disposable Azure VM registered as an ephemeral runner for this one run and deleted after it. It ran from the branch of [pull request 50](https://github.com/danielguillaumont/bomb-squad/pull/50), Bomb Squad 2.0.1 at commit `5850c70`, with a 60-second limit per package and TLS read by the sink. Each package's declared dependencies were installed with it. It is the development sample, so its static figures are in-sample, and they are the same as [above](#development-sample): 90/200 npm and 131/200 PyPI at review or high. Its benign false positives match run 46090723283's.
+
+| Ecosystem | Detector | Recall | False positives |
+|---|---|---|---|
+| npm | Detonation, a fake credential read or sent, or persistence | 5.5% (11/200) | 0.0% (0/200) |
+| npm | Detonation, anything observed | 41.5% (83/200) | 0.0% (0/200) |
+| npm | Bomb Squad review or high, or detonation flagged | 45.0% (90/200) | 1.5% (3/200) |
+| PyPI | Detonation, a fake credential read or sent, or persistence | 1.5% (3/200) | 0.0% (0/195) |
+| PyPI | Detonation, anything observed | 29.0% (58/200) | 2.6% (5/195) |
+| PyPI | Bomb Squad review or high, or detonation flagged | 65.5% (131/200) | 10.3% (20/195) |
+
+**Does detonation add recall?**
+- **Flagged:** no, at this sample size. All 14 flagged samples (11 npm, 3 PyPI) were already flagged by Bomb Squad at review or high, and by GuardDog at suspicious or high risk. Combining detonation's flagged signal with Bomb Squad changes neither recall nor false positives.
+- **Anything observed:** network attempts, DNS names or programs started were seen in some packages that Bomb Squad did not flag at review: 13 malicious npm and 24 malicious PyPI samples. Those 37 samples include 2 npm and 1 PyPI that GuardDog also missed at suspicious or high risk.
+  - **Benign cost:** the same signal fires on 4 of 195 benign PyPI releases that Bomb Squad did not flag, and on no benign npm release.
+  - **Not counted as a detector:** anything observed includes ordinary behaviour, so it is not counted as a detection and is not in the combined row.
+
+**What it shows instead: gaps in the static rules.** A behaviour observed with no static finding predicting it is a gap (see [Methodology](../methodology.md#detonation)). Across the 400 malicious samples:
+
+| Behaviour | npm | PyPI |
+|---|---|---|
+| Programs started | 14 | 2 |
+| Network attempts | 6 | 15 |
+| Fake credentials sent | 2 | 3 |
+| Fake credentials read | 1 | 0 |
+
+Each package counts once per behaviour. These point at the rules to improve next. The gaps where a credential was sent are in packages Bomb Squad flagged for another capability, so they do not change its recall.
+
+**Cost:**
+
+| Ecosystem | Set | Detonated | Timed out | Exited non-zero | Median seconds | Total seconds |
+|---|---|---|---|---|---|---|
+| npm | malicious | 200 | 3 | 44 | 6.1 | 3694.7 |
+| npm | benign | 200 | 0 | 0 | 5.8 | 1312.5 |
+| PyPI | malicious | 200 | 1 | 144 | 5.5 | 1648.7 |
+| PyPI | benign | 195 | 3 | 1 | 9.5 | 2601.2 |
+
+The whole job, both static tools and all 795 detonations, two at a time, took 1 hour 23 minutes.
+
+**What limits these figures:**
+- **Most PyPI samples failed:** 144 of the 200 malicious PyPI samples exited non-zero, often an sdist that would not build or an import that failed. What ran before the failure was traced, the rest was not.
+- **One run per package:** each was a single 60-second run as a fresh user, with no real network. Payloads gated on time, host, a later run or a reachable server are not seen.
+- **Dependencies:** their own install scripts are not run.
+- **Nothing observed does not mean safe.**
+
+**Faults found on the way**, before this run's figures were used:
+- **Run 46104354115:** cancelled while fetching samples. The VM script failed to find the run it had dispatched under Windows PowerShell 5.1, and deleted the VM. The script now finds the run, and its `check` command makes the same GitHub calls without creating anything.
+- **Run 46105123576:** completed but is not used, for two reasons:
+  - The VM had no PowerShell, so Bomb Squad noted the PyPI samples' embedded PowerShell instead of analysing it, and PyPI static recall fell. The VM now installs a pinned PowerShell 7, and the benchmark refuses to run without PowerShell and records its version.
+  - 27 scoped npm samples were rejected before detonation, because the dataset writes `@scope/name` as `@scope@name`. They are now detonated under their registry name.
+
 ## Development runs
 
 Before any figure was used, the first runs on a branch found faults in the harness and in Bomb Squad, fixed in [pull request 30](https://github.com/danielguillaumont/bomb-squad/pull/30):
@@ -211,16 +266,16 @@ It also showed that 52 of the 195 PyPI detonations installed nothing: pip could 
 
 ## Runs
 
-All three runs use `.github/workflows/benchmark.yml` on `main`, with the same pins:
+All four runs use `.github/workflows/benchmark.yml`, three from `main` and the malicious detonation run from the branch of pull request 50, with the same pins:
 - **GuardDog:** 3.2.0, with its dependencies as of 2026-11-20.
 - **Malicious:** DataDog/malicious-software-packages-dataset at commit `72c723be547033c558244520524b117c8d71663b` (2026-11-05), 200 per ecosystem.
 - **Benign:** `npm-high-impact` 1.13.0 and hugovk/top-pypi-packages at commit `29c0d4c38c28` (2026-11-01), from the top 1,000, 200 per ecosystem, releases as of 2026-11-05.
-- **Kept:** each run's artifact holds package names, versions, rule IDs, levels and timings, not sample content. The updates run also keeps detonation categories and counts, and for each update the counts of entry points, the rule IDs and the signal names. The workflow keeps each artifact for 90 days.
+- **Kept:** each run's artifact holds package names, versions, rule IDs, levels and timings, not sample content. The detonation runs also keep detonation categories and counts. For each update, the updates runs keep the counts of entry points, the rule IDs and the signal names. The workflow keeps each artifact for 90 days.
 
-| | Held-out sample | Development sample | Updates and detonation |
-|---|---|---|---|
-| Run | 46075004726, started 2026-11-27T22:11:06Z | 46066816294, started 2026-11-27T20:55:11Z | 46090723283, started 2026-11-28T00:59:03Z |
-| Bomb Squad | 2.0.1 at `45620136314441e1fa5f89c57c1e281a3fb760f8` | 2.0.0.dev0 at `63c102626739ad14f0e009c4fadcf065333e363b` | 2.0.1 at `ea87b2b785c2eec97195653f52a47777302d7038` |
-| Seed | 2027, leaving out the packages of seed 2026 at 200 and at 5 | 2026 | 2026 |
-| Cutoff | 2026-11-27, the commit's date | 2026-11-27, the commit's date | 2026-11-27, the commit's date |
-| Inputs | | | `version-pairs` on, `detonate` benign, 60 seconds each |
+| | Held-out sample | Development sample | Updates and detonation | Malicious detonation |
+|---|---|---|---|---|
+| Run | 46075004726, started 2026-11-27T22:11:06Z | 46066816294, started 2026-11-27T20:55:11Z | 46090723283, started 2026-11-28T00:59:03Z | 46112205761, started 2026-11-28T05:27:59Z |
+| Bomb Squad | 2.0.1 at `45620136314441e1fa5f89c57c1e281a3fb760f8` | 2.0.0.dev0 at `63c102626739ad14f0e009c4fadcf065333e363b` | 2.0.1 at `ea87b2b785c2eec97195653f52a47777302d7038` | 2.0.1 at `5850c70ee26eee28550f33b859f23a3bcf0ad4e5` |
+| Seed | 2027, leaving out the packages of seed 2026 at 200 and at 5 | 2026 | 2026 | 2026 |
+| Cutoff | 2026-11-27, the commit's date | 2026-11-27, the commit's date | 2026-11-27, the commit's date | 2026-11-28, the commit's date |
+| Inputs | | | `version-pairs` on, `detonate` benign, 60 seconds each | `version-pairs` on, `detonate` all, 60 seconds each. The VM script installs PowerShell 7.6.10; the run records it as `/usr/bin/pwsh` |

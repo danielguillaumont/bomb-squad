@@ -227,11 +227,13 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
 
 **Built:** `bombsquad detonate`, with the sandbox, the sink, the fake credentials, the strace recorder and the comparison with the static scan ([methodology](methodology.md#detonation)). The sink reads TLS with a certificate authority made for each run, so a fake credential sent over HTTPS counts as sent. The dependencies a release declares are fetched outside the sandbox, by a container that runs no package code, and installed with it. CI runs harmless stand-in packages in real containers, over HTTP and HTTPS.
 
-**Measured on benign packages only:** detonation in the benchmark, behind the workflow's `detonate` input (`none` by default, `benign`, or `all`). Run 46090723283 (2026-11-28) detonated the 395 benign packages: its cost and what it observed are in [the write-up](research/guarddog-benchmark.md#detonation). Malicious samples have not been detonated yet. They will be, only on a disposable self-hosted VM ([setup](development.md#detonation-vm)): the workflow sends a run with `detonate` set to `all` there and refuses any other runner. `scripts/detonation-vm.ps1` creates such a VM on Azure for one run and deletes it after.
+**Measured:** detonation in the benchmark, behind the workflow's `detonate` input (`none` by default, `benign`, or `all`).
+- **Benign packages:** run 46090723283 (2026-11-28) detonated the 395 benign packages ([write-up](research/guarddog-benchmark.md#detonation)).
+- **Malicious samples:** run 46112205761 (2026-11-28) detonated all 795 packages of the development sample, malicious samples included ([write-up](research/guarddog-benchmark.md#detonation-of-the-malicious-samples)). It ran on a disposable Azure VM, created by `scripts/detonation-vm.ps1` for that one run and deleted after. The workflow refuses `detonate=all` on any other runner ([setup](development.md#detonation-vm)).
 
-**Not yet:** detonating the malicious samples, which the exit needs, running dependencies' own install scripts, and eBPF.
+**Not yet:** running dependencies' own install scripts, and eBPF. Next: the static rules for the gaps detonation found.
 
-**Exit:** a benchmark re-run shows whether detonation adds recall, and at what cost per package.
+**Exit met:** detonation's flagged signal (a fake credential read or sent, or persistence) adds no recall over Bomb Squad's review threshold at this sample size. Each of its 14 flagged samples was already flagged statically. The run lists the gaps detonation found: programs started, network attempts and credentials sent with no static finding predicting them. Detonation took a median of 5.5 to 9.5 seconds per package. Every figure, with its counts, is in the write-up.
 
 ## Phase 6: Live watch and site (v2.2)
 
