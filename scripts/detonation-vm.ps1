@@ -26,7 +26,8 @@ param(
     [string] $Command = "run",
     # A region the subscription allows; Azure for Students allows only a few.
     [string] $Location = "canadacentral",
-    [string] $Size = "Standard_D4s_v5",
+    # 4 vCPUs and 16 GB. Azure for Students allows 4 cores of the DSv4 family, and none of DSv5.
+    [string] $Size = "Standard_D4s_v4",
     # Azure deallocates the VM after this long even if this script is no longer running.
     [ValidateRange(1, 24)]
     [int] $MaxHours = 7,
