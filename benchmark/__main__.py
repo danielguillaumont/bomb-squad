@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from benchmark import benign, detonation, incidents, samples, score, tools
+from benchmark import benign, detonation, incidents, openssf, samples, score, tools
 from bombsquad import __version__
 from bombsquad.registry import http_get
 
@@ -136,6 +136,13 @@ def _run(args) -> int:
           "kind": s.kind, "discovered": s.discovered, "splits": list(s.splits)}, s)
         for s in chosen]
     jobs += [(row, None) for row in benign_rows]
+    if args.openssf:
+        meta["openssf"] = {"repo": openssf.REPO, "commit": openssf.COMMIT,
+                           "date": openssf.COMMIT_DATE}
+        for row, sample in jobs:
+            if sample is not None:
+                row["openssf"] = openssf.lookup(args.openssf, row["ecosystem"], row["name"],
+                                                row["version"])
     lock = threading.Lock()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as out:
@@ -165,6 +172,16 @@ def _score(args) -> int:
         args.markdown.write_text(text, encoding="utf-8")
     else:
         sys.stdout.write(text)
+    return 0
+
+
+def _openssf(args) -> int:
+    selection = json.loads(args.selected.read_text(encoding="utf-8"))
+    wanted = [(s["ecosystem"], s["name"]) for s in selection["samples"]]
+    found = openssf.paths(args.listing.read_text(encoding="utf-8").splitlines(), wanted)
+    args.paths.write_text("".join(f"{p}\n" for p in found), encoding="utf-8")
+    names = {p.rsplit("/", 1)[0] for p in found}
+    print(f"{len(found)} reports for {len(names)} of {len(wanted)} sampled names")
     return 0
 
 
@@ -235,7 +252,16 @@ def main(argv: list[str] | None = None) -> int:
                         "(Linux with Docker)")
     r.add_argument("--detonate-timeout", type=int, default=detonation.TIMEOUT_SECONDS,
                    metavar="SECONDS")
+    r.add_argument("--openssf", type=Path, metavar="CHECKOUT",
+                   help=f"look up each malicious sample in {openssf.REPO} at commit "
+                        f"{openssf.COMMIT[:12]}, checked out here")
     r.add_argument("--output", "-o", type=Path, required=True)
+
+    o = sub.add_parser("openssf", help="list the OpenSSF report files for the sampled names")
+    o.add_argument("--listing", type=Path, required=True,
+                   help=f"the file listing of {openssf.REPO} at {openssf.COMMIT[:12]}")
+    o.add_argument("--selected", type=Path, required=True)
+    o.add_argument("--paths", type=Path, required=True)
 
     c = sub.add_parser("score", help="compute the scores from a results file")
     c.add_argument("results", type=Path)
@@ -251,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--markdown", type=Path)
 
     args = parser.parse_args(argv)
-    return {"select": _select, "run": _run, "score": _score,
+    return {"select": _select, "run": _run, "score": _score, "openssf": _openssf,
             "incidents": _incidents}[args.command](args)
 
 

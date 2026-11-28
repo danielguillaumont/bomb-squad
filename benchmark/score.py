@@ -162,6 +162,30 @@ def _cost(rows: list[dict]) -> dict:
             "total_seconds": round(sum(seconds), 1)}
 
 
+def _openssf(meta: dict, usable: list[dict]) -> list[dict]:
+    """Recall on the malicious samples whose version an OpenSSF malicious-packages report
+    covers: a confirmation independent of the dataset's own label."""
+    out = []
+    for ecosystem in ("npm", "pypi"):
+        malicious = [r for r in usable if r["set"] == "malicious" and r["ecosystem"] == ecosystem]
+        how = [(r.get("openssf") or {}).get("covers") for r in malicious]
+        confirmed = [r for r, h in zip(malicious, how, strict=True)
+                     if h in ("version", "all versions")]
+        results = []
+        for tool, threshold, label in detectors(meta):
+            c = _confusion(confirmed, [], tool, threshold)
+            results.append({"tool": tool, "threshold": threshold, "label": label,
+                            "recall": c["recall"], "errors": c["errors"]["malicious"]})
+        out.append({
+            "ecosystem": ecosystem, "samples": len(malicious),
+            "covered": {"version": how.count("version"),
+                        "all versions": how.count("all versions"),
+                        "name only": how.count("name"), "no report": how.count(None)},
+            "results": results,
+        })
+    return out
+
+
 def score(meta: dict, rows: list[dict]) -> dict:
     usable = [r for r in rows if not r.get("prepare_error")]
     out: dict = {"meta": meta, "packages": {
@@ -198,6 +222,8 @@ def score(meta: dict, rows: list[dict]) -> dict:
                     "ecosystem": ecosystem, "surface": surface, "tool": tool,
                     "threshold": threshold, "label": label,
                     "recall": _rate(hits.count(True), hits.count(True) + hits.count(False))})
+    if meta.get("openssf"):
+        out["openssf"] = _openssf(meta, usable)
     if meta.get("version_pairs"):
         out["updates"] = _updates(usable)
     if meta.get("detonate", "none") != "none":
@@ -242,6 +268,23 @@ def markdown(scores: dict) -> str:
     for r in scores.get("surfaces", []):
         lines.append(f"| {r['ecosystem']} | {r['surface']} | {r['label']} | "
                      f"{_cell(r['recall'])} |")
+    if scores.get("openssf"):
+        o = scores["meta"]["openssf"]
+        lines += ["", f"### Samples an OpenSSF malicious-packages report confirms "
+                  f"({o['repo']} at {o['commit'][:12]}, {o['date']})", "",
+                  "| Ecosystem | Detector | Recall | Errors |", "|---|---|---|---|"]
+        for e in scores["openssf"]:
+            for r in e["results"]:
+                lines.append(f"| {e['ecosystem']} | {r['label']} | {_cell(r['recall'])} | "
+                             f"{r['errors']} |")
+        lines.append("")
+        for e in scores["openssf"]:
+            c = e["covered"]
+            lines.append(f"- {e['ecosystem']}: of {e['samples']} samples, a report lists the "
+                         f"version for {c['version']}, affects all versions for "
+                         f"{c['all versions']}, names the package but not plainly this "
+                         f"version for {c['name only']}, and none names it for "
+                         f"{c['no report']}.")
     if scores.get("updates"):
         lines += ["", "### Updates of benign packages (diff against the release before)", "",
                   "| Ecosystem | Detector | False alarms | Per 1,000 updates |",
