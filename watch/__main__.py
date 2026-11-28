@@ -1,4 +1,7 @@
-"""`python -m watch run`: diff the new releases of the pinned popular lists in a window."""
+"""`python -m watch`: diff the new releases of the pinned popular lists in a window (`run`),
+record a person's review of a queued release (`review`), a report and its outcome (`report`,
+`outcome`), check a ledger (`verify`), and build the site and feed from the ledgers (`site`).
+"""
 
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ from tempfile import TemporaryDirectory
 from benchmark import benign
 from bombsquad import __version__
 from bombsquad.registry import FetchError, http_get
-from watch import daily
+from watch import daily, ledger, review, site
 
 
 def _moment(text: str) -> datetime:
@@ -63,6 +66,52 @@ def _run(args) -> int:
     return 0
 
 
+def _review(args) -> int:
+    ecosystem, name, version = review.parse_release(args.release)
+    row = review.queued_row(args.queue, ecosystem, name, version)
+    diff = json.loads(args.diff.read_text(encoding="utf-8")) if args.diff else None
+    entry = ledger.append(args.log, review.flag_record(row, diff, args.outcome, args.note,
+                                                       args.reviewer))
+    print(f"flag log entry {entry['seq']}: {entry['release']} {entry['outcome']} "
+          f"({entry['hash']})")
+    return 0
+
+
+def _report(args) -> int:
+    entry = ledger.append(args.record, review.report_record(
+        ledger.verify(args.flags), args.flag, args.to, args.reference))
+    print(f"defusal record entry {entry['seq']}: {entry['release']} reported to "
+          f"{entry['reported_to']} ({entry['hash']})")
+    return 0
+
+
+def _outcome(args) -> int:
+    entry = ledger.append(args.record, review.outcome_record(
+        ledger.verify(args.record), args.report, args.outcome, args.link, args.note))
+    print(f"defusal record entry {entry['seq']}: report {entry['report']} {entry['outcome']} "
+          f"({entry['hash']})")
+    return 0
+
+
+def _verify(args) -> int:
+    entries = ledger.verify(args.ledger)
+    for kept in args.head:
+        seq, _, digest = kept.partition(":")
+        if not seq.isdigit() or len(digest) != 64:
+            raise SystemExit(f"--head takes SEQ:HASH, not {kept!r}")
+        ledger.check_head(entries, int(seq), digest)
+    seq, digest = ledger.head(entries)
+    print(f"{args.ledger.name}: {seq} entries, head {seq}:{digest}")
+    return 0
+
+
+def _site(args) -> int:
+    built = site.build(args.flags, args.defusals, args.out, args.base_url, datetime.now(UTC))
+    print(f"{built['listed']} listed updates and {built['reports']} reports written to "
+          f"{args.out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m watch")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -76,8 +125,49 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--workers", type=int, default=4)
     r.add_argument("--output", "-o", type=Path, required=True)
     r.add_argument("--markdown", type=Path)
+
+    v = sub.add_parser("review", help="record a person's review of a queued release")
+    v.add_argument("release", help="npm:name@version or pypi:name@version")
+    v.add_argument("--queue", type=Path, required=True, help="the run's results file")
+    v.add_argument("--diff", type=Path,
+                   help="`bombsquad diff … --format json` of the update, as reviewed")
+    v.add_argument("--outcome", choices=review.OUTCOMES, required=True)
+    v.add_argument("--note", required=True, help="what the review found")
+    v.add_argument("--reviewer", required=True)
+    v.add_argument("--log", type=Path, required=True, help="the flag log")
+
+    p = sub.add_parser("report", help="record a report sent about a listed release")
+    p.add_argument("--flags", type=Path, required=True, help="the flag log")
+    p.add_argument("--flag", type=int, required=True, help="the listed release's entry")
+    p.add_argument("--to", choices=review.REPORTED_TO, required=True)
+    p.add_argument("--reference", required=True, help="the report's https link")
+    p.add_argument("--record", type=Path, required=True, help="the defusal record")
+
+    o = sub.add_parser("outcome", help="record what became of a report")
+    o.add_argument("--record", type=Path, required=True, help="the defusal record")
+    o.add_argument("--report", type=int, required=True, help="the report's entry")
+    o.add_argument("--outcome", choices=review.REPORT_OUTCOMES, required=True)
+    o.add_argument("--link", help="the https link that shows the outcome")
+    o.add_argument("--note", default="")
+
+    c = sub.add_parser("verify", help="check a ledger's chain, and heads kept from it")
+    c.add_argument("ledger", type=Path)
+    c.add_argument("--head", action="append", default=[], metavar="SEQ:HASH")
+
+    s = sub.add_parser("site", help="build the site and feed from the ledgers")
+    s.add_argument("--flags", type=Path, required=True)
+    s.add_argument("--defusals", type=Path, required=True)
+    s.add_argument("--out", type=Path, required=True)
+    s.add_argument("--base-url", required=True, help="where the site is served, ending in /")
+
     args = parser.parse_args(argv)
-    return {"run": _run}[args.command](args)
+    commands = {"run": _run, "review": _review, "report": _report, "outcome": _outcome,
+                "verify": _verify, "site": _site}
+    try:
+        return commands[args.command](args)
+    except (ledger.LedgerError, review.ReviewError, ValueError) as exc:
+        print(f"watch: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

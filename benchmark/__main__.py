@@ -15,7 +15,19 @@ from pathlib import Path
 
 from benchmark import benign, detonation, incidents, samples, score, tools, triage_eval
 from bombsquad import __version__
+from bombsquad.powershell.parser import ParserUnavailable, find_powershell
 from bombsquad.registry import http_get
+
+
+def _powershell() -> str:
+    """The PowerShell that parses for Bomb Squad. Without one, a scan notes PowerShell
+    embedded in other files as not analysed, so its findings would drop out of the scores
+    with no error."""
+    try:
+        executable = find_powershell()
+    except ParserUnavailable as exc:
+        raise SystemExit(f"benchmark: {exc}") from exc
+    return tools.version(executable) or executable
 
 
 def _exclusions(specs: list[str]) -> list[tuple[int, int]]:
@@ -128,6 +140,7 @@ def _run(args) -> int:
         "started": datetime.now(UTC).isoformat(timespec="seconds"),
         "bombsquad": __version__, "bombsquad_commit": os.environ.get("GITHUB_SHA"),
         "guarddog": args.guarddog_version or tools.version(args.guarddog),
+        "powershell": _powershell(),
         "dataset": "DataDog/malicious-software-packages-dataset",
         "dataset_commit": args.dataset_commit, "dataset_date": args.dataset_date,
         "seed": selection["seed"], "cutoff": selection["cutoff"],

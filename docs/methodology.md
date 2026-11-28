@@ -280,6 +280,13 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 - **What is kept:** versions, publish times, entry point counts and surfaces, rule IDs and signal names. Evidence is not kept.
 - **Wording:** queued is not a verdict, and nothing is published or reported before a human has reviewed it. Not queued does not mean safe: the diff cannot see code fetched at run time, or payloads gated on time or conditions.
 
+### Review, flag log and site
+
+- **Review:** `python -m watch review npm:<name>@<version> --queue … --diff … --outcome listed|"not listed" --note … --reviewer … --log flags.jsonl` records a person's decision about a release the run queued, and nothing else can add to the flag log. A listed release keeps, from the `bombsquad diff --format json` the reviewer read, the entry points it gained or changed, its new findings at review or high, and its publish signals at review or high, each command and piece of evidence cut to 300 characters. A later review of the same release takes its place, so a release can be taken off the list; the earlier entry stays.
+- **Defusal record:** `python -m watch report` records a report sent to npm, PyPI or OpenSSF malicious-packages, only about a release a review listed. `python -m watch outcome` records what became of it in a later entry. `confirmed` means the registry, OpenSSF or the maintainer confirmed the release malicious, and it needs the https link that shows it, as `removed` does.
+- **Append-only:** both files are hash-chained JSON Lines. Each entry holds its sequence number, when it was recorded, the hash of the entry before it and its own SHA-256. `python -m watch verify FILE --head SEQ:HASH` checks the chain and that an entry someone kept is unchanged. The chain makes a rewrite detectable to anyone holding an earlier head, not impossible; the site shows the current heads so they can be kept.
+- **Site and feed:** `python -m watch site` builds static pages and an Atom feed from the two files only, after checking both chains. A release is called malicious only beside a `confirmed` outcome and its link. Every value from a registry or a package is escaped, links are built only from names and versions that pass the registry's rules or from https links a person recorded, and the pages carry no script under a content security policy that allows none.
+
 ## LLM triage
 
 `bombsquad triage report.json` takes a `scan` or `diff` JSON report and returns the order in which to read its flagged findings, with a sentence on each. It is off unless run, and needs the `triage` extra and an Anthropic API key.
