@@ -2,7 +2,9 @@
 
 Off unless `run --detonate` names the set. The sandbox is `bombsquad.detonate`: no host
 mounts, fake credentials, and a network that reaches only the local sink. The row keeps
-counts and categories, never DNS names, commands or sent bytes, which are sample content.
+counts and categories, the base names of the programs package code started and the call
+and port of its connections. Never DNS names, addresses, commands or sent bytes, which are
+sample content.
 """
 
 from __future__ import annotations
@@ -22,6 +24,37 @@ TIMEOUT_SECONDS = 60
 # What a detonation counts as flagging: package code read or sent a fake credential, or
 # wrote somewhere that persists. Network access alone is common in benign install scripts.
 STRONG = ("credentials read", "credentials sent", "persistence")
+# A program's base name is kept only in this form; anything else counts as "(other)".
+PROGRAM_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,31}")
+KEPT_NAMES = 12  # per row, the most frequent first
+
+
+def program_names(obs: observe.Observation) -> dict[str, int]:
+    """How often package code started each program, by base name: `curl`, `sh`."""
+    counts: dict[str, int] = {}
+    for started in obs.programs_started:
+        name = str(started.get("program") or "").rsplit("/", 1)[-1]
+        name = name if PROGRAM_NAME.fullmatch(name) else "(other)"
+        counts[name] = counts.get(name, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    kept = dict(ranked[:KEPT_NAMES])
+    rest = sum(n for _, n in ranked[KEPT_NAMES:])
+    if rest:
+        kept["(other)"] = kept.get("(other)", 0) + rest
+    return kept
+
+
+def connections(obs: observe.Observation) -> dict[str, int]:
+    """How often package code made each kind of network call, by call and port:
+    `connect 443`. The address is left out."""
+    counts: dict[str, int] = {}
+    for item in obs.network:
+        call = str(item.get("call") or "?")
+        call = call if PROGRAM_NAME.fullmatch(call) else "(other)"
+        port = item.get("port")
+        key = f"{call} {port if isinstance(port, int) else '?'}"
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
 
 def registry_name(ecosystem: str, name: str) -> str:
@@ -74,7 +107,9 @@ def summarise(obs: observe.Observation, static_rules: set[str]) -> dict:
         "credentials_read": sum(1 for r in obs.credentials_read if r["package_code"]),
         "credentials_sent": sorted({r["secret"] for r in obs.credentials_sent}),
         "programs": len(obs.programs_started),
+        "program_names": program_names(obs),
         "network": len(obs.network),
+        "connections": connections(obs),
         "dns_names": len(obs.dns_names),
         "persistence": len(obs.persistence),
         "gaps": comparison.gaps,

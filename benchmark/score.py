@@ -146,6 +146,24 @@ def detectors(meta: dict) -> tuple:
     return DETECTORS + (DETONATION_DETECTORS if meta.get("detonate", "none") != "none" else ())
 
 
+def _gap_detail(rows: list[dict]) -> dict:
+    """For the malicious samples with each gap, the programs they started and the calls
+    and ports they used, counted once per sample."""
+    def tally(gap: str, field: str) -> list:
+        counts: dict[str, int] = {}
+        done = [r["detonation"] for r in rows if detonated(r)
+                and gap in (r["detonation"].get("gaps") or [])]
+        for d in done:
+            for key in d.get(field) or {}:
+                counts[key] = counts.get(key, 0) + 1
+        return [len(done), sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
+
+    programs, network = tally("programs started", "program_names"), tally("network",
+                                                                         "connections")
+    return {"programs_started": {"samples": programs[0], "programs": programs[1]},
+            "network": {"samples": network[0], "connections": network[1]}}
+
+
 def _cost(rows: list[dict]) -> dict:
     done = [r["detonation"] for r in rows if detonated(r)]
     seconds = [d["seconds"] for d in done if isinstance(d.get("seconds"), int | float)]
@@ -231,6 +249,10 @@ def score(meta: dict, rows: list[dict]) -> dict:
             {"ecosystem": e, "set": kind,
              **_cost([r for r in usable if r["ecosystem"] == e and r["set"] == kind])}
             for e in ("npm", "pypi") for kind in ("malicious", "benign")]
+        out["detonation_gaps"] = [
+            {"ecosystem": e, **_gap_detail([r for r in usable if r["ecosystem"] == e
+                                            and r["set"] == "malicious"])}
+            for e in ("npm", "pypi")]
     return out
 
 
@@ -310,6 +332,20 @@ def markdown(scores: dict) -> str:
             lines.append(f"| {c['ecosystem']} | {c['set']} | {c['packages']} | {c['errors']} | "
                          f"{c['timed_out']} | {c['exited_non_zero']} | "
                          f"{c.get('wheel_instead', 0)} | {median} | {c['total_seconds']} |")
+    gaps = [g for g in scores.get("detonation_gaps") or []
+            if g["programs_started"]["samples"] or g["network"]["samples"]]
+    if gaps:
+        lines += ["", "### Detonation gaps in the malicious samples", "",
+                  "What samples with a gap did, counted once per sample: programs by base "
+                  "name, and network calls by call and port. Rows keep no commands, "
+                  "addresses or names looked up.", ""]
+        for g in gaps:
+            shown = {"programs started": g["programs_started"], "network": g["network"]}
+            for gap, detail in shown.items():
+                items = detail.get("programs") or detail.get("connections") or []
+                text = ", ".join(f"`{k}` ({n})" for k, n in items[:15]) or "no detail recorded"
+                lines.append(f"- {g['ecosystem']}, {gap} with no static finding predicting "
+                             f"it: {detail['samples']} samples. {text}.")
     lines += ["", "Precision depends on the mix of malicious and benign packages here, which "
               "is not the mix in the wild; false positives per 1,000 benign releases do not. "
               "Most samples in the DataDog dataset were found by GuardDog, which favours it. "
