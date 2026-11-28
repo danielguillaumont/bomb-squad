@@ -233,7 +233,7 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
 - **Benign packages:** run 46090723283 (2026-11-28) detonated the 395 benign packages ([write-up](research/guarddog-benchmark.md#detonation)).
 - **Malicious samples:** run 46112205761 (2026-11-28) detonated all 795 packages of the development sample, malicious samples included ([write-up](research/guarddog-benchmark.md#detonation-of-the-malicious-samples)). It ran on a disposable Azure VM, created by `scripts/detonation-vm.ps1` for that one run and deleted after. The workflow refuses `detonate=all` on any other runner ([setup](development.md#detonation-vm)).
 
-**Not yet:** running dependencies' own install scripts, and eBPF. Next: the static rules for the gaps detonation found.
+**Not yet:** running dependencies' own install scripts, and eBPF. Next: the static rules for the gaps detonation found. The credentials-sent gaps led to a wider BS-ENV-001 ([write-up](research/guarddog-benchmark.md#where-the-comparison-favours-one-tool)). For the programs-started and network gaps, benchmark rows now keep program base names and call and port, so the next detonation run shows what to write rules for.
 
 **Exit met:** detonation's flagged signal (a fake credential read or sent, or persistence) adds no recall over Bomb Squad's review threshold at this sample size. Each of its 14 flagged samples was already flagged statically. The run lists the gaps detonation found: programs started, network attempts and credentials sent with no static finding predicting them. Detonation took a median of 5.5 to 9.5 seconds per package. Every figure, with its counts, is in the write-up.
 

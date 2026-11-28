@@ -402,6 +402,10 @@ def test_detonation_rows_keep_counts_not_content(tmp_path):
     assert result["seen"] == ["network", "credentials read", "programs started", "persistence"]
     assert result["gaps"] == ["credentials read", "programs started", "persistence"]
     assert result["dns_names"] == 1 and "c2.example.invalid" not in json.dumps(result)
+    # Programs by base name and calls by port, never their commands or addresses.
+    assert result["program_names"] == {"curl": 1}
+    assert result["connections"] == {"connect 443": 1, "sendto 53": 1}
+    assert "172.30.0.2" not in json.dumps(result) and "install.js" not in json.dumps(result)
 
     def broken(*args, **kwargs):
         raise runner.DetonationError("the sandbox recorded no trace")
@@ -563,3 +567,33 @@ def test_a_version_is_read_from_plain_text_output():
     assert tools.version_of([sys.executable, "-c", script]) == "Tool 7.6.10"
     assert tools.version_of([sys.executable, "-c", "import sys; sys.exit(3)"]) is None
     assert tools.version("/no/such/tool") is None
+
+
+def test_program_names_keep_only_plain_base_names():
+    from benchmark import detonation
+    from bombsquad.detonate import observe
+
+    obs = observe.Observation("npm", 0, None, False)
+    odd = "/tmp/" + "x" * 40
+    obs.programs_started = [{"program": p} for p in (
+        "/usr/bin/curl", "/usr/bin/curl", "/bin/sh", odd, "/tmp/$(id)", "")]
+    obs.programs_started += [{"program": f"/usr/bin/tool{i:02}"} for i in range(14)]
+    names = detonation.program_names(obs)
+    assert names["curl"] == 2 and names["sh"] == 1
+    assert len(names) <= detonation.KEPT_NAMES + 1  # the kept names, and "(other)"
+    # The three odd names, and the five least frequent past the twelve kept.
+    assert names["(other)"] == 3 + 5
+    assert sum(names.values()) == len(obs.programs_started)
+    assert not any(n.startswith("/") or "$" in n for n in names)
+
+
+def test_scores_list_what_samples_with_each_gap_did():
+    rows = [{"ecosystem": "npm", "set": "malicious", "detonation": d} for d in (
+        {"gaps": ["programs started", "network"], "program_names": {"curl": 2, "sh": 1},
+         "connections": {"connect 443": 1}},
+        {"gaps": ["programs started"], "program_names": {"curl": 1}, "connections": {}},
+        {"gaps": [], "program_names": {"whoami": 1}, "connections": {"connect 80": 1}},
+    )]
+    detail = score._gap_detail(rows)
+    assert detail["programs_started"] == {"samples": 2, "programs": [("curl", 2), ("sh", 1)]}
+    assert detail["network"] == {"samples": 1, "connections": [("connect 443", 1)]}
