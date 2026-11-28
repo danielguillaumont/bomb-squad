@@ -47,8 +47,10 @@ $Workflow = "benchmark.yml"
 $BootScript = Join-Path $PSScriptRoot "detonation-vm.sh"
 
 function Invoke-Tool {
-    # Runs az or gh with an argument list and returns its standard output as text.
-    param([string] $Tool, [string[]] $Arguments, [switch] $AllowFailure)
+    # Runs az or gh, and nothing else, with an argument list and returns its standard output
+    # as text.
+    param([ValidateSet("az", "gh")] [string] $Tool, [string[]] $Arguments,
+        [switch] $AllowFailure)
     if ($DryRun) {
         Write-Host "would run: $Tool $($Arguments -join ' ')"
         return ""
