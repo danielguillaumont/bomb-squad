@@ -203,7 +203,7 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 **Measured:** [the write-up](research/guarddog-benchmark.md), from two Actions runs on `main` (2026-11-27). Run 46066816294 is the development sample, which shaped the rules. Run 46075004726 is the held-out sample: seed 2027, leaving out the development runs' packages, under a protocol fixed before it ran. The README's accuracy figures are from the held-out run. The write-up includes where Bomb Squad loses in both.
 
-**Built, not yet run:** consecutive version pairs for the diff engine, behind the workflow's `version-pairs` input: each benign release diffed against the one before it, counting false alarms per 1,000 updates.
+**Measured:** consecutive version pairs for the diff engine, behind the workflow's `version-pairs` input: each benign release diffed against the one before it. Run 46090723283 (2026-11-28) gives the false alarms per 1,000 updates in [the write-up](research/guarddog-benchmark.md#updates).
 
 **Not yet:** OpenSSF malicious-packages reports. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit. Until then every figure is retrospective, and the held-out sample is held out by package, not by campaign.
 
@@ -227,9 +227,9 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
 
 **Built:** `bombsquad detonate`, with the sandbox, the sink, the fake credentials, the strace recorder and the comparison with the static scan ([methodology](methodology.md#detonation)). CI runs harmless stand-in packages in real containers.
 
-**Built, not yet run:** detonation in the benchmark, behind the workflow's `detonate` input (`none` by default, `benign`, or `all`).
+**Measured on benign packages only:** detonation in the benchmark, behind the workflow's `detonate` input (`none` by default, `benign`, or `all`). Run 46090723283 (2026-11-28) detonated the 395 benign packages: its cost and what it observed are in [the write-up](research/guarddog-benchmark.md#detonation). Malicious samples have not been detonated, because where that can run is still to be decided.
 
-**Not yet:** the benchmark run with detonation, installing dependencies, HTTPS content, and eBPF.
+**Not yet:** detonating the malicious samples, which the exit needs, installing dependencies, HTTPS content, and eBPF.
 
 **Exit:** a benchmark re-run shows whether detonation adds recall, and at what cost per package.
 
