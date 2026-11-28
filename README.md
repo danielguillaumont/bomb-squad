@@ -108,6 +108,11 @@ Output is text, JSON or SARIF 2.1.0 (for GitHub code scanning). JSON and SARIF a
 
 It runs only on Linux, and is meant for disposable CI runners ([methodology](docs/methodology.md#detonation)).
 
+`bombsquad triage report.json` is opt-in LLM triage of a JSON report from `scan` or `diff`. It needs the `triage` extra and an Anthropic API key.
+- **What it sends:** only the flagged excerpts.
+- **What it returns:** every finding, in a suggested reading order. It never drops one.
+- **Text aimed at the reviewer:** an excerpt that addresses a reviewer raises its finding ([methodology](docs/methodology.md#llm-triage)).
+
 ### In pull requests
 
 `bombsquad gate` reports what a pull request newly runs: new entry points and findings in the repository, what each dependency version its lockfiles newly pin gains from the registry, and what each updated action gains between its old and new commit. As a GitHub Action:

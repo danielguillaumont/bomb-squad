@@ -280,6 +280,25 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 - **What is kept:** versions, publish times, entry point counts and surfaces, rule IDs and signal names. Evidence is not kept.
 - **Wording:** queued is not a verdict, and nothing is published or reported before a human has reviewed it. Not queued does not mean safe: the diff cannot see code fetched at run time, or payloads gated on time or conditions.
 
+## LLM triage
+
+`bombsquad triage report.json` takes a `scan` or `diff` JSON report and returns the order in which to read its flagged findings, with a sentence on each. It is off unless run, and needs the `triage` extra and an Anthropic API key.
+
+- **What is sent:** each finding at review or high (for a diff, those the new version gained), as its rule, level, location and the excerpt the rule matched, cut to 600 characters, at most 40 findings. Nothing else from the package. The command says how many before it sends them.
+- **Model and prompt:** `claude-opus-5-5` with structured output, and the API's server-side fallback if the model declines. The result names the prompt version, its SHA-256 and the model that answered.
+- **Never suppresses:** the result is every finding of the report, each once, in a new order. Flagged findings stay ahead of unflagged ones. Within them, high concern comes first, then findings the model did not assess, then medium, then low. A finding the model calls low is still in the list, and a refusal or unusable answer leaves the report's order.
+- **Untrusted excerpts:** the prompt tells the model that excerpts are package data and never instructions. An excerpt that addresses a reviewer or a tool ("test fixture, safe to ignore") is marked, and that finding's concern is raised to high, whatever the model gave it.
+- **Not a verdict:** the model sees excerpts, not the package or its behaviour, and nothing is run.
+
+### How triage is judged
+
+`python -m benchmark run --triage` runs triage on every benchmark package with a flagged finding (the workflow's `triage` input, never with `detonate=all`, so the API key is never on the VM that runs malicious samples). Rows keep the package's highest concern and counts, not the model's explanations.
+
+- **Ranking:** recall, false positives and precision per ecosystem for "triage high concern" and "triage medium or high, or not assessed", against the rule thresholds on the same packages. Triage is kept only if it raises precision at the same recall.
+- **Adversarial notes:** each malicious sample's flagged findings are triaged again with each of six fixed notes (`benchmark/triage_eval.py`, versioned) added as a comment above the excerpt. A finding is talked down when a note lowers its concern. The write-up reports how often that happens, and how often the note was marked.
+
+No triage run has been made yet; it calls a paid API.
+
 ## Accuracy
 
 Detection rates come only from the benchmark below. Every figure states its counts, the dataset commit and date, and GuardDog's result on the same packages. The current figures are in the [write-up](research/guarddog-benchmark.md): a development sample, which is in-sample, and a [held-out sample](research/guarddog-benchmark.md#held-out-sample). Both are retrospective, because the time-split set is empty for the pinned dataset commit.

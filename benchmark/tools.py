@@ -84,13 +84,18 @@ def parse_guarddog(text: str) -> dict:
     }
 
 
-def bombsquad(root: Path, timeout: int = TIMEOUT_SECONDS) -> dict:
+def bombsquad(root: Path, timeout: int = TIMEOUT_SECONDS,
+              findings: list | None = None) -> dict:
+    """The reduced result. When `findings` is a list, the report's full findings are added
+    to it for triage; they are never part of the result."""
     out, error, seconds = _run([sys.executable, "-m", "bombsquad", "scan", str(root),
                                 "--package", "--format", "json"], timeout)
     result: dict = {"seconds": round(seconds, 2), "error": error}
     if error is None:
         try:
             result.update(parse_bombsquad(out))
+            if findings is not None:
+                findings.extend(_json_object(out).get("findings") or [])
         except ValueError as exc:
             result["error"] = f"unreadable output: {exc}"
     return result

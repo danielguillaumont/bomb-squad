@@ -103,6 +103,18 @@ def _parser() -> argparse.ArgumentParser:
     det_cmd.add_argument("--format", choices=("text", "json"), default="text")
     det_cmd.add_argument("--output", "-o", type=Path, help="write the report to this file")
 
+    tri_cmd = sub.add_parser(
+        "triage", help="order a report's flagged findings for reading, with an LLM (opt-in)",
+        description="Sends each finding at review or high, as its rule, location and the "
+                    "excerpt it matched, to the Anthropic API, and prints the order in "
+                    "which to read the findings. Every finding stays in the list. Needs "
+                    "the triage extra (pip install 'bombsquad[triage]') and Anthropic "
+                    "credentials.")
+    tri_cmd.add_argument("report", type=Path,
+                         help="a bombsquad scan or diff report written with --format json")
+    tri_cmd.add_argument("--format", choices=("text", "json"), default="text")
+    tri_cmd.add_argument("--output", "-o", type=Path, help="write the triage to this file")
+
     sub.add_parser("rules", help="list the rules")
     return parser
 
@@ -137,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         return _gate(args)
     if args.command == "detonate":
         return _detonate(args)
+    if args.command == "triage":
+        return _triage(args)
 
     paths = [Path(p) for p in args.paths if p != "-"]
     stdin_text = decode(sys.stdin.buffer.read())[0] if "-" in args.paths else None
@@ -239,4 +253,45 @@ def _detonate(args) -> int:
         _write_json(report.to_dict(), args.output)
     else:
         _write(render(report), args.output)
+    return EXIT_OK
+
+
+def _triage(args, client=None) -> int:
+    from bombsquad import triage
+
+    try:
+        report = json.loads(args.report.read_text(encoding="utf-8"))
+        findings = triage.report_findings(report)
+    except (OSError, ValueError, AttributeError) as exc:
+        print(f"bombsquad: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    sent = len(triage.hunks(findings))
+    if client is None and sent:
+        try:
+            import anthropic
+        except ImportError:
+            print("bombsquad: triage needs the triage extra: pip install 'bombsquad[triage]'",
+                  file=sys.stderr)
+            return EXIT_ERROR
+    if sent:
+        print(f"bombsquad: sending {sent} flagged excerpts to the Anthropic API "
+              f"({triage.MODEL}, prompt v{triage.PROMPT_VERSION})", file=sys.stderr)
+    try:
+        if client is None and sent:
+            client = anthropic.Anthropic()  # a missing key raises here
+        result = triage.triage(findings, client)
+    except triage.TriageUnavailable as exc:
+        print(f"bombsquad: triage unavailable, the report's order stands: {exc}",
+              file=sys.stderr)
+        return EXIT_ERROR
+    except Exception as exc:  # the SDK's errors: credentials, network, rate limits
+        if type(exc).__module__.split(".")[0] != "anthropic":
+            raise
+        print(f"bombsquad: triage unavailable, the report's order stands: "
+              f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if args.format == "json":
+        _write_json(result.to_dict(findings), args.output)
+    else:
+        _write(triage.render(result, findings), args.output)
     return EXIT_OK

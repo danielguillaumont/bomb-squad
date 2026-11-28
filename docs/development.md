@@ -32,7 +32,8 @@ Set `BOMBSQUAD_POWERSHELL` to pick a specific PowerShell executable.
 | `src/bombsquad/lockfiles.py`, `actionrefs.py`, `gate.py`, `action.yml` | `bombsquad gate`: pinned versions from lockfiles, action references and their review, the pull request report and its comment, and the GitHub Action |
 | `src/bombsquad/sarif.py`, `text_report.py` | Output formats |
 | `src/bombsquad/detonate/` | `bombsquad detonate`: the sandbox images, the sink, fake credentials, the strace reader and the comparison with the static scan |
-| `benchmark/` | The accuracy benchmark against GuardDog. It runs only in `.github/workflows/benchmark.yml`, on Linux CI. |
+| `src/bombsquad/triage.py` | `bombsquad triage`: the flagged excerpts sent, the prompt and schema, and the reading order |
+| `benchmark/` | The accuracy benchmark against GuardDog, and the triage eval (`triage_eval.py`). It runs only in `.github/workflows/benchmark.yml`, on Linux CI. |
 | `watch/` | The daily watch: new releases of popular packages, diffed and queued for review |
 | `scripts/detonation-vm.ps1`, `detonation-vm.sh` | A disposable Azure VM for detonating malicious samples, and its boot script |
 
