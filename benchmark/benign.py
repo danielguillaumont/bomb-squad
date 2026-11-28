@@ -75,7 +75,7 @@ def sample_names(names: list[str], top: int, count: int, seed: int, ecosystem: s
     return random.Random(f"{seed}:benign:{ecosystem}").sample(pool, min(count, len(pool)))
 
 
-def _stable(version: str) -> bool:
+def stable(version: str) -> bool:
     return not _PRERELEASE.search(version.split("+", 1)[0])
 
 
@@ -89,7 +89,7 @@ def _parse(value: object) -> datetime | None:
     return moment if moment.tzinfo else None
 
 
-def _published(ecosystem: str, name: str, fetch: Fetch) -> list[tuple[datetime, str]]:
+def published_versions(ecosystem: str, name: str, fetch: Fetch) -> list[tuple[datetime, str]]:
     """Each version the registry still serves, with the time it was first published."""
     if ecosystem == "npm":
         url = f"{NPM_REGISTRY}/{urllib.parse.quote(name, safe='@')}"
@@ -109,12 +109,12 @@ def _published(ecosystem: str, name: str, fetch: Fetch) -> list[tuple[datetime, 
     return out
 
 
-def _highest(candidates: list[tuple[datetime, str]]) -> tuple[datetime, str] | None:
+def highest(candidates: list[tuple[datetime, str]]) -> tuple[datetime, str] | None:
     # The highest version, not the latest upload: maintainers publish backports to old
     # majors (semver 5.7.x after 7.x), which were never the current release. Stable
     # versions win, unless a package has only ever published pre-releases
     # (OpenTelemetry's instrumentation packages are all 0.xbN).
-    candidates = [c for c in candidates if _stable(c[1])] or candidates
+    candidates = [c for c in candidates if stable(c[1])] or candidates
     return max(candidates, key=lambda c: version_key(c[1])) if candidates else None
 
 
@@ -122,15 +122,15 @@ def release_pair(ecosystem: str, name: str, as_of: datetime, fetch: Fetch
                  ) -> tuple[str | None, str | None]:
     """The release current on `as_of`, and the one an update to it would have come from:
     the highest lower version published before it. Either can be None."""
-    published = _published(ecosystem, name, fetch)
-    current = _highest([c for c in published if c[0] <= as_of])
+    published = published_versions(ecosystem, name, fetch)
+    current = highest([c for c in published if c[0] <= as_of])
     if current is None:
         return None, None
     key = version_key(current[1])
     earlier = [c for c in published if c[0] <= current[0] and version_key(c[1]) < key]
-    if _stable(current[1]):
-        earlier = [c for c in earlier if _stable(c[1])]
-    previous = _highest(earlier)
+    if stable(current[1]):
+        earlier = [c for c in earlier if stable(c[1])]
+    previous = highest(earlier)
     return current[1], previous[1] if previous else None
 
 
@@ -152,4 +152,4 @@ def fetch_release(ecosystem: str, name: str, version: str, folder: Path, fetch: 
 
 
 __all__ = ["FetchError", "fetch_release", "npm_popular", "pypi_popular", "release_on",
-           "release_pair", "sample_names"]
+           "published_versions", "release_pair", "sample_names"]

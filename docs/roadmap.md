@@ -241,6 +241,10 @@ Open at release: the Phase 2 exit (the ChainDrop and `agent-framework` versions)
 - **Reporting:** cases confirmed by hand are reported to the registry and to OpenSSF malicious-packages.
 - **Record:** a defusal record lists each report with its date and outcome. An append-only flag log lets anyone check what was flagged, and when, before a takedown.
 
+**Built:** `python -m watch run`, which finds each release first published in a window for the top packages of the pinned lists. It diffs each release against the one before it and writes the review queue ([methodology](methodology.md#daily-watch)).
+
+**Not yet:** where the daily run happens. Run summaries and artifacts on a public repository are public, so the run must not happen there before review. Also the site, the feed, the flag log and the defusal record.
+
 **Exit:** 30 days of daily runs with every flag reviewed.
 
 ## Phase 7: LLM triage (v2.3)

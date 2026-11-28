@@ -265,6 +265,15 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 
 `tests/test_detonate_container.py` runs harmless stand-in packages in real containers on Linux CI. Real packages are not detonated there.
 
+## Daily watch
+
+`python -m watch run --since … --until …` checks the top packages (500 per ecosystem by default) of the benchmark's pinned popular lists for releases first published in the window.
+
+- **Which releases:** stable versions only, since an install without an exact version does not pick a pre-release. Each is compared, with `bombsquad diff`, against the highest lower stable version published before it, so a backport to an old major is compared within that major.
+- **Queued for review:** a new or changed entry point, a new finding at review or high, or a publish signal at review. Release age is left out, because every release in the window is recent.
+- **What is kept:** versions, publish times, entry point counts and surfaces, rule IDs and signal names. Evidence is not kept.
+- **Wording:** queued is not a verdict, and nothing is published or reported before a human has reviewed it. Not queued does not mean safe: the diff cannot see code fetched at run time, or payloads gated on time or conditions.
+
 ## Accuracy
 
 Detection rates come only from the benchmark below. Every figure states its counts, the dataset commit and date, and GuardDog's result on the same packages. The current figures are in the [write-up](research/guarddog-benchmark.md): a development sample, which is in-sample, and a [held-out sample](research/guarddog-benchmark.md#held-out-sample). Both are retrospective, because the time-split set is empty for the pinned dataset commit.
