@@ -205,7 +205,7 @@ General SAST, SCA and secrets scanning are well served (Semgrep/Opengrep, CodeQL
 
 **Measured:** consecutive version pairs for the diff engine, behind the workflow's `version-pairs` input: each benign release diffed against the one before it. Run 46090723283 (2026-11-28) gives the false alarms per 1,000 updates in [the write-up](research/guarddog-benchmark.md#updates).
 
-**Built:** each malicious sample is looked up in OpenSSF malicious-packages reports at a pinned commit (`efc03f62e0d3`, 2026-11-28). The scores add recall on the samples a report confirms ([methodology](methodology.md#how-the-benchmark-works)). The figures need a run with it.
+**Built:** each malicious sample is looked up in OpenSSF malicious-packages reports at a pinned commit (`efc03f62e0d3`, 2026-11-28). The scores add recall on the samples a report confirms ([methodology](methodology.md#how-the-benchmark-works)). Run 46172764843 (2026-11-28) measured it on the development sample ([write-up](research/guarddog-benchmark.md#samples-an-openssf-report-confirms)).
 
 **Not yet:** the time split. The pinned dataset commit predates the cutoff, so the time-split set is empty until the benchmark runs on a later dataset commit. Until then every figure is retrospective, and the held-out sample is held out by package, not by campaign.
 
