@@ -72,6 +72,8 @@ class Command:
     elements: tuple[Element, ...]
     pipeline: Span | None
     pipeline_index: int
+    # For `& $Tool`, the values [ValidateSet()] allows $Tool, when they are string literals.
+    name_choices: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -164,6 +166,7 @@ def _document(data: dict, text: str, blanked: list[BlankedUsing]) -> ParsedDocum
                 elements=tuple(_element(e) for e in _list(c.get("elements"))),
                 pipeline=Span.from_dict(c["pipeline"]) if c.get("pipeline") else None,
                 pipeline_index=int(c.get("pipeline_index") or 0),
+                name_choices=tuple(str(v) for v in _list(c.get("name_choices"))),
             )
             for c in _list(data.get("commands"))
         ],

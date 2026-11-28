@@ -164,6 +164,49 @@ function Get-VariableNames($node) {
     return ,$names.ToArray()
 }
 
+function Get-NameChoices($command) {
+    # `& $Tool` where $Tool is a parameter of the enclosing function, or of the script outside
+    # any function, that [ValidateSet()] restricts to string literals: PowerShell refuses any
+    # other value, so these are the commands it can run. Not when anything in that function
+    # or script assigns the variable, which in a nested scope would make a new, unrestricted one.
+    if ($command.InvocationOperator.ToString() -eq 'Unknown') { return $null }
+    $first = $command.CommandElements[0]
+    if ($first -isnot [System.Management.Automation.Language.VariableExpressionAst]) { return $null }
+    $name = $first.VariablePath.UserPath
+    $scope = $command.Parent
+    while ($null -ne $scope -and $scope -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+        if ($null -eq $scope.Parent) { break }
+        $scope = $scope.Parent
+    }
+    $params = $null
+    if ($scope -is [System.Management.Automation.Language.FunctionDefinitionAst]) {
+        $params = if ($null -ne $scope.Parameters) { $scope.Parameters }
+                  elseif ($null -ne $scope.Body.ParamBlock) { $scope.Body.ParamBlock.Parameters }
+    } elseif ($scope -is [System.Management.Automation.Language.ScriptBlockAst] -and $null -ne $scope.ParamBlock) {
+        $params = $scope.ParamBlock.Parameters
+    }
+    if ($null -eq $params) { return $null }
+    $param = $params | Where-Object { $_.Name.VariablePath.UserPath -eq $name } | Select-Object -First 1
+    if ($null -eq $param) { return $null }
+    $assigned = $scope.FindAll({ param($n)
+            ($n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+             $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+             $n.Left.VariablePath.UserPath -eq $name) -or
+            ($n -is [System.Management.Automation.Language.ForEachStatementAst] -and
+             $n.Variable.VariablePath.UserPath -eq $name) }, $true)
+    if (@($assigned).Count -gt 0) { return $null }
+    foreach ($attr in $param.Attributes) {
+        if ($attr -isnot [System.Management.Automation.Language.AttributeAst]) { continue }
+        if ($attr.TypeName.Name -notin @('ValidateSet', 'System.Management.Automation.ValidateSet')) { continue }
+        $values = @($attr.PositionalArguments)
+        $literal = @($values | Where-Object { $_ -is [System.Management.Automation.Language.StringConstantExpressionAst] })
+        if ($values.Count -gt 0 -and $literal.Count -eq $values.Count) {
+            return ,[string[]]@($literal | ForEach-Object { $_.Value })
+        }
+    }
+    return $null
+}
+
 function Get-PipelineInfo($command) {
     $parent = $command.Parent
     if ($parent -is [System.Management.Automation.Language.PipelineAst]) {
@@ -224,6 +267,7 @@ function ConvertTo-Document($doc) {
             elements       = $elements
             pipeline       = $pipe.span
             pipeline_index = $pipe.index
+            name_choices   = (Get-NameChoices $c)
         }
     })
 

@@ -6,7 +6,7 @@ import base64
 import binascii
 import re
 import shlex
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from bombsquad.catalogue import ALL_RULES as RULES
 from bombsquad.code.common import credential_reference
@@ -234,7 +234,11 @@ class _DocumentAnalysis:
 
     def command(self, cmd: Command) -> None:
         if cmd.name is None:
-            if cmd.operator in ("Ampersand", "Dot"):
+            if cmd.operator in ("Ampersand", "Dot") and cmd.name_choices:
+                # Restricted by [ValidateSet()]: each command it allows is checked instead.
+                for choice in cmd.name_choices:
+                    self.command(replace(cmd, name=choice, name_source="choice"))
+            elif cmd.operator in ("Ampersand", "Dot"):
                 self.hit("BS-DE-003", cmd.span, cmd.text)
             return
         resolved = names.resolve(cmd.name)
@@ -242,6 +246,9 @@ class _DocumentAnalysis:
         if cmd.name_source == "folded":
             via.insert(0, f"command name built from string literals: {cmd.name_text.strip()} "
                           f"is {cmd.name}")
+        elif cmd.name_source == "choice":
+            via.insert(0, f"{cmd.name_text.strip()} is restricted by [ValidateSet()] to "
+                          f"{', '.join(cmd.name_choices)}; this is {cmd.name}")
         limitations = []
         if resolved.name.lower() in self.doc.functions or cmd.name.lower() in self.doc.functions:
             limitations.append(
