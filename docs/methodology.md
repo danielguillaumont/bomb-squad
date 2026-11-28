@@ -124,6 +124,7 @@ These run on every text file in the scan, whatever its language:
   - `curl` and `wget` download in both, either as aliases or as programs;
   - `sc` is `Set-Content` in 5.1 and `sc.exe` in PowerShell 7.
 - **Literal folding:** a name or argument built only from string literals is rebuilt by the dumper's own code, never by PowerShell. It handles `+`, `-join`, `-f`, `[char]` and `[char[]]` conversions, and parentheses. The finding records the original expression.
+- **Restricted names:** `& $Tool`, where `$Tool` is a parameter of the enclosing function or script that `[ValidateSet()]` restricts to string literals, is checked as each command the set allows, not reported as a command chosen at run time (BS-DE-003). PowerShell refuses any other value. Not when that function or script assigns the variable anywhere, since a nested scope would make a new, unrestricted one.
 - **Parameters** match the unambiguous prefixes PowerShell accepts, for example `-Exclu` for `-ExclusionPath`, and the en and em dashes PowerShell accepts in place of `-`.
 
 ### Decoded content

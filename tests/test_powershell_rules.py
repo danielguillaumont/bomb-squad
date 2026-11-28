@@ -50,6 +50,17 @@ CASES: dict[str, tuple[str, set[str]]] = {
     "iex_literal": (f"Invoke-Expression '{REMOVE}'", {"BS-DE-001", "BS-FS-001"}),
     "add_type": ("Add-Type -TypeDefinition $source", {"BS-DE-004"}),
     "dynamic_call": ("& $tool -x", {"BS-DE-003"}),
+    # A parameter [ValidateSet()] restricts to literals: each command it allows is checked.
+    "validateset_call": ('function f { param([ValidateSet("git")] [string] $T)\n& $T status }',
+                         set()),
+    "validateset_script": ('param([ValidateSet("git", "gh")] [string] $T)\n& $T status', set()),
+    "validateset_iex": ('function f { param([ValidateSet("Invoke-Expression")] $R, $X)\n'
+                        '& $R $X }', {"BS-DE-001"}),
+    "validateset_assigned": ('function f { param([ValidateSet("git")] $T)\n'
+                             'foreach ($T in $list) { & $T } }', {"BS-DE-003"}),
+    "validateset_not_literal": ('function f { param([ValidateSet($a, "git")] $T)\n& $T }',
+                                {"BS-DE-003"}),
+    "unrestricted_parameter": ("function f { param([string] $T)\n& $T }", {"BS-DE-003"}),
     # Encoded commands, decoded and analysed
     "encoded": (hidden("encoded"), {"BS-EN-001", "BS-FS-001"}),
     "encoded_en_dash": (hidden("encoded_en_dash"), {"BS-EN-001", "BS-FS-001"}),
