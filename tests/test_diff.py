@@ -246,6 +246,26 @@ def test_a_release_that_adds_an_sdist_does_not_report_its_wheel_again(tmp_path):
     assert report.added_files == ["sdist/setup.py"]
 
 
+def test_the_wheel_compared_is_pure_python_or_else_for_linux():
+    from bombsquad.registry import _pick
+
+    def names(*filenames):
+        files = [{"packagetype": "bdist_wheel", "filename": f} for f in filenames]
+        return [f["filename"] for f in _pick(files + [{"packagetype": "sdist",
+                                                       "filename": "x-1.tar.gz"}])]
+
+    assert names("x-1-cp312-cp312-macosx_11_0_arm64.whl", "x-1-py3-none-any.whl") == [
+        "x-1.tar.gz", "x-1-py3-none-any.whl"]
+    assert names("x-1-cp311-cp311-manylinux_2_17_x86_64.whl",
+                 "x-1-cp312-cp312-macosx_11_0_arm64.whl",
+                 "x-1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+                 "x-1-cp312-cp312-win_amd64.whl")[1] == (
+        "x-1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl")
+    assert names("x-1-cp39-abi3-manylinux_2_17_x86_64.whl",
+                 "x-1-cp310-cp310-manylinux_2_17_x86_64.whl")[1] == (
+        "x-1-cp39-abi3-manylinux_2_17_x86_64.whl")
+
+
 def test_minified_blob_and_local_paths(tmp_path):
     old, new = tmp_path / "old", tmp_path / "new"
     for root in (old, new):

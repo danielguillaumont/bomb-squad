@@ -156,6 +156,8 @@ def _cost(rows: list[dict]) -> dict:
             "exited_non_zero": sum(1 for d in done if not d.get("error")
                                    and not d.get("timed_out")
                                    and d.get("exit_status") not in (0, None)),
+            # The sdist did not build, so the release's wheel was installed and imported.
+            "wheel_instead": sum(1 for d in done if d.get("wheel_instead")),
             "median_seconds": round(statistics.median(seconds), 1) if seconds else None,
             "total_seconds": round(sum(seconds), 1)}
 
@@ -258,12 +260,13 @@ def markdown(scores: dict) -> str:
     if scores.get("detonation_cost"):
         lines += ["", "### Detonation cost", "",
                   "| Ecosystem | Set | Detonated | Errors | Timed out | Exited non-zero | "
-                  "Median seconds | Total seconds |", "|---|---|---|---|---|---|---|---|"]
+                  "Wheel instead of sdist | Median seconds | Total seconds |",
+                  "|---|---|---|---|---|---|---|---|---|"]
         for c in scores["detonation_cost"]:
             median = "n/a" if c["median_seconds"] is None else c["median_seconds"]
             lines.append(f"| {c['ecosystem']} | {c['set']} | {c['packages']} | {c['errors']} | "
-                         f"{c['timed_out']} | {c['exited_non_zero']} | {median} | "
-                         f"{c['total_seconds']} |")
+                         f"{c['timed_out']} | {c['exited_non_zero']} | "
+                         f"{c.get('wheel_instead', 0)} | {median} | {c['total_seconds']} |")
     lines += ["", "Precision depends on the mix of malicious and benign packages here, which "
               "is not the mix in the wild; false positives per 1,000 benign releases do not. "
               "Most samples in the DataDog dataset were found by GuardDog, which favours it. "

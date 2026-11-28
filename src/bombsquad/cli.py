@@ -93,6 +93,9 @@ def _parser() -> argparse.ArgumentParser:
                          help="npm:<name>@<version> or pypi:<name>@<version>")
     det_cmd.add_argument("--artifact", type=Path, metavar="FILE",
                          help="detonate this local archive instead of downloading the release")
+    det_cmd.add_argument("--wheel", type=Path, metavar="FILE",
+                         help="with a PyPI --artifact sdist: a wheel to install if the sdist "
+                              "does not build")
     det_cmd.add_argument("--timeout", type=int, default=120, metavar="SECONDS",
                          help="stop the container after this long (default 120)")
     det_cmd.add_argument("--format", choices=("text", "json"), default="text")
@@ -222,7 +225,9 @@ def _detonate(args) -> int:
     from bombsquad.registry import FetchError
 
     try:
-        report = detonate(args.spec, args.artifact, max(10, args.timeout))
+        if args.wheel and not args.artifact:
+            raise ValueError("--wheel goes with a local --artifact sdist")
+        report = detonate(args.spec, args.artifact, max(10, args.timeout), wheel=args.wheel)
     except (ValueError, OSError, FetchError, ArchiveError, DetonationError, InputError,
             ParserFailed, ParserUnavailable) as exc:
         print(f"bombsquad: {exc}", file=sys.stderr)

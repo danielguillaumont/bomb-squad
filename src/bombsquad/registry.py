@@ -192,12 +192,23 @@ def npm_releases(name: str, versions: list[str], fetch: Fetch = http_get) -> lis
 
 # PyPI --------------------------------------------------------------------------------------
 
+def _wheel_rank(filename: str) -> int:
+    """Pure Python first, then wheels for Linux on x86-64 (what CI runners and the
+    detonation sandbox can install), CPython 3.12 or the stable ABI before others."""
+    if filename.endswith("-none-any.whl"):
+        return 0
+    linux = "linux" in filename and "x86_64" in filename
+    if linux and ("-cp312-" in filename or "-abi3-" in filename):
+        return 1
+    return 2 if linux else 3
+
+
 def _pick(files: list[dict]) -> list[dict]:
     """The sdist, which carries setup.py and build hooks, and one wheel, which can carry
-    .pth files: a pure-Python wheel when there is one."""
+    .pth files: a pure-Python wheel when there is one, otherwise one for Linux on x86-64."""
     sdists = [f for f in files if f.get("packagetype") == "sdist"]
     wheels = [f for f in files if f.get("packagetype") == "bdist_wheel"]
-    wheels.sort(key=lambda f: (not str(f.get("filename", "")).endswith("-none-any.whl"),
+    wheels.sort(key=lambda f: (_wheel_rank(str(f.get("filename", ""))),
                                str(f.get("filename", ""))))
     return sdists[:1] + wheels[:1]
 

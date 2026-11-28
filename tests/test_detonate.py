@@ -227,6 +227,31 @@ def test_payload_puts_canaries_in_home_and_npm_packages_in_node_modules(tmp_path
         runner.check_name("npm", "../../etc")
 
 
+def test_a_pypi_wheel_goes_in_beside_the_sdist_in_case_it_does_not_build():
+    secrets = _canaries()
+    members = _tar_members(runner.payload(
+        "pypi", "demo", "1.0", "demo-1.0.tar.gz", b"sdist", None, secrets,
+        fallback=("demo-1.0-py3-none-any.whl", b"wheel")))
+    assert {"detonate/in/demo-1.0.tar.gz", "detonate/in/demo-1.0-py3-none-any.whl"} <= set(
+        members)
+    with pytest.raises(runner.DetonationError):
+        runner.payload("pypi", "demo", "1.0", "demo-1.0.tar.gz", b"", None, secrets,
+                       fallback=("../x.whl", b""))
+    docker = FakeDocker()
+    runner.run_detonation("pypi", "demo", "1.0", "demo-1.0.tar.gz", b"x", None, secrets,
+                          run=docker.run, popen=docker.popen,
+                          fallback=("demo-1.0-py3-none-any.whl", b"w"))
+    [create] = [c for c in docker.calls if c[1] == "create"]
+    assert "BS_FALLBACK=demo-1.0-py3-none-any.whl" in create
+    # Whether the stage used it shows in the trace: pip was started with the wheel.
+    ran = trace.Trace()
+    ran.processes[7] = trace.Process(7, None, "/home/detonate", execs=[[
+        "python", "-m", "pip", "install", "/detonate/in/demo-1.0-py3-none-any.whl"]])
+    assert detonation.installed_fallback(ran, "demo-1.0-py3-none-any.whl")
+    assert not detonation.installed_fallback(ran, "demo-1.0-cp312-manylinux_x86_64.whl")
+    assert not detonation.installed_fallback(ran, None)
+
+
 class FakeDocker:
     """Records docker commands and answers them as a working Docker would."""
 
@@ -322,7 +347,8 @@ def test_detonate_reports_observations_against_the_static_scan(tmp_path, monkeyp
     monkeypatch.setattr(detonation.sys, "platform", "linux")
     seen = {}
 
-    def fake_run(ecosystem, name, version, artifact_name, data, unpacked, canaries, timeout):
+    def fake_run(ecosystem, name, version, artifact_name, data, unpacked, canaries, timeout,
+                 fallback=None):
         seen["unpacked"] = sorted(p.name for p in unpacked.iterdir())
         return runner.RunResult(NPM_TRACE, [{"kind": "dns", "name": "collector.invalid"}],
                                 False, False)
