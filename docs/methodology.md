@@ -300,6 +300,10 @@ Detection rates come only from the benchmark below. Every figure states its coun
   - One version is chosen per package name, so a campaign of near-identical versions counts once, and then a seeded sample per ecosystem.
   - Samples are decrypted and unpacked with the same rules as registry packages, and any package archive inside is unpacked too. Both tools get the same folder: the shallowest one with a `package.json` (npm), or with `setup.py`, `pyproject.toml`, `setup.cfg` or `PKG-INFO` (PyPI).
   - The date in a sample's name is when DataDog found it, not when it was published.
+- **OpenSSF reports:** each malicious sample is looked up in [OpenSSF malicious-packages](https://github.com/ossf/malicious-packages) at a pinned commit (`benchmark/openssf.py`), a confirmation independent of DataDog's label.
+  - Only report files are fetched: the repository is listed without file contents, and only the sampled names' report folders are checked out.
+  - A report confirms the sample when it lists the version, when its range starts at that version with no end, or when it affects every version. Other ranges are not evaluated, so such a sample counts as named, not confirmed. Withdrawn reports are left out.
+  - The scores add recall on the confirmed samples, for both tools, with how many samples each kind of report covers. A report confirms that a version was malicious, not when the compromise began.
 - **Benign set:** a seeded sample from the 1,000 most-downloaded packages per ecosystem.
   - The lists come from `npm-high-impact` 1.13.0 (npm) and hugovk/top-pypi-packages at commit `29c0d4c38c28` of 2026-11-01 (PyPI).
   - For each package, the highest stable version published on or before the dataset commit's date is downloaded and checked as `bombsquad diff` does. For PyPI, that is the sdist and one wheel. A package that has only published pre-releases gets its highest pre-release.
