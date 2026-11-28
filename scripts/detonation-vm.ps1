@@ -6,13 +6,19 @@ Runs the benchmark with detonate=all on a throwaway Azure VM, then deletes the V
 `check` reads, without changing anything, what `run` later reads from GitHub. It then
 asks Azure to validate the VM request, size by size and region by region, without
 creating a VM; it creates only an empty resource group and firewall for each region it
-tries, and deletes them. `run` makes the same check, then creates the VM in the first place
-Azure accepts. It creates a resource group that holds one Ubuntu VM and nothing else. The VM has no
-managed identity, accepts no inbound connections, and can send only HTTP and HTTPS out. It
-registers itself as an ephemeral GitHub Actions runner (scripts/detonation-vm.sh). The script
-then dispatches the benchmark with detonate=all, waits for it, and deletes the resource group
-whatever the outcome. `down` deletes every resource group this script made, and the runners
-it registered, in case a run was interrupted.
+tries, and deletes them. In the first accepted one it also tries the deadline below. `run`
+makes the same check, then creates the VM in the first place Azure accepts. It creates a
+resource group that holds one Ubuntu VM and its deadline. The VM has no managed identity,
+accepts no inbound connections, and can send only HTTP and HTTPS out. It registers itself as
+an ephemeral GitHub Actions runner (scripts/detonation-vm.sh), and powers off when its one
+job ends. The script then dispatches the benchmark with detonate=all, waits for it, and
+deletes the resource group whatever the outcome.
+
+The deadline (scripts/detonation-deadline.json) deletes the group from Azure, so the VM goes
+even if this script or the machine running it stops. It is a Logic App with its own
+identity, allowed only that resource group. Every 5 minutes it deletes the group if the VM
+is powered off or $MaxHours have passed. `down` deletes every resource group this script
+made, and the runners it registered, in case a run was interrupted.
 
 Uses the signed-in Azure CLI (az) and GitHub CLI (gh). It never installs, runs or opens a
 package on this machine. See docs/development.md#detonation-vm.
@@ -39,7 +45,7 @@ param(
     # Students gives 4 cores of. It gives none of DSv5.
     [string[]] $Size = @("Standard_D4s_v4", "Standard_D4as_v4", "Standard_D4ds_v4",
         "Standard_D4s_v3", "Standard_D4_v4"),
-    # Azure deallocates the VM after this long even if this script is no longer running.
+    # Azure deletes the VM after this long even if this script is no longer running.
     [ValidateRange(1, 24)]
     [int] $MaxHours = 7,
     [string] $Ref = "main",
@@ -58,6 +64,7 @@ $TagValue = "detonation"
 $RunnerPrefix = "bombsquad-detonation-"
 $Workflow = "benchmark.yml"
 $BootScript = Join-Path $PSScriptRoot "detonation-vm.sh"
+$DeadlineTemplate = Join-Path $PSScriptRoot "detonation-deadline.json"
 # The full image name: the CLI's short aliases need a download and differ between versions.
 $Image = "Canonical:ubuntu-24_04-lts:server:latest"
 
@@ -231,9 +238,21 @@ function Get-AllowedLocations {
 function Register-Providers {
     # A new subscription has to have these services turned on once. Registering them changes
     # nothing that already exists.
-    foreach ($provider in "Microsoft.Compute", "Microsoft.Network") {
+    foreach ($provider in "Microsoft.Compute", "Microsoft.Network", "Microsoft.Logic") {
         Invoke-Tool az @("provider", "register", "--namespace", $provider, "--wait") | Out-Null
     }
+}
+
+function Set-Deadline {
+    # Deploys the deadline into the group: it deletes the group once the VM is powered off
+    # or the time has passed. $true when Azure accepted it. Creating its role assignment
+    # needs the right to assign roles, which a subscription's owner has.
+    param([string] $Group, [datetime] $DeleteAfter)
+    $after = $DeleteAfter.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    Invoke-Tool az @("deployment", "group", "create", "--resource-group", $Group, "--name",
+        "detonation-deadline", "--template-file", $DeadlineTemplate, "--parameters",
+        "deleteAfter=$after", "--output", "none") -AllowFailure | Out-Null
+    return ($DryRun -or $LASTEXITCODE -eq 0)
 }
 
 function New-NetworkGroup {
@@ -347,13 +366,25 @@ function Test-Placement {
         $publicKey = New-Key -Work $work
         $boot = Join-Path $work "boot.sh"
         Write-BootScript -Path $boot -RunnerName "check" -Token "CHECK"
-        $placement = Find-Placement -Id $id -PublicKey $publicKey -Boot $boot
+        $placement = Find-Placement -Id $id -PublicKey $publicKey -Boot $boot -Keep
+        if ($placement) {
+            # The deadline, in the empty group: there is no VM for it to act on, and the
+            # group is deleted straight after.
+            $deadline = Set-Deadline -Group $placement.Group -DeleteAfter (Get-Date).AddHours($MaxHours)
+            Remove-Detonation -Groups @($placement.Group)
+        }
     }
     finally {
         Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
     }
     if (-not $placement) { throw "No region and size was accepted; nothing was created." }
-    Write-Host "run would create a $($placement.Size) VM in $($placement.Location). Nothing was created."
+    if ($deadline) { Write-Host "Azure accepted the deadline that deletes the VM if this script stops." }
+    else {
+        Write-Warning ("Azure did not accept the deadline (it needs the right to assign roles " +
+            "in the subscription). run would go on without it: if the script stops, the VM " +
+            "is billed until .\scripts\detonation-vm.ps1 down deletes it.")
+    }
+    Write-Host "run would create a $($placement.Size) VM in $($placement.Location). Nothing is left."
 }
 
 function Start-Detonation {
@@ -379,7 +410,7 @@ function Start-Detonation {
     Write-Host "  Azure subscription: $subscription"
     Write-Host "  Where:              the first of $((Split-List $Location) -join ', ') that Azure accepts"
     Write-Host "  Size:               the first of $((Split-List $Size) -join ', ') that Azure accepts"
-    Write-Host "  Deallocated after:  $MaxHours hours at most, deleted when the run ends"
+    Write-Host "  Deleted:            when the run ends, or by Azure once the VM powers off or after $MaxHours hours"
     Write-Host "  Benchmark:          $Repo $Workflow at $Ref, detonate=all"
     Write-Host "It goes in a new resource group of its own; nothing else in the subscription is changed."
     if (-not $Yes -and -not $DryRun) {
@@ -413,15 +444,17 @@ function Start-Detonation {
         Invoke-Tool az (Get-VmArguments $group $placement.Location $placement.Size $publicKey $boot) | Out-Null
         Remove-Item -Force (Join-Path $work "key"), (Join-Path $work "key.pub"), $boot -ErrorAction SilentlyContinue
 
-        $stop = $now.AddHours($MaxHours).ToString("HHmm")
-        # Azure's scheduled shutdown deallocates the VM, which stops the billing. Some regions
-        # do not offer it; the VM then powers itself off at the same time (detonation-vm.sh).
-        Invoke-Tool az @("vm", "auto-shutdown", "--resource-group", $group, "--name",
-            "detonation", "--time", $stop, "--output", "none") -AllowFailure | Out-Null
-        if (-not $DryRun -and $LASTEXITCODE -ne 0) {
-            Write-Warning ("Azure's scheduled shutdown is not offered in $($placement.Location). " +
-                "The VM powers itself off after $MaxHours hours, but Azure bills it until it is " +
-                "deleted: if this script stops, run .\scripts\detonation-vm.ps1 down")
+        # The deadline deletes the group from Azure if this script stops: once the VM powers
+        # off after its job (detonation-vm.sh), or after $MaxHours.
+        if (-not (Set-Deadline -Group $group -DeleteAfter $now.AddHours($MaxHours))) {
+            Write-Warning ("Azure did not accept the deadline (it needs the right to assign " +
+                "roles). If this script stops, the VM is billed until " +
+                ".\scripts\detonation-vm.ps1 down deletes it.")
+            # Then at least Azure's scheduled shutdown, which deallocates the VM. Some
+            # regions do not offer it.
+            $stop = $now.AddHours($MaxHours).ToString("HHmm")
+            Invoke-Tool az @("vm", "auto-shutdown", "--resource-group", $group, "--name",
+                "detonation", "--time", $stop, "--output", "none") -AllowFailure | Out-Null
         }
 
         Wait-Runner -RunnerName $runnerName

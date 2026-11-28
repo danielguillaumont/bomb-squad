@@ -56,15 +56,16 @@ The benchmark detonates live malicious samples (`detonate` input `all`) only on 
 
 1. It checks that workflows from fork pull requests need approval for all outside contributors, and that no earlier detonation VM or runner is left.
 2. It shows the subscription, location and VM size, and asks you to type `yes`.
-3. It makes the same check, then creates one Ubuntu 24.04 VM (`Canonical:ubuntu-24_04-lts:server:latest`) in the first region and size Azure accepts, in a resource group with nothing else. The sizes tried are 4-vCPU, 16 GB sizes in families that Azure for Students gives 4 cores of. `-Location` and `-Size` take other lists, separated by commas. The VM has no managed identity and no inbound rules. Its only outbound traffic to the internet is TCP 80 and 443. Azure deallocates it after `-MaxHours` (7 by default) even if the script has stopped. Where Azure does not offer scheduled shutdown, such as `belgiumcentral`, the VM powers itself off at that time instead, and Azure bills it until `down` deletes it.
+3. It makes the same check, then creates one Ubuntu 24.04 VM (`Canonical:ubuntu-24_04-lts:server:latest`) in the first region and size Azure accepts, in a resource group with nothing else. The sizes tried are 4-vCPU, 16 GB sizes in families that Azure for Students gives 4 cores of. `-Location` and `-Size` take other lists, separated by commas. The VM has no managed identity and no inbound rules. Its only outbound traffic to the internet is TCP 80 and 443.
+   - **Deadline:** the group also holds a deadline (`scripts/detonation-deadline.json`), so the VM is deleted even if the script or the machine running it stops. It is a Logic App whose only trigger is a 5-minute timer. Its own identity has Contributor on that resource group and nothing else. It deletes the group once the VM is powered off, which the VM does when its one job ends, or after `-MaxHours` (7 by default). Its role assignment goes with the group. Creating it needs the right to assign roles, which a subscription's owner has. `check` tries it in the empty group. If Azure refuses it, `run` warns and falls back to Azure's scheduled shutdown, which some regions such as `belgiumcentral` do not offer. The VM is then billed until `down` deletes it.
    - It goes in a new resource group of its own, and the script deletes only resource groups it tagged `bombsquad=detonation`. Other resources in the subscription are not touched. The VM has its own network, with no peering to any other.
    - Regions the subscription's allowed-regions policy leaves out are skipped.
-   - On a new subscription it registers the Microsoft.Compute and Microsoft.Network providers first.
+   - On a new subscription it registers the Microsoft.Compute, Microsoft.Network and Microsoft.Logic providers first.
 4. At boot, `scripts/detonation-vm.sh` installs Docker and PowerShell 7, writes `/etc/bombsquad/disposable-vm`, and registers a runner that takes one job and unregisters. PowerShell and the runner are downloaded at pinned versions and checked against their SHA-256. The benchmark stops if no PowerShell is installed: without it, PowerShell embedded in a package is not analysed and its findings would drop out of the scores. It may update itself from GitHub's releases if GitHub no longer accepts that version.
 5. The script dispatches the benchmark with `detonate=all` and waits for it.
 6. When the run ends, fails or is interrupted, it cancels the run if it has not finished and deletes the resource group and the runner.
 
-If the window closes during a run, delete what is left:
+If the window closes during a run, the deadline deletes the VM. To delete what is left at once:
 
 ```powershell
 .\scripts\detonation-vm.ps1 down

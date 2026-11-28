@@ -16,7 +16,8 @@ TOKEN="__TOKEN__"
 MAX_MINUTES="__MAX_MINUTES__"
 
 # A backstop if the script that made this VM stops: power off after the time limit. Azure
-# still bills a VM that is powered off from inside until it is deallocated or deleted.
+# still bills a VM that is powered off from inside until it is deallocated or deleted, which
+# the deadline in Azure does once it sees the VM powered off.
 shutdown -h "+$MAX_MINUTES"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -62,3 +63,7 @@ sed -i 's|<ns1:CustomData>[^<]*</ns1:CustomData>||' /var/lib/waagent/ovf-env.xml
 # Its own service, so the runner outlives cloud-init. It exits after its one job.
 systemd-run --unit bombsquad-runner --uid runner --gid runner \
   --property WorkingDirectory=/home/runner /home/runner/run.sh
+# Then the VM powers off, and the deadline in Azure (scripts/detonation-deadline.json) sees
+# it and deletes the resource group, even if the script that made the VM has stopped.
+systemd-run --unit bombsquad-poweroff /bin/sh -c \
+  'sleep 60; while systemctl is-active --quiet bombsquad-runner; do sleep 30; done; shutdown -h now'

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Deletes the detonation VM's resource group, from Azure, once the VM is powered off or a deadline has passed, so the VM goes even if the script that made it stops. A Logic App with its own identity, allowed only this resource group. Deployed by scripts/detonation-vm.ps1; see docs/development.md#detonation-vm."
+  },
+  "parameters": {
+    "deleteAfter": {
+      "type": "string",
+      "metadata": { "description": "UTC time, as yyyy-MM-ddTHH:mm:ssZ, after which the group is deleted whatever the VM is doing." }
+    },
+    "vmName": { "type": "string", "defaultValue": "detonation" }
+  },
+  "variables": {
+    "name": "detonation-deadline",
+    "contributor": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+    "group": "[concat('https://management.azure.com', resourceGroup().id)]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[variables('name')]",
+      "location": "[resourceGroup().location]",
+      "tags": { "bombsquad": "detonation" },
+      "identity": { "type": "SystemAssigned" },
+      "properties": {
+        "state": "Enabled",
+        "parameters": {
+          "deleteAfter": { "value": "[parameters('deleteAfter')]" },
+          "vmUri": { "value": "[concat(variables('group'), '/providers/Microsoft.Compute/virtualMachines/', parameters('vmName'), '/instanceView?api-version=2024-07-01')]" },
+          "groupUri": { "value": "[concat(variables('group'), '?api-version=2021-04-01')]" }
+        },
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "deleteAfter": { "type": "String" },
+            "vmUri": { "type": "String" },
+            "groupUri": { "type": "String" }
+          },
+          "triggers": {
+            "Every_5_minutes": {
+              "type": "Recurrence",
+              "recurrence": { "frequency": "Minute", "interval": 5 }
+            }
+          },
+          "actions": {
+            "Read_the_VM": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "@parameters('vmUri')",
+                "authentication": { "type": "ManagedServiceIdentity", "audience": "https://management.azure.com/" }
+              },
+              "runAfter": {}
+            },
+            "Powered_off_or_past_the_deadline": {
+              "type": "If",
+              "expression": {
+                "or": [
+                  { "greaterOrEquals": ["@ticks(utcNow())", "@ticks(parameters('deleteAfter'))"] },
+                  { "contains": ["@string(body('Read_the_VM'))", "PowerState/stopped"] },
+                  { "contains": ["@string(body('Read_the_VM'))", "PowerState/deallocated"] }
+                ]
+              },
+              "actions": {
+                "Delete_the_resource_group": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "DELETE",
+                    "uri": "@parameters('groupUri')",
+                    "authentication": { "type": "ManagedServiceIdentity", "audience": "https://management.azure.com/" }
+                  },
+                  "runAfter": {}
+                }
+              },
+              "else": { "actions": {} },
+              "runAfter": { "Read_the_VM": ["Succeeded", "Failed"] }
+            }
+          },
+          "outputs": {}
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, variables('name'))]",
+      "dependsOn": ["[resourceId('Microsoft.Logic/workflows', variables('name'))]"],
+      "properties": {
+        "description": "Lets the detonation deadline delete this resource group, and nothing outside it.",
+        "roleDefinitionId": "[variables('contributor')]",
+        "principalId": "[reference(resourceId('Microsoft.Logic/workflows', variables('name')), '2019-05-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    }
+  ]
+}
