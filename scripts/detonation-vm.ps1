@@ -3,7 +3,8 @@
 Runs the benchmark with detonate=all on a throwaway Azure VM, then deletes the VM.
 
 .DESCRIPTION
-`check` asks Azure to validate the VM request, size by size and region by region, without
+`check` reads, without changing anything, what `run` later reads from GitHub. It then
+asks Azure to validate the VM request, size by size and region by region, without
 creating a VM; it creates only an empty resource group and firewall for each region it
 tries, and deletes them. `run` makes the same check, then creates the VM in the first place
 Azure accepts. It creates a resource group that holds one Ubuntu VM and nothing else. The VM has no
@@ -147,18 +148,62 @@ function Wait-Runner {
 }
 
 function Find-Run {
-    param([datetime] $Since)
+    # The latest dispatched benchmark run created after $Since, or $null after $Attempts tries.
+    param([datetime] $Since, [int] $Attempts = 20)
     if ($DryRun) { return $null }
-    for ($i = 0; $i -lt 20; $i++) {
+    for ($i = 0; $i -lt $Attempts; $i++) {
         $json = Invoke-Tool gh @("run", "list", "--repo", $Repo, "--workflow", $Workflow,
             "--event", "workflow_dispatch", "--limit", "5", "--json", "databaseId,createdAt,url")
-        $run = $json | ConvertFrom-Json | Where-Object {
+        # Windows PowerShell 5.1 passes a JSON array down the pipeline as one object, so the
+        # runs are enumerated first.
+        $runs = $json | ConvertFrom-Json
+        $run = $runs | ForEach-Object { $_ } | Where-Object {
             ([datetime]$_.createdAt).ToUniversalTime() -ge $Since.AddMinutes(-1)
         } | Select-Object -First 1
         if ($run) { return $run }
-        Start-Sleep -Seconds 5
+        if ($i -lt $Attempts - 1) { Start-Sleep -Seconds 5 }
     }
-    throw "The dispatched benchmark run did not appear."
+    return $null
+}
+
+function Get-RunStatus {
+    param([string] $RunId)
+    $status = Invoke-Tool gh @("run", "view", $RunId, "--repo", $Repo, "--json", "status",
+        "--jq", ".status") -AllowFailure
+    return "$status".Trim()
+}
+
+function Assert-ForkApproval {
+    $policy = Invoke-Tool gh @("api",
+        "repos/$Repo/actions/permissions/fork-pr-contributor-approval", "--jq",
+        ".approval_policy")
+    if ($policy.Trim() -ne "all_external_contributors") {
+        throw ("Workflows from fork pull requests must need approval for all outside " +
+            "contributors while the runner is registered. Set it in the repository's " +
+            "Actions settings, or run: gh api --method PUT " +
+            "repos/$Repo/actions/permissions/fork-pr-contributor-approval " +
+            "-f approval_policy=all_external_contributors")
+    }
+}
+
+function Test-GitHub {
+    # The GitHub calls `run` makes once the VM is up, made read-only against the latest
+    # benchmark run that already exists. It dispatches nothing.
+    Assert-ForkApproval
+    $yaml = Invoke-Tool gh @("workflow", "view", $Workflow, "--repo", $Repo, "--ref", $Ref,
+        "--yaml")
+    if ($yaml -notmatch "(?m)^\s+detonate:") {
+        throw "$Workflow at $Ref has no detonate input."
+    }
+    Get-DetonationRunners | Out-Null
+    $run = Find-Run -Since (Get-Date).ToUniversalTime().AddDays(-90) -Attempts 1
+    if (-not $run) {
+        Write-Host "GitHub: no dispatched benchmark run in the last 90 days to check against."
+        return
+    }
+    $status = Get-RunStatus -RunId "$($run.databaseId)"
+    if (-not $status) { throw "Could not read the status of benchmark run $($run.databaseId)." }
+    Write-Host "GitHub: the workflow, the runners and benchmark run $($run.databaseId) ($status) can be read."
 }
 
 function Split-List {
@@ -290,7 +335,10 @@ function Assert-Clean {
 function Test-Placement {
     # `check`: what `run` would pick, without creating a VM or registering a runner.
     Assert-Tools
-    if (-not $DryRun) { Assert-Clean }
+    if (-not $DryRun) {
+        Assert-Clean
+        Test-GitHub
+    }
     Register-Providers
     $id = "check-" + (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmm")
     $work = Join-Path ([IO.Path]::GetTempPath()) "bombsquad-$id"
@@ -316,17 +364,8 @@ function Start-Detonation {
         $account = Invoke-Tool az @("account", "show", "--query", "[name, id]", "--output",
             "tsv")
         $subscription = ($account -split "`n")[0]
-        $policy = Invoke-Tool gh @("api",
-            "repos/$Repo/actions/permissions/fork-pr-contributor-approval", "--jq",
-            ".approval_policy")
-        if ($policy.Trim() -ne "all_external_contributors") {
-            throw ("Workflows from fork pull requests must need approval for all outside " +
-                "contributors while the runner is registered. Set it in the repository's " +
-                "Actions settings, or run: gh api --method PUT " +
-                "repos/$Repo/actions/permissions/fork-pr-contributor-approval " +
-                "-f approval_policy=all_external_contributors")
-        }
         Assert-Clean
+        Test-GitHub
         if (@(Get-DetonationRunners | Where-Object { $_.Status -eq "online" }).Count -gt 0) {
             throw "A detonation runner is already online. Run: .\scripts\detonation-vm.ps1 down"
         }
@@ -390,6 +429,7 @@ function Start-Detonation {
         Invoke-Tool gh @("workflow", "run", $Workflow, "--repo", $Repo, "--ref", $Ref,
             "-f", "detonate=all") | Out-Null
         $run = Find-Run -Since $dispatched
+        if (-not $run -and -not $DryRun) { throw "The dispatched benchmark run did not appear." }
         if ($run) {
             Write-Host "Benchmark run: $($run.url)"
             Write-Host "If this window closes before it ends, run: .\scripts\detonation-vm.ps1 down"
@@ -399,9 +439,7 @@ function Start-Detonation {
     }
     finally {
         if ($run -and -not $DryRun) {
-            $status = Invoke-Tool gh @("run", "view", "$($run.databaseId)", "--repo", $Repo,
-                "--json", "status", "--jq", ".status") -AllowFailure
-            if ($status.Trim() -ne "completed") {
+            if ((Get-RunStatus -RunId "$($run.databaseId)") -ne "completed") {
                 Write-Host "Cancelling the run, which has not finished ..."
                 Invoke-Tool gh @("run", "cancel", "$($run.databaseId)", "--repo", $Repo) -AllowFailure | Out-Null
             }

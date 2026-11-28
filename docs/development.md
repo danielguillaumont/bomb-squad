@@ -52,7 +52,7 @@ The benchmark detonates live malicious samples (`detonate` input `all`) only on 
 .\scripts\detonation-vm.ps1 run
 ```
 
-`check` shows where `run` would create the VM, without creating it. For each region it tries, it creates an empty resource group and firewall, which are free, asks Azure to validate the full VM request with `az vm create --validate` (quota and capacity included), and deletes them.
+`check` shows where `run` would create the VM, without creating it. It first makes the GitHub calls `run` makes later, read-only against the latest benchmark run, so a failure there shows before a VM exists. For each region it tries, it creates an empty resource group and firewall, which are free, asks Azure to validate the full VM request with `az vm create --validate` (quota and capacity included), and deletes them.
 
 1. It checks that workflows from fork pull requests need approval for all outside contributors, and that no earlier detonation VM or runner is left.
 2. It shows the subscription, location and VM size, and asks you to type `yes`.
