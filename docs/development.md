@@ -34,16 +34,52 @@ Set `BOMBSQUAD_POWERSHELL` to pick a specific PowerShell executable.
 | `src/bombsquad/detonate/` | `bombsquad detonate`: the sandbox images, the sink, fake credentials, the strace reader and the comparison with the static scan |
 | `benchmark/` | The accuracy benchmark against GuardDog. It runs only in `.github/workflows/benchmark.yml`, on Linux CI. |
 | `watch/` | The daily watch: new releases of popular packages, diffed and queued for review |
+| `scripts/detonation-vm.ps1`, `detonation-vm.sh` | A disposable Azure VM for detonating malicious samples, and its boot script |
 
 ## Detonation VM
 
 The benchmark detonates live malicious samples (`detonate` input `all`) only on a disposable virtual machine. Neither GitHub's shared runners nor a development machine is used. The job refuses to start anywhere else, so a run with `all` waits until such a VM is registered.
 
+### With Azure, in one command
+
+`scripts/detonation-vm.ps1` does the whole run with the signed-in Azure CLI and GitHub CLI, from Windows PowerShell 5.1 or PowerShell 7:
+
+```powershell
+.\scripts\detonation-vm.ps1 run
+```
+
+1. It checks that workflows from fork pull requests need approval for all outside contributors, and that no earlier detonation VM or runner is left.
+2. It shows the subscription, location and VM size, and asks you to type `yes`.
+3. It creates a resource group with one Ubuntu 24.04 VM (`Standard_D4s_v5` by default) and nothing else. The VM has no managed identity and no inbound rules. Its only outbound traffic to the internet is TCP 80 and 443. Azure deallocates it after `-MaxHours` (7 by default) even if the script has stopped.
+4. At boot, `scripts/detonation-vm.sh` installs Docker, writes `/etc/bombsquad/disposable-vm`, and registers a runner that takes one job and unregisters. The runner is downloaded at a pinned version and checked against its SHA-256. It may update itself from GitHub's releases if GitHub no longer accepts that version.
+5. The script dispatches the benchmark with `detonate=all` and waits for it.
+6. When the run ends, fails or is interrupted, it cancels the run if it has not finished and deletes the resource group and the runner.
+
+If the window closes during a run, delete what is left:
+
+```powershell
+.\scripts\detonation-vm.ps1 down
+```
+
+Before the first run:
+
+- Use a subscription that holds nothing else of value, and check that its terms allow running malware samples for research in your own VM.
+- Set the fork approval policy, once: `gh api --method PUT repos/danielguillaumont/bomb-squad/actions/permissions/fork-pr-contributor-approval -f approval_policy=all_external_contributors`.
+- The run is billed while the VM exists. `-DryRun` prints what would be done without calling Azure or GitHub.
+
+What it does not do:
+
+- Azure filters outbound traffic by address and port, not by host name, so the VM itself can reach any web server. The packages reach only the sink, on an internal Docker network.
+- The runner's registration token is passed in the VM's custom data. The boot script removes the copies it knows of once the runner is registered, and the token expires an hour after it was made.
+- The VM can reach Azure's instance metadata service. With no managed identity, that gives descriptions of the VM and no credentials.
+
+### Elsewhere
+
 1. **Create a fresh Linux x86-64 VM** for each run, on a cloud account or a host that holds nothing else of value.
    - It holds no credentials and no cloud role. Turn off the instance metadata service, or give the VM no instance role.
    - It has no folders shared with another machine.
-   - Its outbound traffic is limited to what the job fetches: GitHub, the npm and PyPI registries, Docker Hub for the pinned base images, and the Debian mirror the images install strace from. The packages themselves reach only the sink, on an internal Docker network.
-2. **Install Docker Engine**, then mark the VM as disposable: `sudo mkdir -p /etc/bombsquad && sudo touch /etc/bombsquad/disposable-vm`. The workflow checks for this file.
+   - Its outbound traffic is limited to what the job fetches: GitHub, the npm and PyPI registries, Docker Hub for the pinned base images, and the Debian mirror the images install strace from. Where only addresses and ports can be filtered, allow TCP 80 and 443 and nothing else. The packages themselves reach only the sink, on an internal Docker network.
+2. **Install Docker Engine**, then mark the VM as disposable: `sudo mkdir -p /etc/bombsquad && sudo touch /etc/bombsquad/disposable-vm`. The workflow checks for this file. `scripts/detonation-vm.sh` does this and the next step on any Ubuntu VM with cloud-init.
 3. **In the repository's settings** (Actions, General), require approval for workflows from fork pull requests by all outside contributors. Any workflow file in a fork could otherwise ask for the runner's label while it is registered.
 4. **Register the VM as an ephemeral runner** right before dispatching the run, with the labels `self-hosted`, `linux`, `x64` and `bombsquad-detonation`. Follow GitHub's instructions for adding a self-hosted runner, and pass `--ephemeral` to `config.sh` so that the runner takes one job and unregisters.
 5. **Dispatch the benchmark** with `detonate` set to `all`.
