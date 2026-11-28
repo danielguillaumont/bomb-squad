@@ -83,7 +83,8 @@ function Invoke-Tool {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $all = @(& $Tool @Arguments 2>&1)
+        # Each tool named outright, so the script shows what it runs.
+        $all = if ($Tool -eq "az") { @(& az @Arguments 2>&1) } else { @(& gh @Arguments 2>&1) }
         $code = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previous }
