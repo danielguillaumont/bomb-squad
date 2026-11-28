@@ -249,6 +249,7 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
 - **What is recorded:**
   - strace, running as root, records processes, files opened and connection attempts. The package runs as an unprivileged user.
   - The sink answers every DNS A query with its own address. It records names, TCP connections on common ports, HTTP request lines, TLS server names and the first 64 KB of each connection.
+  - TLS is read too. The sink makes a certificate authority for each run and issues a certificate for each server name a client asks for. The package's container trusts that authority through its system bundle and `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE`. The authority's key never leaves the sink.
   - A fake credential that appears in what the sink received counts as sent: as is, hex, URL-encoded, base64 at any alignment, or in a DNS name.
 - **Package code:** what npm's `sh -c` for a lifecycle script, pip's build-backend helper or its `setup.py` caller, and the import step start, and everything below them. A thread, or a fork that has not called exec, counts as the process it came from.
   - npm reading `~/.npmrc` itself is expected and not reported.
@@ -259,7 +260,7 @@ Rules still run on files with parse errors, and the errors are reported. PowerSh
   - Predicted but not observed is not cleared.
 - **What it cannot see:**
   - Code that needs the missing dependencies fails.
-  - HTTPS traffic shows only its server name.
+  - A client that pins a certificate or brings its own list of authorities fails the TLS handshake, and then only its server name is seen.
   - Reading environment variables leaves no trace.
   - One timed run as a fresh user does not trigger payloads gated on time, host or a later run.
   - Nothing observed does not mean safe.

@@ -17,12 +17,14 @@ from bombsquad.scan import NOT_REACHED_IN_PACKAGE, NOT_RUN_FROM_PACKAGE, scan
 LIMITS = [
     "Dependencies are not installed: the network reaches only the sink. Code that needs "
     "them fails when it loads them.",
-    "TLS traffic is recorded by server name only; what it carries is not seen, so a secret "
-    "sent over HTTPS shows as a read and a connection, not as sent.",
+    "TLS is read with a certificate authority made for the run, which the sandbox trusts "
+    "through its system bundle and NODE_EXTRA_CA_CERTS, SSL_CERT_FILE, REQUESTS_CA_BUNDLE and "
+    "CURL_CA_BUNDLE. A client that pins a certificate or brings its own list of authorities "
+    "fails the handshake, and then only the server name is seen.",
     "One run, with a time limit, as a fresh user on a fresh machine. Payloads gated on "
     "time, environment, host name or a later run are not seen.",
-    "Reading environment variables leaves no trace; only a secret from them that is sent "
-    "in the clear is seen.",
+    "Reading environment variables leaves no trace; only a secret from them that reaches "
+    "the sink in a form it can read is seen.",
     "Something predicted but not observed is not cleared.",
 ]
 
